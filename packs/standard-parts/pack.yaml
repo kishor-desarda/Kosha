@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: CC-BY-4.0
+id: standard-parts
+name: Standard parts
+version: 0.1.0
+licence: CC-BY-4.0
+description: Market components described by their standards. Sizes and designations only.
+tables:
+  - file: fasteners/hex-bolts-iso4017.csv
+    category: FST
+    part_number: "FST-ISO4017-M{d}X{l}-{grade}"
+    description: "HEX SCREW ISO 4017 M{d} X {l} {grade}"

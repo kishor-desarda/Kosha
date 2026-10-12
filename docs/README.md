@@ -1,0 +1,10 @@
+# Kosha documentation
+
+- [`../README.md`](../README.md): what Kosha is, how to try and install it.
+- [`../CONTRIBUTING.md`](../CONTRIBUTING.md): how to contribute.
+- [`adr/`](adr/): architecture decision records, one page per decision.
+- [`../sdk/python/README.md`](../sdk/python/README.md): building server add-ins.
+- [`../addins/`](../addins/): each official add-in has its own README.
+
+The full specification and development guide will be published here as the documentation site
+(MkDocs) is set up.

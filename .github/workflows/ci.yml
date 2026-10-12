@@ -1,0 +1,116 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python ${{ matrix.python }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: server/requirements.txt
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r server/requirements.txt pytest
+          pip install -e sdk/python
+      - name: Unit tests
+        run: |
+          cd server && pytest -q
+          cd .. && pytest -q sdk/python/tests addins/erpnext/tests
+      - name: End-to-end API workflows (with a simulated ERPNext)
+        run: cd server && python tests/test_api.py
+      - name: Legacy import and duplicate checks
+        run: cd server && python tests/test_import.py
+      - name: Demo data loads
+        run: |
+          cd server
+          KOSHA_DATA_DIR=$(mktemp -d) KOSHA_DISABLE_WORKER=1 python -c "from kosha.app import bootstrap; from kosha.seed import seed; bootstrap(); seed()"
+
+  checks:
+    name: Lint, licences, web
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Ruff
+        run: pip install ruff && ruff check server sdk addins scripts
+      - name: SPDX licence headers
+        run: python scripts/spdx_headers.py
+      - name: Web client syntax
+        run: for f in web/js/*.js; do node --check "$f"; done
+      - name: Shell scripts
+        run: bash -n deploy/linux/install.sh
+
+  ui:
+    name: Browser smoke test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          pip install -r server/requirements.txt playwright
+          pip install -e sdk/python
+          python -m playwright install --with-deps chromium
+      - name: Sign in and open every main screen without a script error
+        run: python scripts/smoke_ui.py
+
+  dotnet:
+    name: C# shared CAD core
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Build and test Kosha.Client and Kosha.CadCore
+        run: dotnet test sdk/dotnet/Kosha.CadCore.Tests/Kosha.CadCore.Tests.csproj --configuration Release
+      - name: Build the shared task pane (net48 and net8.0-windows)
+        run: dotnet build sdk/dotnet/Kosha.CadCore.UI/Kosha.CadCore.UI.csproj --configuration Release
+
+  dco:
+    name: Signed-off commits
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Every commit carries Signed-off-by
+        run: |
+          missing=0
+          for c in $(git rev-list --no-merges ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}); do
+            if ! git log -1 --format=%B "$c" | grep -q '^Signed-off-by: '; then
+              echo "::error::Commit $(git log -1 --format='%h %s' $c) has no Signed-off-by line. Use git commit -s."
+              missing=1
+            fi
+          done
+          exit $missing

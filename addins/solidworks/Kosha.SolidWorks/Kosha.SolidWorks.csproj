@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- SPDX-License-Identifier: Apache-2.0 -->
+  <!--
+    Kosha add-in for SolidWorks 2021 and later (64-bit, .NET Framework 4.8).
+    Everything except SolidWorksHost.cs and SwAddin.cs is shared with the other CAD add-ins (sdk/dotnet).
+    Build on a PC with SolidWorks:  dotnet build -c Release   (or Visual Studio, Release | x64)
+    If SolidWorks is installed elsewhere, pass -p:SolidWorksDir="D:\SOLIDWORKS".
+  -->
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <OutputType>Library</OutputType>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>Kosha.SolidWorks</AssemblyName>
+    <RootNamespace>Kosha.SolidWorks</RootNamespace>
+    <UseWindowsForms>true</UseWindowsForms>
+    <LangVersion>latest</LangVersion>
+    <Version>0.5.0</Version>
+    <Company>Kosha contributors</Company>
+    <Product>Kosha</Product>
+    <SolidWorksDir Condition="'$(SolidWorksDir)' == ''">C:\Program Files\SOLIDWORKS Corp\SOLIDWORKS</SolidWorksDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\sdk\dotnet\Kosha.CadCore.UI\Kosha.CadCore.UI.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="SolidWorks.Interop.sldworks">
+      <HintPath>$(SolidWorksDir)\api\redist\SolidWorks.Interop.sldworks.dll</HintPath>
+      <EmbedInteropTypes>false</EmbedInteropTypes>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="SolidWorks.Interop.swconst">
+      <HintPath>$(SolidWorksDir)\api\redist\SolidWorks.Interop.swconst.dll</HintPath>
+      <EmbedInteropTypes>false</EmbedInteropTypes>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="SolidWorks.Interop.swpublished">
+      <HintPath>$(SolidWorksDir)\api\redist\SolidWorks.Interop.swpublished.dll</HintPath>
+      <EmbedInteropTypes>false</EmbedInteropTypes>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>

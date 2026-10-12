@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+[Unit]
+Description=Kosha nightly online backup
+
+[Service]
+Type=oneshot
+User=kosha
+Group=kosha
+WorkingDirectory=/opt/kosha/server
+EnvironmentFile=/etc/kosha/kosha.env
+ExecStart=/opt/kosha/venv/bin/python -m kosha.backup /var/lib/kosha/backups/nightly

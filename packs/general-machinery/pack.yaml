@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: CC-BY-4.0
+id: general-machinery
+name: General machinery
+version: 0.1.0
+licence: CC-BY-4.0
+description: Categories and spec-code templates for common machine parts.
+categories:
+  - {code: GR, name: Gears}
+  - {code: SH, name: Shafts}
+  - {code: FL, name: Flanges}
+  - {code: BH, name: Bearing housings}
+  - {code: FST, name: Fasteners (bought out)}
+  - {code: BRG, name: Bearings (bought out)}
+dictionaries:
+  materials:
+    - {code: C45, name: "C45 (1.0503)"}
+    - {code: 42CrMo4, name: "42CrMo4 (1.7225)"}
+    - {code: S275JR, name: "S275JR (1.0044)"}
+    - {code: EN-GJL-250, name: "EN-GJL-250 grey cast iron"}
+    - {code: "1.4401", name: "1.4401 stainless (316)"}
+spec_codes: [spec-codes/spur-gear.yaml]

@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: Apache-2.0
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kosha-sdk"
+description = "SDK for building Kosha PLM add-ins: manifest, base classes, safe HTTP, conformance tests"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+authors = [{ name = "Kosha contributors" }]
+dependencies = ["PyYAML>=6.0"]
+dynamic = ["version"]
+
+[project.scripts]
+kosha-sdk = "kosha_sdk.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "kosha_sdk.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["kosha_sdk*"]

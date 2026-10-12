@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: Feature request
+description: Suggest an improvement or a new add-in
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do, and what gets in the way today?
+    validations: {required: true}
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+  - type: dropdown
+    id: where
+    attributes:
+      label: Core or add-in?
+      options: ["Core", "Add-in (CAD, ERP, file type, pack ...)", "Not sure"]

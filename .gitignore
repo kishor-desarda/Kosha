@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# Kosha data and local settings (never commit these)
+server/data/
+server/kosha.env
+demo-data/
+*.db
+*.db-wal
+*.db-shm
+
+# .NET add-ins
+addins/**/bin/
+addins/**/obj/
+sdk/dotnet/**/bin/
+sdk/dotnet/**/obj/
+*.user
+.vs/
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

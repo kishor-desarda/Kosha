@@ -1,0 +1,48 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kosha-plm"
+description = "Kosha: open-source product lifecycle management (PLM) for engineering companies"
+license = { text = "AGPL-3.0-or-later" }
+requires-python = ">=3.10"
+authors = [{ name = "Kosha contributors" }]
+dynamic = ["version"]
+dependencies = [
+  "starlette>=0.37",
+  "uvicorn>=0.29",
+  "python-multipart>=0.0.9",
+  "PyJWT>=2.8",
+  "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+full = ["openpyxl>=3.1", "pypdfium2>=4.0", "numpy>=1.24"]
+dev = ["openpyxl>=3.1", "pytest>=8", "ruff>=0.5"]
+
+[project.scripts]
+kosha = "kosha.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/kosha-plm/kosha"
+Documentation = "https://github.com/kosha-plm/kosha/tree/main/docs"
+Issues = "https://github.com/kosha-plm/kosha/issues"
+
+[tool.setuptools.dynamic]
+version = { attr = "kosha.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["kosha*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = ["E501", "E741", "E731"]

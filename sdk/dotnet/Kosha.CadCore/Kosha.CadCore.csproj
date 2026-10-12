@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- SPDX-License-Identifier: Apache-2.0 -->
+  <!-- Everything a CAD add-in does, written once: status, check-out, check-in with components,
+       numbering, duplicate warning, get latest. A CAD program only supplies an ICadHost. -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <RootNamespace>Kosha.CadCore</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Kosha.Client\Kosha.Client.csproj" />
+  </ItemGroup>
+</Project>

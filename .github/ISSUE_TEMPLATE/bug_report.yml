@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: Bug report
+description: Something does not work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "Security problem? Do not use this form; see SECURITY.md."
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations: {required: true}
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Open ...\n2. Press ...\n3. See ..."
+    validations: {required: true}
+  - type: input
+    id: version
+    attributes:
+      label: Kosha version or commit
+  - type: dropdown
+    id: severity
+    attributes:
+      label: How bad is it?
+      options:
+        - "S1: data lost or at risk, or Kosha down for everyone"
+        - "S2: a main task is blocked for some users"
+        - "S3: anything else"
+    validations: {required: true}
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error reference or log lines
+      description: Error messages show a short reference (ref ABC123); paste it and the matching log lines.
+      render: text

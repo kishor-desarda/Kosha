@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0
+[project]
+name = "kosha_connector"
+authors = [{ name = "Kosha contributors" }]
+description = "Kosha PLM connector for ERPNext: Kosha fields, a View in Kosha button, and signed change notices to Kosha"
+requires-python = ">=3.10"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+dynamic = ["version"]
+dependencies = []
+
+[build-system]
+requires = ["flit_core >=3.4,<4"]
+build-backend = "flit_core.buildapi"
+
+[tool.bench.frappe-dependencies]
+frappe = ">=15.0.0,<17.0.0"
+erpnext = ">=15.0.0,<17.0.0"

@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+id: org.kosha.gstarcad
+name: GStarCAD add-in
+version: 0.5.0
+publisher: Kosha project
+licence: Apache-2.0
+kosha: ">=0.5,<2.0"
+kind: [cad-addin]
+description: >
+  A Kosha palette inside GStarCAD: check drawings in and out, read part numbers from title
+  blocks and drawing properties, allocate numbers, get the latest version. Built on the shared
+  CAD core used by every Kosha CAD add-in.
+entry_points:
+  cad: Kosha.GstarCad.dll
+permissions: [items:read, files:read, files:write, numbers:allocate]

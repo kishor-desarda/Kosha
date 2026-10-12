@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+id: org.kosha.solidworks
+name: SolidWorks add-in
+version: 0.5.0
+publisher: Kosha project
+licence: Apache-2.0
+kosha: ">=0.5,<2.0"
+kind: [cad-addin]
+description: >
+  A Kosha task pane inside SolidWorks: check in and out with properties, previews, 3D meshes
+  and assembly structure (the engineering BOM), components first; numbering; duplicate warning.
+entry_points:
+  cad: Kosha.SolidWorks.dll
+permissions: [items:read, boms:write, files:read, files:write, numbers:allocate]

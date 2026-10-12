@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+line-length = 120
+target-version = "py310"
+
+[lint]
+select = ["E", "F", "W"]
+ignore = ["E501", "E741", "E731"]

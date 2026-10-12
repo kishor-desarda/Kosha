@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# HTTPS front end for Kosha. Caddy gets and renews certificates by itself for a public name;
+# for an internal name use "tls internal" or your own certificate authority.
+plm.example.com {
+	encode zstd gzip
+	request_body {
+		max_size 1GB
+	}
+	reverse_proxy 127.0.0.1:8080
+}

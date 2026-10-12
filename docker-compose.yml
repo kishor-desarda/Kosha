@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# docker compose up   → http://localhost:8080
+# The first admin password is printed in the log (docker compose logs kosha) unless you set it here.
+services:
+  kosha:
+    build: .
+    ports: ["8080:8080"]
+    volumes: ["kosha-data:/data"]
+    environment:
+      KOSHA_ADMIN_PASSWORD: ${KOSHA_ADMIN_PASSWORD:-}
+    restart: unless-stopped
+volumes:
+  kosha-data:

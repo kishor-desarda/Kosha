@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- SPDX-License-Identifier: Apache-2.0 -->
+  <!--
+    Kosha add-in for GStarCAD. Everything except GstarCadHost.cs, GstarCadPlugin.cs and GstarCadApi.cs
+    is shared with the other CAD add-ins (sdk/dotnet).
+
+    GStarCAD 2024 and 2025 load .NET Framework 4.8 add-ins (the default here). Newer GStarCAD versions
+    use .NET 8: build with  -p:GstarNet8=true .
+    Point GstarCadSdkDir at the folder that holds GStarCAD's .NET API assemblies (gmap.dll and gmdb.dll,
+    from the GStarCAD SDK or the program folder):
+        dotnet build -c Release -p:GstarCadSdkDir="C:\Program Files\Gstarsoft\GstarCAD2025"
+  -->
+  <PropertyGroup>
+    <TargetFramework Condition="'$(GstarNet8)' != 'true'">net48</TargetFramework>
+    <TargetFramework Condition="'$(GstarNet8)' == 'true'">net8.0-windows</TargetFramework>
+    <OutputType>Library</OutputType>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>Kosha.GstarCad</AssemblyName>
+    <RootNamespace>Kosha.GstarCad</RootNamespace>
+    <UseWindowsForms>true</UseWindowsForms>
+    <LangVersion>latest</LangVersion>
+    <Version>0.5.0</Version>
+    <Company>Kosha contributors</Company>
+    <Product>Kosha</Product>
+    <GstarCadSdkDir Condition="'$(GstarCadSdkDir)' == ''">C:\Program Files\Gstarsoft\GstarCAD2025</GstarCadSdkDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\sdk\dotnet\Kosha.CadCore.UI\Kosha.CadCore.UI.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="gmap">
+      <HintPath>$(GstarCadSdkDir)\gmap.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="gmdb">
+      <HintPath>$(GstarCadSdkDir)\gmdb.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>
