@@ -30,3 +30,4 @@ sdk/dotnet/**/obj/
 .vscode/
 .DS_Store
 Thumbs.db
+.claude/worktrees/
