@@ -10,6 +10,7 @@ import { renderRequests, renderRequest, delegateDialog } from './ecr.js';
 import { renderErp } from './erp.js';
 import { renderBin } from './recyclebin.js';
 import { renderShares, renderShareOutside } from './share.js';
+import { renderBomView, renderMachines } from './bomviews.js';
 import { renderCommon } from './common.js';
 import { renderAdmin, renderSearch } from './admin.js';
 import { renderLibrary } from './library.js';
@@ -47,6 +48,8 @@ const ROUTES = [
   [/^#\/item\/(\d+)$/, 'boms', () => renderItem],
   [/^#\/boms$/, 'boms', () => renderBoms],
   [/^#\/bom\/(\d+)$/, 'boms', () => renderBom],
+  [/^#\/bom-view\/(\d+)$/, 'boms', () => renderBomView],
+  [/^#\/machines$/, 'boms', () => renderMachines],
   [/^#\/changes$/, 'changes', () => renderChanges],
   [/^#\/change\/(\d+)$/, 'changes', () => renderChange],
   [/^#\/ecrs$/, 'changes', () => renderRequests],

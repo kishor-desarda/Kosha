@@ -25,6 +25,7 @@ export async function renderBoms(container, _m, _p, { setTitle }) {
   mount(container, h('div', { class: 'page-pad' },
     h('div', { class: 'page-head' }, h('div', { style: { flex: 1 } }, h('h1', null, 'Engineering BOMs'),
       h('div', { class: 'sub' }, `Built from SolidWorks assemblies or imported from a SolidWorks BOM table, then released and sent to ${S.erp}.`)),
+    h('a', { class: 'btn', href: '#/machines' }, 'Machines'),
     can('engineer') ? h('button', { class: 'btn primary', onclick: newBomDialog }, icon('plus', 16), 'New BOM') : null),
     h('div', { style: { marginBottom: '12px' } }, q),
     h('div', { class: 'panel', style: { overflow: 'auto' } }, h('table', { class: 'tbl' },
@@ -34,7 +35,7 @@ export async function renderBoms(container, _m, _p, { setTitle }) {
 
 const sourceLabel = s => ({ solidworks: 'SolidWorks add-in', file_references: 'Assembly file', import: 'Imported table', manual: 'Manual' })[s] || s;
 
-function itemPicker(onPick, placeholder = 'Type a part number or description') {
+export function itemPicker(onPick, placeholder = 'Type a part number or description') {
   const inp = h('input', { class: 'input', placeholder, 'aria-label': 'Find part', autocomplete: 'off' });
   const list = h('div', { style: { maxHeight: '220px', overflow: 'auto', border: '1px solid var(--line)', borderRadius: '6px', marginTop: '6px' } });
   const search = debounce(async () => {
@@ -90,6 +91,7 @@ export async function renderBom(container, [id], _p, { setTitle }) {
         eng && data.assembly_document ? h('button', { class: 'btn', title: 'Rebuild from the SolidWorks assembly', onclick: regenerate }, icon('refresh', 16), 'Rebuild from model') : null,
         eng ? h('button', { class: 'btn', onclick: importDlg }, icon('upload', 16), 'Import SolidWorks BOM') : null,
         h('button', { class: 'btn', onclick: () => compareDlg() }, icon('layers', 16), 'Compare'),
+        h('a', { class: 'btn', href: `#/bom-view/${b.item_id}` }, 'Views and cost'),
         h('a', { class: 'btn', href: `/api/boms/${b.id}/export?format=xlsx&access_token=${encodeURIComponent(S.token)}` }, icon('download', 16), 'Excel'),
         draft && can('approver') ? h('button', { class: 'btn primary', disabled: errors > 0, title: errors ? 'Fix the errors first' : `Lock this BOM and send it to ${S.erp}`, onclick: release }, icon('release', 16), 'Release BOM') : null,
         !draft && can('approver') ? h('button', { class: 'btn primary', onclick: pushErp }, icon('erp', 16), `Send to ${S.erp}`) : null));

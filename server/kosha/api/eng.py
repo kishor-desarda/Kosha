@@ -214,7 +214,7 @@ def release_bom(req: Req):
         raise conflict("Fix the errors first: " + "; ".join(e["message"] for e in errors[:5]), "bom_errors")
     if not boms.lines(bid):
         raise conflict("The BOM is empty.", "bom_empty")
-    db.update("boms", bid, {"state": "released", "updated_at": db.now()})
+    db.update("boms", bid, {"state": "released", "updated_at": db.now(), "released_at": db.now()})
     db.audit(req.uid, "bom_release", "bom", bid, f"{b['part_number']} rev {b['revision']}")
     if (erp.settings() or {}).get("auto_push_on_release", True):
         erp.enqueue("item", b["item_id"], req.uid, f"BOM {b['part_number']} rev {b['revision']}")
