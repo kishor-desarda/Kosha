@@ -21,8 +21,12 @@ import { renderInputs, renderInput, renderProjects, renderProject } from './inpu
 import { applyTheme, currentTheme, themeDialog, themeLabel } from './theme.js';
 import { providerChoices, finishSso, ssoErrorText } from './signin.js';
 import { renderAsk, askEntry } from './ai.js';
-import { loadWorkbench, openPalette, pinStrip, recordRecent } from './workbench.js';
+import { loadWorkbench, openPalette, pinStrip, recordRecent, setScreens } from './workbench.js';
+import { loadLocale, t } from './locale.js';
+import { helpDialog, languageDialog } from './help.js';
 
+const NAV_KEY = { home: 'nav.home', kosha: 'nav.explorer', inputs: 'nav.inputs', boms: 'nav.boms', changes: 'nav.changes',
+  deviations: 'nav.deviations', erp: 'nav.erp', common: 'nav.duplicates', library: 'nav.library', projects: 'nav.my_projects' };
 const NAV = [
   ['home', 'Home', 'home', '#/home'],
   ['kosha', 'Explorer', 'kosha', '#/files'],
@@ -75,6 +79,7 @@ const root = document.getElementById('app');
 let shell = null;
 let cleanup = null;
 let routeSeq = 0;
+let currentKey = 'home';
 
 function setMode(mode, save = true) {
   S.mode = mode;
@@ -91,18 +96,18 @@ function buildShell() {
   const links = {};
   for (const [key, label, ic, href] of (isVendor() ? VENDOR_NAV : NAV)) {
     const badge = h('span', { class: 'badge', hidden: true });
-    const a = h('a', { href }, icon(ic, 22), label, badge);
+    const a = h('a', { href }, icon(ic, 22), t(NAV_KEY[key], label), badge);
     links[key] = { a, badge };
     rail.appendChild(a);
   }
   rail.appendChild(h('div', { class: 'spacer' }));
   if (S.user.role === 'admin' || S.user.role === 'approver') {
-    const a = h('a', { href: '#/admin' }, icon('admin', 22), 'Admin');
+    const a = h('a', { href: '#/admin' }, icon('admin', 22), t('nav.admin', 'Admin'));
     links.admin = { a };
     rail.appendChild(a);
   }
   const titleEl = h('div', { class: 'title' });
-  const q = h('input', { type: 'search', id: 'global-search', placeholder: 'Search part number, description or file name   ( / )', autocomplete: 'off' });
+  const q = h('input', { type: 'search', id: 'global-search', placeholder: t('top.search', 'Search part number, description or file name   ( / )'), autocomplete: 'off' });
   q.addEventListener('keydown', e => {
     if (e.key === 'Enter' && q.value.trim()) location.hash = `#/search?q=${encodeURIComponent(q.value.trim())}`;
   });
@@ -115,13 +120,14 @@ function buildShell() {
     contextMenu(r.right - 240, r.bottom + 6, [
       { label: `${S.user.full_name} (${S.user.role})`, icon: 'users', disabled: true },
       '-',
-      { label: 'My notifications', icon: 'bell', run: () => import('./notify.js').then(m => m.myNotifications()) },
-      ...(can('approver') || can('quality') ? [{ label: 'Stand-in while I am away', icon: 'users', run: delegateDialog }] : []),
-      { label: `Theme: ${themeLabel(currentTheme())}`, icon: 'theme', run: themeDialog },
-      { label: 'Change password', icon: 'checkout', run: changePassword },
-      ...(can('engineer') && S.user.kind !== 'vendor' ? [{ label: 'My share links', icon: 'link', run: () => { location.hash = '#/shares'; } }, { label: 'Transmittals', icon: 'external', run: () => { location.hash = '#/transmittals'; } }] : []),
-      { label: 'Two-step sign-in', icon: 'checkin', run: () => import('./twostep.js').then(m => m.twoStepDialog()).catch(fail) },
-      { label: 'Sign out', icon: 'logout', run: () => logout() },
+      { label: t('menu.notifications', 'My notifications'), icon: 'bell', run: () => import('./notify.js').then(m => m.myNotifications()) },
+      ...(can('approver') || can('quality') ? [{ label: t('menu.standin', 'Stand-in while I am away'), icon: 'users', run: delegateDialog }] : []),
+      { label: `${t('menu.theme', 'Theme')}: ${themeLabel(currentTheme())}`, icon: 'theme', run: themeDialog },
+      { label: t('menu.language', 'Language'), icon: 'info', run: languageDialog },
+      { label: t('menu.password', 'Change password'), icon: 'checkout', run: changePassword },
+      ...(can('engineer') && S.user.kind !== 'vendor' ? [{ label: t('menu.shares', 'My share links'), icon: 'link', run: () => { location.hash = '#/shares'; } }, { label: t('menu.transmittals', 'Transmittals'), icon: 'external', run: () => { location.hash = '#/transmittals'; } }] : []),
+      { label: t('menu.twostep', 'Two-step sign-in'), icon: 'checkin', run: () => import('./twostep.js').then(m => m.twoStepDialog()).catch(fail) },
+      { label: t('menu.signout', 'Sign out'), icon: 'logout', run: () => logout() },
     ]);
   });
   const top = h('header', { class: 'topbar' }, titleEl,
@@ -129,8 +135,9 @@ function buildShell() {
     askEntry(q),     // only when an administrator switched Ask Kosha on
     h('span', { class: 'spacer' }),
     h('div', { class: 'seg', role: 'group', 'aria-label': 'Interface mode' }, modeBtns),
-    h('button', { class: 'btn ghost sm', id: 'go-to', onclick: openPalette, title: 'Go to any screen, part, file, favourite or saved view' },
-      icon('command', 16), 'Go to', h('span', { class: 'kbd' }, 'Ctrl K')),
+    h('button', { class: 'btn ghost sm', id: 'go-to', onclick: openPalette, title: t('top.go_to_hint', 'Go to any screen, part, file, favourite or saved view') },
+      icon('command', 16), t('top.go_to', 'Go to'), h('span', { class: 'kbd' }, 'Ctrl K')),
+    h('button', { class: 'btn ghost icon', id: 'help-btn', 'aria-label': t('top.help', 'Help for this screen (F1)'), title: t('top.help', 'Help for this screen (F1)'), onclick: () => helpDialog(currentKey) }, icon('help', 18)),
     notificationBell(), avatar);
   const page = h('main', { class: 'page', id: 'page', tabindex: '-1' });
   const app = h('div', { class: 'app' }, rail, h('div', { class: 'main' }, top, page, pinStrip()));
@@ -138,10 +145,21 @@ function buildShell() {
   shell = { links, titleEl, page, modeBtns, q };
   setMode(S.mode, false);
   refreshBadges();
-  const list = (isVendor() ? VENDOR_NAV : NAV).map(([, label, ic, href]) => [label, ic, href]);
-  if (S.user.role === 'admin' || S.user.role === 'approver') list.push(['Admin', 'admin', '#/admin']);
+  const list = (isVendor() ? VENDOR_NAV : NAV).map(([key, label, ic, href]) => [t(NAV_KEY[key], label), ic, href]);
+  if (S.user.role === 'admin' || S.user.role === 'approver') list.push([t('nav.admin', 'Admin'), 'admin', '#/admin']);
   if (can('engineer') && !isVendor()) list.push(['Transmittals', 'external', '#/transmittals'], ['My share links', 'link', '#/shares'], ['Machines', 'cube', '#/machines'], ['Change requests', 'change', '#/ecrs'], ['Projects', 'layers', '#/projects'], ['Recycle bin', 'trash', '#/bin']);
-  loadWorkbench(list);
+  setScreens(list);
+}
+
+// The workbench (language, favourites) and the locale load before the shell is drawn, so its words are right at once.
+let shellPromise = null;
+async function ensureShell() {
+  if (shell) return;
+  if (!shellPromise) {
+    shellPromise = (async () => { await loadWorkbench(); await loadLocale(); if (!shell) buildShell(); })()
+      .finally(() => { shellPromise = null; });
+  }
+  await shellPromise;
 }
 
 async function refreshBadges() {
@@ -232,7 +250,7 @@ function signedIn(r) {
   S.defaultTheme = r.default_theme || 'system';
   applyTheme(currentTheme());
   localStorage.setItem('kosha.token', r.token);
-  buildShell();
+  shell = null;
   location.hash = store('lastRoute') && store('lastRoute') !== '#/login' && !isVendor() ? store('lastRoute') : homeRoute();
   route();
 }
@@ -328,7 +346,7 @@ async function route() {
       applyTheme(currentTheme());    // the account's choice wins over the one remembered in this browser
     } catch (e) { return; }
   }
-  if (!shell) buildShell();
+  await ensureShell();
   startLive();
   const [path, query] = hash.split('?');
   if (isVendor() && !VENDOR_ROUTES.has((path.match(/^#\/(\w+)/) || [])[1])) { location.hash = '#/projects'; return; }
@@ -337,6 +355,7 @@ async function route() {
     const m = path.match(re);
     if (!m) continue;
     for (const [k, l] of Object.entries(shell.links)) l.a.classList.toggle('active', k === key);
+    currentKey = path.startsWith('#/shop') ? 'shop' : key;
     if (typeof cleanup === 'function') { try { cleanup(); } catch (e) { /* ignore */ } }
     cleanup = null;
     store('lastRoute', hash);
@@ -361,6 +380,7 @@ document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'k' || e.key === 'K') && shell && S.wb) {
     e.preventDefault(); openPalette(); return;
   }
+  if (e.key === 'F1' && shell) { e.preventDefault(); helpDialog(currentKey); return; }
   if (e.key === '/' && shell && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
     e.preventDefault(); shell.q.focus(); shell.q.select();
   }

@@ -13,8 +13,9 @@ export const ACCENTS = [['blue', 'Blue'], ['teal', 'Teal'], ['green', 'Green'], 
 export const TEXT_SIZES = [[90, 'Smaller'], [100, 'Normal'], [115, 'Larger'], [130, 'Largest']];
 
 let ready = null;            // resolves when the person's workbench has loaded
-export function loadWorkbench(list) {
-  screens = list || screens;
+export function setScreens(list) { screens = list; }
+
+export function loadWorkbench() {
   ready = fetchWorkbench();
   return ready;
 }

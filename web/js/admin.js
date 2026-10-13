@@ -133,7 +133,15 @@ async function legacyImport(body) {
 }
 
 async function users(body, draw) {
-  const [r, settings, am] = await Promise.all([get('/api/users'), get('/api/settings'), loadAccessMeta()]);
+  const [r, settings, am, loc] = await Promise.all([get('/api/users'), get('/api/settings'), loadAccessMeta(), get('/api/locale')]);
+  const localeSel = h('select', { class: 'input', id: 'st-locale', style: { width: 'auto', minHeight: '32px' } },
+    loc.locales.map(x => h('option', { value: x.code, selected: loc.locale.code === x.code }, x.name)));
+  localeSel.addEventListener('change', async () => {
+    try {
+      await put('/api/locale', { locale: localeSel.value });
+      toast('Saved. Dates, numbers and money follow it the next time people open Kosha.', 'ok');
+    } catch (e) { fail(e); }
+  });
   const mainRoles = am.roles.filter(x => x.main);
   const themeSel = h('select', { class: 'input', id: 'st-theme', style: { width: 'auto', minHeight: '32px' } },
     THEMES.map(([k, label]) => h('option', { value: k, selected: settings.default_theme === k }, label)));
@@ -156,6 +164,8 @@ async function users(body, draw) {
     h('button', { class: 'btn primary', onclick: () => addUser(draw) }, icon('plus', 16), 'Add user')),
     h('div', { class: 'row wrap', style: { marginBottom: '12px' } }, h('label', { for: 'st-theme', style: { fontWeight: 600 } }, 'Theme for everyone who has not chosen one'), themeSel,
       h('span', { class: 'muted small' }, 'Each person can choose their own theme in the menu behind their initials.')),
+    h('div', { class: 'row wrap', style: { marginBottom: '12px' } }, h('label', { for: 'st-locale', style: { fontWeight: 600 } }, 'Dates, numbers and money as in'), localeSel,
+      h('span', { class: 'muted small' }, 'India writes 10-Oct-2026, 24-hour time in IST and ₹1,25,000. Each person chooses the language of the words on screen.')),
     h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ['Name', 'User name', 'Role', 'Access', 'Mode', 'Theme', 'Status', ''].map(t => h('th', null, t)))),
       h('tbody', null, r.users.map(u => h('tr', null, h('td', null, u.full_name), h('td', { class: 'mono' }, u.username), h('td', null, roleSel(u)), h('td', null, h('div', { class: 'row', style: { flexWrap: 'wrap', gap: '4px' } }, accessChips(u))), h('td', null, u.ui_mode),
         h('td', { class: u.ui_theme ? '' : 'muted' }, u.ui_theme ? themeLabel(u.ui_theme) : 'Installation default'),
@@ -280,7 +290,8 @@ export async function renderSearch(container, _m, params, { setTitle }) {
   const input = document.getElementById('global-search');
   if (input) input.value = q;
   mount(container, h('div', { class: 'page-pad' },
-    h('div', { class: 'page-head' }, h('div', null, h('h1', null, `Results for "${q}"`), h('div', { class: 'sub' }, `${r.documents.length} files · ${r.items.length} parts · ${r.changes.length} change orders`)),
+    h('div', { class: 'page-head' }, h('div', null, h('h1', null, `Results for "${q}"`), h('div', { class: 'sub' }, `${r.documents.length} files · ${r.items.length} parts · ${r.changes.length} change orders`),
+      r.understood ? h('div', { class: 'small muted', id: 'search-understood' }, `Searched for: ${r.understood}`) : null),
       h('span', { class: 'spacer' }), askLink(q), h('a', { class: 'btn', href: `#/inputs?q=${encodeURIComponent(q)}` }, icon('layers', 16), 'Search inputs too')),
     h('div', { class: 'col', style: { gap: '16px' } },
       h('section', { class: 'panel' }, h('div', { class: 'panel-h' }, h('h2', null, 'Files')),

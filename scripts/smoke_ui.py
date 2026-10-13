@@ -193,6 +193,26 @@ def check_workbench(page, errors: list[str]) -> None:
     if not wait_until(page, "document.documentElement.dataset.text === '115'"):
         errors.append("a larger text size was not applied")
     page.evaluate("""async () => { const w = await import('/static/js/workbench.js'); await w.savePrefs({ text_size: 100, pins: [] }); }""")
+    check_language(page, errors)
+
+
+def check_language(page, errors: list[str]) -> None:
+    """India formats, F1 help, and a Hinglish search that says how it was read."""
+    fmt = page.evaluate("""async () => { const l = await import('/static/js/locale.js');
+  return [l.fmtShortMoney(240000), l.fmtMoney(125000), l.fmtDay('2026-10-10T08:30:00Z'), l.fmtWhen('2026-10-10T08:30:00Z')]; }""")
+    if fmt != ["₹2.4 lakh", "₹1,25,000.00", "10-Oct-2026", "10-Oct-2026 14:00"]:
+        errors.append(f"India formats are wrong: {fmt}")
+    page.keyboard.press("F1")
+    try:
+        page.wait_for_selector("dialog[open] >> text=Help:", timeout=10000)
+    except Exception:
+        errors.append("F1 did not open the help for the screen")
+    page.keyboard.press("Escape")
+    page.goto(f"{BASE}/#/search?q=brg%20hsg")
+    try:
+        page.wait_for_selector("#search-understood", timeout=15000)
+    except Exception:
+        errors.append("a search with short forms did not say how it was read")
 
 
 def check_resumable_upload(page, errors: list[str]) -> None:

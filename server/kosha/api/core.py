@@ -346,27 +346,33 @@ def search(req: Req):
     q = (req.q("q") or "").strip()
     if not q:
         return {"documents": [], "items": [], "changes": []}
+    from .. import searchwords
     limit = min(int(req.q("limit", 50)), 200)
-    terms = [t for t in q.split() if t]
+    parsed = searchwords.parse(q)          # Hinglish and short forms: "brg hsg 80" finds BEARING HOUSING 80
+    groups = parsed["groups"]
     where = []
     params: list = []
-    for t in terms:
-        where.append("(d.filename LIKE ? OR d.part_number LIKE ? OR d.description LIKE ?)")
-        params += [f"%{t}%"] * 3
+    for g in groups:
+        where.append("(" + " OR ".join("(d.filename LIKE ? OR d.part_number LIKE ? OR d.description LIKE ?)" for _ in g) + ")")
+        params += [f"%{t}%" for t in g for _ in range(3)]
     docs = db.rows(DOC_SELECT + "WHERE d.deleted = 0" + access.scope().documents() + " AND " + " AND ".join(where) +
                    " ORDER BY d.updated_at DESC LIMIT ?", [*params, limit])
     iw, ip = [], []
-    for t in terms:
+    for g in groups:
         # an OEM part number, OEM machine model or the customer's own part number finds the part too
-        iw.append("(part_number LIKE ? OR description LIKE ? OR material LIKE ? OR customer_part_number LIKE ? "
-                  "OR id IN (SELECT item_id FROM item_oem_refs WHERE deleted = 0 AND (oem_part_number LIKE ? "
-                  "OR oem_model LIKE ?)))")
-        ip += [f"%{t}%"] * 6
+        iw.append("(" + " OR ".join(
+            "(part_number LIKE ? OR description LIKE ? OR material LIKE ? OR customer_part_number LIKE ? "
+            "OR id IN (SELECT item_id FROM item_oem_refs WHERE deleted = 0 AND (oem_part_number LIKE ? "
+            "OR oem_model LIKE ?)))" for _ in g) + ")")
+        ip += [f"%{t}%" for t in g for _ in range(6)]
     items = db.rows("SELECT * FROM items i WHERE " + " AND ".join(iw) + access.scope().items() +
                     " ORDER BY part_number LIMIT ?", [*ip, limit])
     changes = [] if access.scope().vendor else db.rows("SELECT id, number, title, state FROM change_orders WHERE number LIKE ? OR title LIKE ? "
                       "ORDER BY id DESC LIMIT 20", (f"%{q}%", f"%{q}%"))
-    return {"documents": _with_preview(docs, user_names()), "items": items, "changes": changes}
+    plain = " ".join(q.split())
+    read_as = searchwords.understood(parsed)
+    return {"documents": _with_preview(docs, user_names()), "items": items, "changes": changes,
+            "understood": read_as if read_as.lower() != plain.lower() else "", "documents_first": parsed["documents"]}
 
 
 # -------------------------------------------------------------- dashboard --
