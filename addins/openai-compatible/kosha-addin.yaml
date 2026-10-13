@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: Apache-2.0
+id: org.kosha.openai-compatible
+name: OpenAI-compatible AI provider
+version: 0.5.0
+publisher: Kosha project
+licence: Apache-2.0
+kosha: ">=0.5,<2.0"
+kind: [ai-provider]
+description: >
+  Answers Kosha's AI assistance requests (classification, change-log drafts, Ask Kosha) through any server
+  that offers the widely used OpenAI-compatible chat-completions API, including self-hosted runners on your
+  own network.
+help: >
+  Kosha uses AI only after an administrator chooses this provider under Admin › AI and switches features on.
+  For a fully local set-up, run a model on a server in your own network (for example with Ollama, the
+  llama.cpp server or vLLM) and enter its address, which usually ends in /v1, and the model name it shows.
+  A hosted service works too: enter its address, the model and an API key. Kosha sends only what Admin › AI
+  allows; read docs/ai.md before using a service outside your network.
+entry_points:
+  server: kosha_openai_compat.provider:OpenAICompatibleProvider
+permissions: [ai:provide]
+events: []
+settings:
+  base_url:        {type: url, required: true, default: "http://localhost:11434/v1", label: Address of the AI server, hint: "Usually ends in /v1, for example http://ai-server.local:11434/v1"}
+  model:           {type: string, required: true, label: Model name, hint: "As the server lists it, for example the name you pulled or loaded"}
+  api_key:         {type: secret, label: API key, hint: "Leave empty for a local server that needs none"}
+  embedding_model: {type: string, label: Embedding model (optional), hint: "Only if the server offers embeddings; Kosha works without"}
+  json_mode:       {type: bool, default: true, label: Ask the server for JSON answers when Kosha needs them}
+  verify_tls:      {type: bool, default: true, label: Verify the HTTPS certificate}
+  timeout_s:       {type: int, default: 60, label: Time-out per request (seconds)}

@@ -15,6 +15,7 @@ import { notificationBell } from './notifications.js';
 import { renderInputs, renderInput, renderProjects, renderProject } from './inputs.js';
 import { applyTheme, currentTheme, themeDialog, themeLabel } from './theme.js';
 import { providerChoices, finishSso, ssoErrorText } from './signin.js';
+import { renderAsk, askEntry } from './ai.js';
 
 const NAV = [
   ['home', 'Home', 'home', '#/home'],
@@ -48,6 +49,7 @@ const ROUTES = [
   [/^#\/input\/(\d+)$/, 'inputs', () => renderInput],
   [/^#\/projects$/, 'inputs', () => renderProjects],
   [/^#\/project\/(\d+)$/, 'inputs', () => renderProject],
+  [/^#\/ask$/, 'search', () => renderAsk],
 ];
 
 const root = document.getElementById('app');
@@ -102,6 +104,7 @@ function buildShell() {
   });
   const top = h('header', { class: 'topbar' }, titleEl,
     h('div', { class: 'search' }, h('label', { for: 'global-search', class: 'sr-only' }, 'Search Kosha'), icon('search', 16), q),
+    askEntry(q),     // only when an administrator switched Ask Kosha on
     h('span', { class: 'spacer' }),
     h('div', { class: 'seg', role: 'group', 'aria-label': 'Interface mode' }, modeBtns),
     notificationBell(), avatar);

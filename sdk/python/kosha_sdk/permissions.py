@@ -15,6 +15,8 @@ PERMISSIONS: dict[str, str] = {
     "erp:sync": "send released items and BOMs to an ERP and read stock and cost back",
     "notify:send": "send notifications to users",
     "ai:use": "use the AI provider configured by the admin",
+    "ai:provide": "receive the texts Kosha sends for AI assistance (descriptions, properties, change lists, "
+                  "questions) and pass them to the AI service in its settings",
     "users:read": "read user names and roles",
     "users:sign-in": "check who signs in to Kosha (user names and passwords typed into the sign-in form reach it)",
 }

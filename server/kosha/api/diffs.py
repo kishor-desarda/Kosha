@@ -2,7 +2,7 @@
 """Measured change list and change logs of documents and change orders (spec 7.7)."""
 from __future__ import annotations
 
-from .. import changes, lifecycle
+from .. import ai, changes, db, lifecycle
 from ..diff import changelog, service
 from ..web import Req, api, bad, forbidden
 
@@ -44,7 +44,10 @@ def save_document_changelog(req: Req):
     if not perm["ok"]:
         raise forbidden(perm["why"])
     inp = changelog.document_input(d["id"], rev)
-    changelog.save(req.user, "document", d["id"], rev, req.b("note") or "", req.b("sections"), inp)
+    with db.tx():     # the save and, when the text started from an AI draft, its audit line: together or not at all
+        changelog.save(req.user, "document", d["id"], rev, req.b("note") or "", req.b("sections"), inp)
+        if req.b("ai_suggestion_id"):
+            ai.record_changelog_accept(req.user, req.b("ai_suggestion_id"), "document", d["id"], rev, req.b("sections"))
     return document_changelog(req)
 
 
@@ -76,6 +79,10 @@ def save_change_changelog(req: Req):
         raise forbidden(perm["why"])
     if req.b("sections") is None:
         raise bad("sections are required")
-    changelog.save(req.user, "change_order", co["id"], "", req.b("note") or "", req.b("sections"),
-                   changelog.change_input(co["id"]))
+    inp = changelog.change_input(co["id"])
+    with db.tx():
+        changelog.save(req.user, "change_order", co["id"], "", req.b("note") or "", req.b("sections"), inp)
+        if req.b("ai_suggestion_id"):
+            ai.record_changelog_accept(req.user, req.b("ai_suggestion_id"), "change_order", co["id"], "",
+                                       req.b("sections"))
     return change_changelog(req)

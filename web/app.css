@@ -614,3 +614,22 @@ dialog.dlg::backdrop { background: var(--backdrop); }
 .filter-chips button.chip { border: 1px solid var(--line); background: var(--panel); color: var(--muted); cursor: pointer; padding: 3px 9px; }
 .filter-chips button.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--ink); }
 .st-sending { background: var(--rev-bg); color: var(--rev); }
+
+/* ------------------------------------------------------------ AI assistance (optional) */
+:root {
+  --ai-bg: #F4F1FB; --ai-line: #D3C8EE; --ai-ink: #46307A;
+  --ai-spin: #8A74C9;
+}
+.ai-box { background: var(--ai-bg); border: 1px solid var(--ai-line); border-radius: 7px; padding: 10px 12px; }
+.ai-box .tbl th { background: transparent; }
+.ai-box .tbl td { height: auto; padding: 7px 8px; vertical-align: top; }
+.ai-box .tbl td:first-child { padding-top: 14px; }
+.ai-chip { background: var(--ai-bg); color: var(--ai-ink); box-shadow: inset 0 0 0 1px var(--ai-line); }
+.ai-spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--ai-line); border-top-color: var(--ai-spin); animation: ai-spin 0.9s linear infinite; flex: none; }
+@keyframes ai-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ai-spin { animation: none; } }
+.ai-answer { margin: 0; line-height: 1.55; white-space: pre-wrap; }
+.ai-cite { font-weight: 600; text-decoration: none; }
+.ai-sources { margin: 4px 0 0; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.ai-pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font-family: var(--mono); font-size: 12px; max-height: 40vh; overflow: auto; margin: 4px 0 0; }
+.ask-slot:empty { display: none; }
