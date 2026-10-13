@@ -90,10 +90,11 @@ export async function renderShareOutside(root, token) {
       h('div', { class: 'panel', style: { overflow: 'auto', marginTop: '12px' } }, h('table', { class: 'tbl' },
         h('thead', null, h('tr', null, ['File', 'Part', 'Rev', 'Size', ''].map(t => h('th', null, t)))),
         h('tbody', null, r.files.map(f => h('tr', null,
-          h('td', null, f.filename, f.superseded ? h('div', { class: 'sev-warning small' }, 'A newer revision exists. Ask the sender before using this one.') : null),
+          h('td', null, f.filename, f.superseded ? h('div', { class: 'sev-warning small' }, 'Superseded — ask for the new drawing before you use this one.') : null),
           h('td', { class: 'mono' }, f.part_number || ''), h('td', null, f.revision), h('td', null, fmtSize(f.size)),
           h('td', { class: 'nowrap' }, f.preview ? h('a', { class: 'btn sm', href: `/api/share/${token}/files/${f.id}/preview${q()}`, target: '_blank', rel: 'noopener' }, 'View') : null,
-            r.view_only ? null : h('a', { class: 'btn sm', href: `/api/share/${token}/files/${f.id}/download${q()}` }, 'Download'))))))),
+            r.view_only ? null : h('a', { class: 'btn sm', href: `/api/share/${token}/files/${f.id}/download${q()}` }, 'Download'),
+            r.view_only ? null : (f.outputs || []).map(o => h('a', { class: 'btn sm', href: `/api/share/${token}/outputs/${o.id}${q()}`, title: 'The PDF stamped when this revision was released' }, 'Stamped PDF')))))))),
       h('p', { class: 'muted small', style: { marginTop: '16px' } }, 'Files are watermarked with your name and the date. Opening and downloads are recorded.'));
   };
   await show();

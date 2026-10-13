@@ -157,9 +157,11 @@ def test_signature_checks():
 def test_webhook_reads_only_known_events(erp_url):
     c = connector(erp_url, webhook_secret="s3cret")
     body = json.dumps({"events": [{"kind": "stock_changed", "code": "DE-100"}, {"kind": "delete_everything", "code": "X"},
-                                  {"kind": "item_changed", "code": ""}]}).encode()
+                                  {"kind": "item_changed", "code": ""},
+                                  {"kind": "sales_order", "code": "SO-26-0042", "detail": "Example Foods|2026-12-15"}]}).encode()
     events = c.handle_webhook(signing.sign("s3cret", body), body)
-    assert [(e.kind, e.code) for e in events] == [("stock_changed", "DE-100")]
+    assert [(e.kind, e.code) for e in events] == [("stock_changed", "DE-100"), ("sales_order", "SO-26-0042")]
+    assert events[1].detail == "Example Foods|2026-12-15"
     with pytest.raises(ErpError, match="does not match"):
         c.handle_webhook(signing.sign("wrong", body), body)
     with pytest.raises(ErpError, match="No webhook secret"):

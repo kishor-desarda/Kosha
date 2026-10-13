@@ -967,9 +967,26 @@ export async function renderProjects(container, _m, params, { setTitle }) {
   mount(container, h('div', { class: 'page-pad' },
     h('div', { class: 'page-head' }, h('div', { style: { flex: 1 } }, h('div', { class: 'small muted' }, h('a', { href: '#/inputs' }, 'Inputs'), ' › Projects'), h('h1', null, 'Projects'),
       h('div', { class: 'sub' }, 'Customer orders and developments, with their parts and inputs.')),
-    can('engineer') ? h('button', { class: 'btn primary', onclick: () => projectDialog(null, p => { location.hash = `#/project/${p.id}`; }) }, icon('plus', 16), 'New project') : disabledBtn('New project', 'plus', 'Creating projects needs the engineer role.')),
+    can('engineer') ? h('div', { class: 'row wrap' }, h('button', { class: 'btn', onclick: salesOrderDialog }, 'From a sales order'),
+      h('button', { class: 'btn primary', onclick: () => projectDialog(null, p => { location.hash = `#/project/${p.id}`; }) }, icon('plus', 16), 'New project')) : disabledBtn('New project', 'plus', 'Creating projects needs the engineer role.')),
     h('div', { class: 'row wrap', style: { marginBottom: '12px' } }, search, seg), list));
   await load();
+}
+
+// The project of an ERP sales order with the standard folders (the ERP connector does this by itself when it can).
+function salesOrderDialog() {
+  const so = h('input', { class: 'input', id: 'so-no', placeholder: 'SO-26-0042' });
+  const cust = h('input', { class: 'input', id: 'so-cust' });
+  const due = h('input', { class: 'input', id: 'so-due', type: 'date' });
+  dialog({ title: 'Project from a sales order', body: [
+    h('p', { style: { marginTop: 0 } }, 'Makes project PRJ-YY-NNN with its folders (GA and layout, Design, Customer documents, Purchase, Manuals). The same sales order always opens the same project. When the ERP connector is set up, booked sales orders do this by themselves.'),
+    h('div', { class: 'form-grid' }, h('div', { class: 'field' }, h('label', { for: 'so-no' }, 'Sales order'), so),
+      h('div', { class: 'field' }, h('label', { for: 'so-cust' }, 'Customer'), cust), h('div', { class: 'field' }, h('label', { for: 'so-due' }, 'Delivery date'), due))],
+  actions: [{ label: 'Cancel' }, { label: 'Make project', primary: true, onClick: async () => {
+    const r = await post('/api/projects/from-sales-order', { sales_order: so.value, customer: cust.value, due_date: due.value || undefined });
+    toast(r.created ? `Project ${r.project.code} made with its folders` : `Sales order ${so.value} already has project ${r.project.code}`, 'ok');
+    location.hash = `#/project/${r.project.id}`;
+  } }] });
 }
 
 export async function renderProject(container, [id], _p, { setTitle }) {
@@ -988,6 +1005,8 @@ export async function renderProject(container, [id], _p, { setTitle }) {
           h('h1', null, h('span', { class: 'mono' }, p.code), ' ', p.name),
           h('div', { class: 'inp-meta', style: { marginTop: '6px' } }, h('span', { class: `chip st-${p.status === 'open' ? 'open' : 'done'}` }, p.status_label),
             p.customer ? h('span', null, `Customer: ${p.customer}`) : null,
+            p.sales_order ? h('span', null, `Sales order ${p.sales_order}`) : null,
+            p.folder_id ? h('a', { href: `#/files/${p.folder_id}` }, 'Open its folder') : null,
             p.start_date ? h('span', null, `Start ${fmtDate(p.start_date, false)}`) : null, p.due_date ? h('span', null, `Due ${fmtDate(p.due_date, false)}`) : null,
             p.closed_at ? h('span', null, `Closed ${fmtDate(p.closed_at, false)}`) : null),
           p.description ? h('p', { class: 'inp-note', style: { margin: '10px 0 0' } }, p.description) : null),

@@ -11,6 +11,7 @@ import { renderErp } from './erp.js';
 import { renderBin } from './recyclebin.js';
 import { renderShares, renderShareOutside } from './share.js';
 import { renderBomView, renderMachines } from './bomviews.js';
+import { renderTransmittals } from './transmittals.js';
 import { renderCommon } from './common.js';
 import { renderAdmin, renderSearch } from './admin.js';
 import { renderLibrary } from './library.js';
@@ -45,6 +46,7 @@ const ROUTES = [
   [/^#\/doc\/(\d+)$/, 'kosha', () => renderDoc],
   [/^#\/bin$/, 'kosha', () => renderBin],
   [/^#\/shares$/, 'kosha', () => renderShares],
+  [/^#\/transmittals$/, 'kosha', () => renderTransmittals],
   [/^#\/item\/(\d+)$/, 'boms', () => renderItem],
   [/^#\/boms$/, 'boms', () => renderBoms],
   [/^#\/bom\/(\d+)$/, 'boms', () => renderBom],
@@ -116,7 +118,7 @@ function buildShell() {
       ...(can('approver') || can('quality') ? [{ label: 'Stand-in while I am away', icon: 'users', run: delegateDialog }] : []),
       { label: `Theme: ${themeLabel(currentTheme())}`, icon: 'theme', run: themeDialog },
       { label: 'Change password', icon: 'checkout', run: changePassword },
-      ...(can('engineer') && S.user.kind !== 'vendor' ? [{ label: 'My share links', icon: 'link', run: () => { location.hash = '#/shares'; } }] : []),
+      ...(can('engineer') && S.user.kind !== 'vendor' ? [{ label: 'My share links', icon: 'link', run: () => { location.hash = '#/shares'; } }, { label: 'Transmittals', icon: 'external', run: () => { location.hash = '#/transmittals'; } }] : []),
       { label: 'Two-step sign-in', icon: 'checkin', run: () => import('./twostep.js').then(m => m.twoStepDialog()).catch(fail) },
       { label: 'Sign out', icon: 'logout', run: () => logout() },
     ]);

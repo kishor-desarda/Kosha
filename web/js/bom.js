@@ -33,6 +33,18 @@ export async function renderBoms(container, _m, _p, { setTitle }) {
   draw();
 }
 
+// The whole tree as one ZIP with a transmittal list, for a consultant or vendor.
+function packAndGo(b) {
+  const released = h('input', { type: 'checkbox', checked: true });
+  dialog({ title: `Pack and Go: ${b.part_number} rev ${b.revision}`, body: [
+    h('p', { style: { marginTop: 0 } }, 'Every file of every part in this BOM, in one ZIP with a transmittal list of revisions and fingerprints. To send it outside the company with a record, use Send to vendor on the released files instead.'),
+    h('label', { class: 'check' }, released, 'Released files only')],
+  actions: [{ label: 'Cancel' }, { label: 'Download ZIP', primary: true, onClick: () => {
+    const a = h('a', { href: `/api/boms/${b.id}/pack-and-go?${released.checked ? 'released=1&' : ''}access_token=${encodeURIComponent(S.token)}`, download: '' });
+    document.body.appendChild(a); a.click(); a.remove();
+  } }] });
+}
+
 const sourceLabel = s => ({ solidworks: 'SolidWorks add-in', file_references: 'Assembly file', import: 'Imported table', manual: 'Manual' })[s] || s;
 
 export function itemPicker(onPick, placeholder = 'Type a part number or description') {
@@ -92,6 +104,7 @@ export async function renderBom(container, [id], _p, { setTitle }) {
         eng ? h('button', { class: 'btn', onclick: importDlg }, icon('upload', 16), 'Import SolidWorks BOM') : null,
         h('button', { class: 'btn', onclick: () => compareDlg() }, icon('layers', 16), 'Compare'),
         h('a', { class: 'btn', href: `#/bom-view/${b.item_id}` }, 'Views and cost'),
+        h('button', { class: 'btn', onclick: () => packAndGo(b) }, icon('download', 16), 'Pack and Go'),
         h('a', { class: 'btn', href: `/api/boms/${b.id}/export?format=xlsx&access_token=${encodeURIComponent(S.token)}` }, icon('download', 16), 'Excel'),
         draft && can('approver') ? h('button', { class: 'btn primary', disabled: errors > 0, title: errors ? 'Fix the errors first' : `Lock this BOM and send it to ${S.erp}`, onclick: release }, icon('release', 16), 'Release BOM') : null,
         !draft && can('approver') ? h('button', { class: 'btn primary', onclick: pushErp }, icon('erp', 16), `Send to ${S.erp}`) : null));

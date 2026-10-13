@@ -24,7 +24,7 @@ from kosha_sdk.http import HttpError
 
 from . import signing
 
-EVENT_KINDS = {"item_changed", "stock_changed", "bom_cancelled"}
+EVENT_KINDS = {"item_changed", "stock_changed", "bom_cancelled", "sales_order"}
 
 
 def _q(value: str) -> str:

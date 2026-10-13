@@ -4,6 +4,10 @@
 A project has a code (unique, case-insensitive), a name, a customer (free text), a status (open or
 closed) and dates. It is not a project-management tool: it only groups reference material and parts.
 Projects are never deleted; closing one keeps everything that belongs to it.
+
+A sales order booked in the ERP creates its project (specification 6.2): code PRJ-26-041, the customer, the
+delivery date, and the standard folder set under Projects/ (*GA and layout*, *Design*, *Customer documents*,
+*Purchase*, *Manuals*; the admin can change the set). The same sales order never makes a second project.
 """
 from __future__ import annotations
 
@@ -17,6 +21,7 @@ STATUSES = ("open", "closed")
 STATUS_LABEL = {"open": "Open", "closed": "Closed"}
 CODE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._/\-]{0,39}$")
 FIELDS = ("code", "name", "customer", "status", "start_date", "due_date", "description")
+FOLDER_SET = ["GA and layout", "Design", "Customer documents", "Purchase", "Manuals"]
 
 
 def clean_date(value, label: str) -> str | None:
@@ -151,9 +156,44 @@ def search(q: str = "", status: str = "", limit: int = 200) -> list[dict]:
     return db.rows(sql, [*params, max(1, min(int(limit), 1000))])
 
 
+def folder_set() -> list[str]:
+    return db.get_setting("project_folder_set") or FOLDER_SET
+
+
+def from_sales_order(user_id: int | None, number: str, customer: str = "", due_date: str | None = None,
+                     name: str = "") -> tuple[dict, bool]:
+    """The project of an ERP sales order, made with its folders when it does not exist yet. (project, created)"""
+    from .numbering import NumberingService
+    number = " ".join(str(number or "").split())[:60]
+    if not number:
+        raise bad("Give the sales order number.")
+    with db.tx():        # one at a time: the same sales order never makes two projects
+        existing = db.one("SELECT * FROM projects WHERE sales_order = ? COLLATE NOCASE", (number,))
+        if existing:
+            return existing, False
+        due = clean_date(due_date, "Delivery date") if due_date else None
+        customer = " ".join(str(customer or "").split())[:200]
+        code = NumberingService().next_in_series(f"PRJ-{date.today():%y}-", 3, user_id)
+        from .lifecycle import ensure_folder_path
+        safe = re.sub(r'[\\/:*?"<>|]', " ", customer)[:60].strip()
+        folder_name = f"{code} {safe}" if safe else code
+        top = ensure_folder_path(f"Projects/{folder_name}", user_id)
+        for sub in folder_set():
+            ensure_folder_path(f"Projects/{folder_name}/{sub}", user_id)
+        now = db.now()
+        pid = db.insert("projects", {"code": code, "code_key": code.upper(), "name": name or f"Sales order {number}",
+                                     "customer": customer, "status": "open", "start_date": date.today().isoformat(),
+                                     "due_date": due, "sales_order": number, "folder_id": top,
+                                     "created_by": user_id, "created_at": now, "updated_at": now})
+        db.audit(user_id, "project_from_sales_order", "project", pid, f"{code} for sales order {number}")
+    return db.one("SELECT * FROM projects WHERE id = ?", (pid,)), True
+
+
 def summary(p: dict) -> dict:
     out = {k: p[k] for k in ("id", "code", "name", "customer", "status", "start_date", "due_date", "closed_at",
                              "description", "created_by", "created_at", "updated_at")}
+    out["sales_order"] = p.get("sales_order") or ""
+    out["folder_id"] = p.get("folder_id")
     out["status_label"] = STATUS_LABEL.get(p["status"], p["status"])
     if "item_count" in p:
         out["item_count"] = p["item_count"]
