@@ -200,6 +200,36 @@ def test_make_permanent_and_links(q):
     linked = deviations.active_for("change_order", co["id"])["deviations"]
     assert linked[0]["number"] == deviations.dev_or_404(dev)["number"] and linked[0]["relation"] == "made_permanent"
 
+    other = db.insert("change_orders", {"number": "ECO-0099", "title": "older change", "created_at": db.now()})
+    _raises(403, deviations.link_change, u["vic"], dev, other)
+    deviations.link_change(u["eve"], dev, other)
+    deviations.link_change(u["eve"], dev, other)                                     # twice is harmless
+    assert [(c["number"], c["relation"]) for c in deviations.detail(dev, u["eve"])["changes"]] == [
+        (co["number"], "made_permanent"), ("ECO-0099", "related")]
+    deviations.unlink_change(u["eve"], dev, other)
+    assert len(deviations.detail(dev, u["eve"])["changes"]) == 1
+
+
+def test_editing_affected_and_approvers_only_in_draft(q):
+    u = q["u"]
+    dev = _ready(q, approvers=("ann", "bob"))
+    aid = deviations.add_affected(u["eve"], dev, document_id=q["doc"])
+    _raises("duplicate", deviations.add_affected, u["eve"], dev, document_id=q["doc"])
+    _raises(400, deviations.add_affected, u["eve"], dev)                              # neither part nor file
+    assert [a["label"] for a in deviations.affected(dev)] == ["MX-100-050 rev B", "MX-100-050 Shaft Key.dxf rev B"]
+    _raises(403, deviations.remove_affected, u["vic"], dev, aid)
+    deviations.remove_affected(u["eve"], dev, aid)
+    deviations.remove_approver(u["eve"], dev, u["bob"]["id"])
+    assert [a["user_id"] for a in deviations.detail(dev, u["eve"])["approvers"]] == [u["ann"]["id"]]
+    deviations.update(u["ann"], dev, {"qty_limit": "12", "valid_until": ""})        # an approver may edit a draft
+    _raises(400, deviations.update, u["eve"], dev, {"qty_limit": "-1"})
+    _raises(400, deviations.update, u["eve"], dev, {"valid_from": "2030-01-02", "valid_until": "2030-01-01"})
+    _raises(400, deviations.update, u["eve"], dev, {"valid_until": "30.11.2026"})
+    deviations.submit(u["eve"], dev)
+    _raises("not_draft", deviations.add_affected, u["eve"], dev, document_id=q["doc"])
+    _raises("not_draft", deviations.remove_approver, u["eve"], dev, u["ann"]["id"])
+    assert deviations.dev_or_404(dev)["qty_limit"] == 12
+
 
 def test_attachments_are_stored_and_soft_deleted(q):
     u = q["u"]
