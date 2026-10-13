@@ -255,4 +255,6 @@ def seed() -> None:
     erp.process_pending()
     from .packs import install_for_demo   # categories, spec codes and the standard-parts library
     install_for_demo(["general-machinery", "standard-parts"])
+    from .inputs import seed_demo as seed_inputs   # projects and reference material (inputs library)
+    seed_inputs()
     log.info("Demo data loaded in %.1fs", time.time() - t0)

@@ -12,10 +12,12 @@ import { renderAdmin, renderSearch } from './admin.js';
 import { renderLibrary } from './library.js';
 import { renderDeviations, renderDeviation } from './deviations.js';
 import { notificationBell } from './notifications.js';
+import { renderInputs, renderInput, renderProjects, renderProject } from './inputs.js';
 
 const NAV = [
   ['home', 'Home', 'home', '#/home'],
   ['kosha', 'Explorer', 'kosha', '#/files'],
+  ['inputs', 'Inputs', 'layers', '#/inputs'],
   ['boms', 'BOMs', 'bom', '#/boms'],
   ['changes', 'Changes', 'change', '#/changes'],
   ['deviations', 'Deviations', 'warn', '#/deviations'],
@@ -40,6 +42,10 @@ const ROUTES = [
   [/^#\/library$/, 'library', () => renderLibrary],
   [/^#\/admin$/, 'admin', () => renderAdmin],
   [/^#\/search$/, 'search', () => renderSearch],
+  [/^#\/inputs$/, 'inputs', () => renderInputs],
+  [/^#\/input\/(\d+)$/, 'inputs', () => renderInput],
+  [/^#\/projects$/, 'inputs', () => renderProjects],
+  [/^#\/project\/(\d+)$/, 'inputs', () => renderProject],
 ];
 
 const root = document.getElementById('app');
