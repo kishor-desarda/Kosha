@@ -182,7 +182,7 @@ def update_user(req: Req):
 
 PUBLIC_SETTINGS = ("part_number_regex", "revision_skip_letters", "first_revision", "require_eco_for_release",
                    "company_name", "default_theme", "revision_scheme", "four_eyes_categories",
-                   "allow_self_approval_with_reason", "obsolete_needs_change_order", "api_rate_limit_per_minute")
+                   "allow_self_approval_with_reason", "obsolete_needs_change_order", "api_rate_limit_per_minute", "recycle_bin_days")
 BOOL_SETTINGS = ("require_eco_for_release", "allow_self_approval_with_reason", "obsolete_needs_change_order")
 
 
@@ -221,6 +221,13 @@ def put_settings(req: Req):
                 if not isinstance(v, list) or not all(isinstance(c, str) and re.match(r"^[A-Za-z0-9]{1,6}$", c) for c in v):
                     raise bad("List category codes such as ROT, PRV; leave it empty for every category.")
                 v = sorted({c.upper() for c in v})
+            if k == "recycle_bin_days":
+                try:
+                    v = int(v)
+                except (TypeError, ValueError):
+                    v = 0
+                if not 1 <= v <= 3650:
+                    raise bad("Keep deleted files in the recycle bin for 1 to 3650 days.")
             if k == "default_theme":
                 _check_theme(v, allow_default=False)
             if k == "api_rate_limit_per_minute":

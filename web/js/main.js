@@ -8,6 +8,7 @@ import { renderBoms, renderBom } from './bom.js';
 import { renderChanges, renderChange } from './changes.js';
 import { renderRequests, renderRequest, delegateDialog } from './ecr.js';
 import { renderErp } from './erp.js';
+import { renderBin } from './recyclebin.js';
 import { renderCommon } from './common.js';
 import { renderAdmin, renderSearch } from './admin.js';
 import { renderLibrary } from './library.js';
@@ -40,6 +41,7 @@ const ROUTES = [
   [/^#\/home$/, 'home', () => renderHome],
   [/^#\/files(?:\/(\d+))?$/, 'kosha', () => renderExplorer],
   [/^#\/doc\/(\d+)$/, 'kosha', () => renderDoc],
+  [/^#\/bin$/, 'kosha', () => renderBin],
   [/^#\/item\/(\d+)$/, 'boms', () => renderItem],
   [/^#\/boms$/, 'boms', () => renderBoms],
   [/^#\/bom\/(\d+)$/, 'boms', () => renderBom],

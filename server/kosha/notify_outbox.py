@@ -51,6 +51,7 @@ SEND_TIMEOUT_SECONDS = 30
 STUCK_MINUTES = 10
 WORKER_SECONDS = float(os.environ.get("KOSHA_NOTIFY_WORKER_SECONDS", "15"))
 REMINDER_SECONDS = 1800       # how often approvals waiting too long are checked
+CLEANUP_SECONDS = 6 * 3600
 
 # kind -> (label for people, who it is for, channels chosen until the person changes them)
 KINDS: dict[str, tuple[str, str, list[str]]] = {
@@ -351,6 +352,7 @@ def retry(outbox_id: int) -> dict | None:
 def start_worker() -> threading.Thread:
     def loop():
         last_reminders = 0.0
+        last_cleanup = time.monotonic() - CLEANUP_SECONDS + 600    # first run ten minutes after the start
         while True:
             _wake.wait(WORKER_SECONDS)
             _wake.clear()
@@ -364,6 +366,10 @@ def start_worker() -> threading.Thread:
                 from .events import process_due as send_webhooks
                 while send_webhooks() >= 50:    # webhooks to other programs share this worker
                     pass
+                if time.monotonic() - last_cleanup > CLEANUP_SECONDS:
+                    last_cleanup = time.monotonic()
+                    from .filesafety import cleanup
+                    cleanup()               # uploads and stored files that never finished (seven days and older)
             except Exception:  # pragma: no cover
                 log.exception("Notification worker error")
 

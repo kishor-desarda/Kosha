@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+import re
 import urllib.parse
 
-from starlette.responses import Response
+from starlette.responses import Response, StreamingResponse
 
 from .. import access, boms, db, lifecycle, store
 from ..addins import registry
@@ -76,14 +77,9 @@ def update_folder(req: Req):
 
 @api("DELETE", "/api/folders/{id:int}", role="engineer")
 def delete_folder(req: Req):
-    fid = req.int_param("id")
-    f = lifecycle.folder_or_404(fid)
-    if db.scalar("SELECT COUNT(*) FROM folders WHERE parent_id = ?", (fid,)) or \
-            db.scalar("SELECT COUNT(*) FROM documents WHERE folder_id = ? AND deleted = 0", (fid,)):
-        raise conflict("Only empty folders can be deleted.")
-    db.execute("DELETE FROM folders WHERE id = ?", (fid,))
-    db.audit(req.uid, "folder_delete", "folder", fid, f["name"])
-    return {"ok": True}
+    """Delete a folder: its files go to the recycle bin (refused as a whole when one of them may not be deleted)."""
+    from .. import filesafety
+    return {"ok": True, "files_to_bin": filesafety.delete_folder(req.user, req.int_param("id"), req.has("approver"))}
 
 
 @api("GET", "/api/folders/{id:int}/contents")
@@ -413,12 +409,52 @@ def _disposition(kind: str, filename: str) -> str:
 def download(req: Req):
     v = _version(req.int_param("id"), req)
     access.check_download()
+    if v["doc"].get("purged_at"):
+        raise not_found("This file was purged by two admins; its content is no longer kept.")
     if not store.exists(v["blob_sha"]):
         raise not_found("The stored file is missing on the server.")
-    data = store.read_bytes(v["blob_sha"])
-    db.audit(req.uid, "download", "document", v["document_id"], f"v{v['version']}")
-    return Response(data, media_type="application/octet-stream",
-                    headers={"Content-Disposition": _disposition("attachment", v["filename"]), **SAFE_HEADERS})
+    path = store.path_for(v["blob_sha"])
+    size = path.stat().st_size
+    start, end = _byte_range(req.request.headers.get("range", ""), size)
+    if start is None:
+        return Response(status_code=416, headers={"Content-Range": f"bytes */{size}"})
+    if start == 0:          # a resumed download is one download
+        db.audit(req.uid, "download", "document", v["document_id"], f"v{v['version']}")
+    headers = {"Content-Disposition": _disposition("attachment", v["filename"]), "Accept-Ranges": "bytes",
+               "Content-Length": str(end - start + 1), "ETag": f'"{v["blob_sha"][:32]}"',
+               "Content-Encoding": "identity", **SAFE_HEADERS}
+    partial = (start, end) != (0, size - 1)
+    if partial:
+        headers["Content-Range"] = f"bytes {start}-{end}/{size}"
+    return StreamingResponse(_read_range(path, start, end), status_code=206 if partial else 200,
+                             media_type="application/octet-stream", headers=headers)
+
+
+def _byte_range(header: str, size: int) -> tuple[int | None, int]:
+    """(first, last) byte to send for a Range header (the whole file without one); (None, 0) when unsatisfiable."""
+    m = re.fullmatch(r"\s*bytes=(\d*)-(\d*)\s*", header or "")
+    if not m or (not m.group(1) and not m.group(2)) or size == 0:
+        return 0, size - 1
+    if not m.group(1):                  # the last N bytes
+        n = int(m.group(2))
+        return (max(0, size - n), size - 1) if n else (None, 0)
+    start = int(m.group(1))
+    end = min(int(m.group(2)), size - 1) if m.group(2) else size - 1
+    if start >= size or end < start:
+        return None, 0
+    return start, end
+
+
+def _read_range(path, start: int, end: int):
+    with open(path, "rb") as f:
+        f.seek(start)
+        left = end - start + 1
+        while left > 0:
+            chunk = f.read(min(1024 * 1024, left))
+            if not chunk:
+                break
+            left -= len(chunk)
+            yield chunk
 
 
 def _blob_response(sha: str | None, kind: str | None, filename: str) -> Response:
