@@ -478,7 +478,7 @@ def _sync_item_on_release(d: dict) -> None:
         db.update("items", item["id"], {"revision": d["revision"], "state": "released", "updated_at": db.now()})
         bom = db.one("SELECT * FROM boms WHERE item_id = ? AND revision = ?", (item["id"], d["revision"]))
         if bom and bom["state"] != "released":
-            db.update("boms", bom["id"], {"state": "released", "updated_at": db.now()})
+            db.update("boms", bom["id"], {"state": "released", "updated_at": db.now(), "released_at": db.now()})
 
 
 def revise(user: dict, doc_id: int, comment: str = "", co_id: int | None = None, _with_siblings: bool = True) -> dict:
