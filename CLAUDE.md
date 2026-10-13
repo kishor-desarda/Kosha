@@ -28,6 +28,16 @@ python scripts/spdx_headers.py            # every source file needs an SPDX head
 
 CI (`.github/workflows/ci.yml`) runs all of these plus `dotnet test sdk/dotnet/Kosha.CadCore.Tests`.
 
+## Tests
+
+- Unit tests: `server/tests/test_<area>.py` with pytest.
+- End-to-end: use the fixtures `kosha` (empty installation) and `demo_kosha` (Demo Engineering data) from
+  `server/tests/conftest.py`; each test module gets its own server process, data folder and port
+  (`tests/harness.py`: `kosha.client()` signs in as admin, `kosha.add_user(name, role)` adds and signs in a user,
+  `client.call(method, path, body=..., files=..., expect=...)`).
+- In this development container run pytest through the wrapper that exposes the system packages:
+  `/tmp/claude-0/-home-claude/820060bb-82fe-5378-951b-69c74aabfd08/scratchpad/tools/pytest.sh` (CI uses plain `pytest`).
+
 ## Rules
 
 - **No data loss.** Writes go through `store.put_*` (fsync + atomic move) and `db.tx()`; business records are soft-deleted; every outside call (ERP, AI, e-mail) goes through a queue or the add-in guard with a time-out; jobs are idempotent.
