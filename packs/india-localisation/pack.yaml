@@ -32,3 +32,19 @@ units:
   - {code: Sqm, name: Square metres, uqc: SQM}
   - {code: Box, name: Boxes, uqc: BOX}
   - {code: Roll, name: Rolls, uqc: ROL}
+
+# Search: short forms people type, and Hinglish words that describe the request rather than the part.
+# A short form's name lists what it stands for, separated by |.
+dictionaries:
+  search_short_forms:
+    - {code: brg, name: bearing}
+    - {code: hsg, name: housing}
+    - {code: gbx, name: "gearbox|gear box"}
+    - {code: ss304, name: "ss304|cf8"}
+    - {code: ss316, name: "ss316|cf8m"}
+    - {code: en8, name: "en8|c40"}
+    - {code: fg260, name: "fg260|fg 260"}
+  search_fillers:
+    - {code: wala, name: wala}
+    - {code: dikhao, name: dikhao}
+    - {code: chahiye, name: chahiye}

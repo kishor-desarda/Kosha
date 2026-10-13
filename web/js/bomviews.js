@@ -3,12 +3,13 @@
 // and the installed base of machine builds (#/machines).
 import { S, h, mount, icon, get, post, put, patch, toast, fail, dialog, can, fmtDate } from './core.js';
 import { itemPicker } from './bom.js';
+import { fmtMoney } from './locale.js';
 
 const VIEWS = [['released', 'Latest released'], ['in_work', 'In work'], ['as_of', 'As of a date'], ['as_built', 'As built']];
 const STATUS = { added: ['Added', 'st-released'], changed: ['Quantity changed', 'st-review'], removed: ['Removed', 'st-obsolete'] };
 const SOURCE = { erp: 'ERP rate', estimate: 'Estimate', rolled_up: 'Rolled up', missing: 'No cost', in_bought: 'In bought assembly' };
 
-const money = (n, cur) => (n == null ? '—' : `${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${cur ? ' ' + cur : ''}`);
+const money = (n, cur) => fmtMoney(n, cur);      // ₹1,25,000.00 in India (locale.js)
 const today = () => new Date().toISOString().slice(0, 10);
 const query = o => Object.entries(o).filter(([, v]) => v !== '' && v != null).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
 

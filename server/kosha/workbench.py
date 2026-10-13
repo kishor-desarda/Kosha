@@ -127,7 +127,7 @@ def delete_view(user_id: int, view_id: int) -> None:
         db.execute("DELETE FROM saved_views WHERE id = ? AND user_id = ?", (view_id, user_id))
 
 
-DEFAULT_PREFS = {"accent": "blue", "text_size": 100, "pins": []}
+DEFAULT_PREFS = {"accent": "blue", "text_size": 100, "pins": []}     # "language" only once the person chooses one
 
 
 def prefs(user_id: int) -> dict:
@@ -151,6 +151,11 @@ def save_prefs(user_id: int, body: dict) -> dict:
         if size not in TEXT_SIZES:
             raise bad("Choose a text size of 90, 100, 115 or 130 %.")
         cur["text_size"] = size
+    if "language" in body:
+        from .locales import languages
+        if body["language"] not in {lang["code"] for lang in languages()}:
+            raise bad("Choose one of the languages Kosha has a translation for.")
+        cur["language"] = body["language"]
     if "pins" in body:
         pins = body["pins"]
         if not isinstance(pins, list):

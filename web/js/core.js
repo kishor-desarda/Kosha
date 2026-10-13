@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Kosha — shared client helpers (no build step, plain ES modules)
+import { fmtDay, fmtWhen } from './locale.js';
 
 export const S = {
   token: localStorage.getItem('kosha.token') || '',
@@ -144,12 +145,9 @@ export function stateChip(state, label) {
 }
 
 // ------------------------------------------------------------------ format
+// In the company's locale: 10-Oct-2026 14:05 in India (locale.js)
 export function fmtDate(iso, withTime = true) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (isNaN(d)) return iso;
-  const opts = withTime ? { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' } : { day: '2-digit', month: 'short', year: 'numeric' };
-  return d.toLocaleString(undefined, opts);
+  return withTime ? fmtWhen(iso) : fmtDay(iso);
 }
 export function ago(iso) {
   if (!iso) return '';

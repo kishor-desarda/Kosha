@@ -333,6 +333,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     # Theme of the web client for people who have not chosen one: system (same as their computer), light, dark
     # or contrast.
     "default_theme": "system",
+    # dates, numbers and money (kosha/locales.py): India by default
+    "locale": "en-IN",
     # Kosha's own ERP settings; the connector's address and keys belong to the connector add-in.
     "erp": {
         "enabled": False,
