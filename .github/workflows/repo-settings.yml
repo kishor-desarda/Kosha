@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Applies .github/repository.json (description, website, topics) to the repository on GitHub.
+name: Repository settings
+
+on:
+  push:
+    branches: [main]
+    paths: [".github/repository.json", "scripts/repo_settings.py", ".github/workflows/repo-settings.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    name: Apply description and topics
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Apply .github/repository.json
+        env:
+          REPO_ADMIN_TOKEN: ${{ secrets.REPO_ADMIN_TOKEN }}
+        run: python scripts/repo_settings.py --apply

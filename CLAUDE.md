@@ -26,6 +26,7 @@ python scripts/test_office_taskpane.py    # Office task pane (web/office-addin) 
 ruff check server sdk addins scripts
 python scripts/spdx_headers.py            # every source file needs an SPDX header (--fix adds it)
 node scripts/check_js.mjs                 # syntax of the web client (as ES modules) and the Office pane
+python scripts/repo_settings.py --check   # repository description and topics in .github/repository.json (applied by a workflow)
 ```
 
 Browser tests: Kosha's Content-Security-Policy refuses `eval`, so Playwright's `wait_for_function` fails;
