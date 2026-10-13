@@ -48,7 +48,9 @@ database-wide advisory lock, so writers run one at a time (and wait up to 30 sec
 busy time-out) while readers carry on. Single writing statements outside a transaction take the
 same lock. Inside a transaction every writing statement runs under a savepoint, so a failed
 statement is undone on its own and the transaction can carry on, as in SQLite. A transaction
-that PostgreSQL has already aborted is never reported as committed. ``INSERT`` returns the new
+that PostgreSQL has already aborted is never reported as committed. A session lost outside a
+transaction (PostgreSQL restarted) is replaced and the statement runs again; inside a transaction
+the change fails as a whole and nothing of it is saved. ``INSERT`` returns the new
 row's id (``RETURNING``) for ``lastrowid``; database errors are raised as the matching ``sqlite3``
 exceptions so ``except sqlite3.IntegrityError`` works on both engines.
 
@@ -781,10 +783,15 @@ def _row_class(names: tuple) -> type:
 
 
 def _row_factory(cursor):
-    desc = cursor.description
-    if not desc:
+    res = cursor.pgresult              # names straight from the result: cheaper than cursor.description
+    if res is None or not res.nfields:
         return tuple
-    return _row_class(tuple(d.name for d in desc))
+    raw = [res.fname(i) for i in range(res.nfields)]
+    if None in raw:                    # e.g. a server-side cursor: ask psycopg
+        desc = cursor.description
+        return _row_class(tuple(d.name for d in desc)) if desc else tuple
+    enc = cursor.connection.info.encoding
+    return _row_class(tuple(n.decode(enc) for n in raw))
 
 
 class Cursor:
@@ -795,30 +802,29 @@ class Cursor:
         self._rows = rows
         self.lastrowid = lastrowid
         self.rowcount = rowcount if raw is None else raw.rowcount
-        self.description = raw.description if raw is not None and rows is None else None
+        res = raw.pgresult if raw is not None and rows is None else None
+        self._has_rows = bool(res is not None and res.nfields)
+
+    @property
+    def description(self):
+        return self._raw.description if self._has_rows else None
 
     def fetchone(self):
         if self._rows is not None:
             return self._rows.pop(0) if self._rows else None
-        if self._raw is None or self._raw.description is None:
-            return None
-        return self._raw.fetchone()
+        return self._raw.fetchone() if self._has_rows else None
 
     def fetchall(self) -> list:
         if self._rows is not None:
             rows, self._rows = self._rows, []
             return rows
-        if self._raw is None or self._raw.description is None:
-            return []
-        return self._raw.fetchall()
+        return self._raw.fetchall() if self._has_rows else []
 
     def fetchmany(self, size: int = 100) -> list:
         if self._rows is not None:
             rows, self._rows = self._rows[:size], self._rows[size:]
             return rows
-        if self._raw is None or self._raw.description is None:
-            return []
-        return self._raw.fetchmany(size)
+        return self._raw.fetchmany(size) if self._has_rows else []
 
     def __iter__(self):
         return iter(self.fetchall())
@@ -877,39 +883,63 @@ def redact(url: str) -> str:
     return url
 
 
+class _Loaders:
+    """psycopg loaders that make results look like SQLite's (built once, when psycopg is first used)."""
+    numeric = boolean = None
+
+    @classmethod
+    def get(cls):
+        if cls.numeric is None:
+            from psycopg.adapt import Loader
+
+            class NumericLoader(Loader):          # SUM/AVG/ROUND come back as int or float, as in SQLite
+                def load(self, data):
+                    s = bytes(data).decode()
+                    return float(s) if any(c in s for c in ".eEIN") else int(s)
+
+            class BoolLoader(Loader):             # booleans are integers, as in SQLite
+                def load(self, data):
+                    return 1 if bytes(data) == b"t" else 0
+
+            cls.numeric, cls.boolean = NumericLoader, BoolLoader
+        return cls.numeric, cls.boolean
+
+
 class Connection:
     """A PostgreSQL connection that Kosha's code can use as if it were a sqlite3 connection."""
     dialect = "postgresql"
 
     def __init__(self, url: str, application_name: str = "kosha"):
-        psycopg = _import_psycopg()
-        from psycopg.adapt import Loader
+        self._psycopg = _import_psycopg()
+        self._url, self._application_name = url, application_name
+        self._last_id: int | None = None
+        self.raw = self._open()
 
-        class _NumericLoader(Loader):          # SUM/AVG/ROUND come back as int or float, as in SQLite
-            def load(self, data):
-                s = bytes(data).decode()
-                return float(s) if any(c in s for c in ".eEIN") else int(s)
-
-        class _BoolLoader(Loader):             # booleans are integers, as in SQLite
-            def load(self, data):
-                return 1 if bytes(data) == b"t" else 0
-
+    def _open(self):
+        psycopg = self._psycopg
         try:
-            raw = psycopg.connect(url, autocommit=True, application_name=application_name, connect_timeout=15,
-                                  prepare_threshold=None)
+            raw = psycopg.connect(self._url, autocommit=True, application_name=self._application_name,
+                                  connect_timeout=15, prepare_threshold=None)
         except psycopg.Error as e:
-            raise sqlite3.OperationalError(f"Could not connect to PostgreSQL at {redact(url)}: "
+            raise sqlite3.OperationalError(f"Could not connect to PostgreSQL at {redact(self._url)}: "
                                            f"{str(e).strip()}") from e
-        raw.adapters.register_loader("numeric", _NumericLoader)
-        raw.adapters.register_loader("bool", _BoolLoader)
+        numeric, boolean = _Loaders.get()
+        raw.adapters.register_loader("numeric", numeric)
+        raw.adapters.register_loader("bool", boolean)
         raw.row_factory = _row_factory
         # durability as with SQLite's synchronous=FULL; times in UTC; wait for the write lock like busy_timeout;
         # a transaction left idle for an hour (a stuck thread) is ended so it cannot hold the write lock forever
         raw.execute(f"SET synchronous_commit = on; SET TIME ZONE 'UTC'; SET lock_timeout = '{BUSY_TIMEOUT}'; "
                     "SET idle_in_transaction_session_timeout = '1h'")
-        self.raw = raw
-        self._psycopg = psycopg
-        self._last_id: int | None = None
+        return raw
+
+    def _reopen(self) -> None:
+        """A new session after the old one was lost (PostgreSQL restarted, network dropped)."""
+        try:
+            self.raw.close()
+        except Exception:
+            pass
+        self.raw = self._open()
 
     # -- state
     @property
@@ -926,12 +956,17 @@ class Connection:
         return self.raw.info.transaction_status == self._psycopg.pq.TransactionStatus.INERROR
 
     # -- transactions
-    def _begin(self) -> None:
+    def _begin(self, retry: bool = True) -> None:
         if self.in_transaction:
             raise sqlite3.OperationalError("cannot start a transaction within a transaction")
         try:
+            if self.broken:
+                self._reopen()
             self.raw.execute(f"BEGIN; SELECT pg_advisory_xact_lock({WRITE_LOCK_KEY})")
         except self._psycopg.Error as e:
+            if retry and self.broken:          # nothing had started: safe to try once more on a new session
+                self._reopen()
+                return self._begin(retry=False)
             self._rollback_quietly()
             if getattr(e, "sqlstate", "") == "55P03":
                 raise sqlite3.OperationalError("database is locked: another change took longer than "
@@ -1010,9 +1045,18 @@ class Connection:
         return cur
 
     def _run(self, sql: str, args) -> Cursor:
+        in_tx = self.in_transaction
         try:
+            if self.broken and not in_tx:
+                self._reopen()
             return Cursor(self.raw.execute(sql, args))
         except self._psycopg.Error as e:
+            if not in_tx and self.broken:      # a read outside a transaction: run it again on a new session
+                try:
+                    self._reopen()
+                    return Cursor(self.raw.execute(sql, args))
+                except self._psycopg.Error as e2:
+                    raise _as_sqlite_error(e2) from e2
             raise _as_sqlite_error(e) from e
 
     def _write(self, t: Translated, args, savepoint: bool) -> Cursor:

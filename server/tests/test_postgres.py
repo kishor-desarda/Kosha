@@ -194,14 +194,29 @@ def test_writers_take_turns_like_sqlite(pg):
     assert db.scalar("SELECT COUNT(*) FROM users WHERE username IN ('lock-a', 'lock-b')") == 2
 
 
-def test_a_lost_connection_is_replaced(pg):
+def _end_session(url: str) -> None:
+    """End this thread's PostgreSQL session from outside, as a server restart would."""
     pid = db.scalar("SELECT pg_backend_pid()")
-    other = pgsql.connect(pg)
+    other = pgsql.connect(url)
     other.execute("SELECT pg_terminate_backend(?)", (pid,))
+    for _ in range(100):
+        if not other.execute("SELECT 1 FROM pg_stat_activity WHERE pid = ?", (pid,)).fetchone():
+            break
+        time.sleep(0.02)
     other.close()
-    with pytest.raises(sqlite3.DatabaseError):
-        db.scalar("SELECT 1")
-    assert db.scalar("SELECT 1") == 1                 # the next call reconnects
+
+
+def test_a_lost_session_is_replaced(pg):
+    _end_session(pg)
+    assert db.scalar("SELECT 1") == 1                 # a read simply runs again on a new session
+    _end_session(pg)
+    assert _user("after-restart") > 0                 # so does a write that had not started
+    with pytest.raises(sqlite3.DatabaseError):        # a transaction that was cut off fails loudly
+        with db.tx():
+            _user("cut-off")
+            _end_session(pg)
+            _user("cut-off-2")
+    assert not db.one("SELECT id FROM users WHERE username IN ('cut-off', 'cut-off-2')")
 
 
 def test_backup_uses_pg_dump_and_reads_the_copy_back(pg, tmp_path, monkeypatch):
