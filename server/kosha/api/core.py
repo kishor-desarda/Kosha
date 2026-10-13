@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from .. import access, db, security, sessions, signin
+from .. import access, approval, db, security, sessions, signin
 from ..lifecycle import STATE_LABEL, doc_summary, user_names
 from ..web import ROLE_LEVEL, Req, api, as_bool, bad, conflict, not_found
 
@@ -315,12 +315,19 @@ def dashboard(req: Req):
     names = user_names()
     uid = req.uid
     mine = db.rows(DOC_SELECT + "WHERE d.deleted = 0" + access.scope().documents() + " AND d.checked_out_by = ? ORDER BY d.checked_out_at DESC", (uid,))
+    covering = approval.standing_in_for(uid)
+    who = [uid, *covering]
     approvals = db.rows(
-        "SELECT c.id, c.number, c.title, c.priority, c.submitted_at, c.requested_by FROM change_orders c "
-        "JOIN co_approvers a ON a.co_id = c.id WHERE a.user_id = ? AND a.decision = 'pending' AND c.state = 'submitted' "
-        "ORDER BY c.submitted_at", (uid,))
+        "SELECT DISTINCT c.id, c.number, c.title, c.priority, c.submitted_at, c.requested_by, a.user_id AS for_id "
+        "FROM change_orders c JOIN co_approvers a ON a.co_id = c.id WHERE a.user_id IN (" + ",".join("?" * len(who)) +
+        ") AND a.decision = 'pending' AND c.state = 'submitted' ORDER BY c.submitted_at", who)
+    seen: set[int] = set()
+    approvals = [a for a in sorted(approvals, key=lambda a: a["for_id"] != uid)
+                 if not (a["id"] in seen or seen.add(a["id"]))]
+    approvals.sort(key=lambda a: a["submitted_at"] or "")
     for a in approvals:
         a["requested_by_name"] = names.get(a["requested_by"], "?")
+        a["for_name"] = names.get(a["for_id"]) if a["for_id"] != uid else None
     in_review = []
     if ROLE_LEVEL[req.user["role"]] >= ROLE_LEVEL["approver"]:
         in_review = _with_preview(db.rows(DOC_SELECT + "WHERE d.deleted = 0" + access.scope().documents() +

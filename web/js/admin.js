@@ -16,7 +16,7 @@ export async function renderAdmin(container, _m, params, { setTitle }) {
   const cleanups = [];
   const draw = async () => {
     while (cleanups.length) { try { cleanups.pop()(); } catch (e) { /* ignore */ } }
-    const items = S.user.role === 'admin' ? [['users', 'Users'], ['access', 'Access'], ['import', 'Import legacy data'], ['rules', 'Numbering & revisions'], ['cad', 'CAD conversion'], ['addins', 'Add-ins'], ['security', 'Sign-in & sessions'], ['backups', 'Backups'], ['packs', 'Packs'], ['notify', 'Notifications'], ['ai', 'AI assistant'], ['audit', 'Audit log']] : [['review', 'Access review'], ['audit', 'Audit log']];
+    const items = S.user.role === 'admin' ? [['users', 'Users'], ['access', 'Access'], ['import', 'Import legacy data'], ['rules', 'Numbering & revisions'], ['approvals', 'Approval routes'], ['cad', 'CAD conversion'], ['addins', 'Add-ins'], ['security', 'Sign-in & sessions'], ['backups', 'Backups'], ['packs', 'Packs'], ['notify', 'Notifications'], ['ai', 'AI assistant'], ['audit', 'Audit log']] : [['review', 'Access review'], ['audit', 'Audit log']];
     const body = h('div', { class: 'panel-b' });
     mount(container, h('div', { class: 'page-pad' }, h('div', { class: 'page-head' }, h('h1', null, 'Administration')),
       h('div', { class: 'panel' }, tabs(items, tab, k => { tab = k; draw(); }), body)));
@@ -25,6 +25,7 @@ export async function renderAdmin(container, _m, params, { setTitle }) {
     if (tab === 'review') await reviewTab(body);
     if (tab === 'import') { const stop = await legacyImport(body); cleanups.push(stop); }
     if (tab === 'rules') await rules(body);
+    if (tab === 'approvals') await import('./ecr.js').then(m => m.routesSection(body));
     if (tab === 'cad') await cad(body);
     if (tab === 'addins') await addinsTab(body);
     if (tab === 'security') await securityTab(body);

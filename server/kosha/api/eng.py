@@ -242,23 +242,21 @@ def list_changes(req: Req):
 @api("POST", "/api/changes", role="engineer")
 def create_change(req: Req):
     co_id = changes.create(req.user, req.b("title") or "", req.b("reason") or "", req.b("description") or "",
-                           req.b("priority") or "normal", req.b("document_ids") or [], req.b("approver_ids") or [])
-    return changes.detail(co_id)
+                           req.b("priority") or "normal", req.b("document_ids") or [], req.b("approver_ids") or [],
+                           fields=req.body if isinstance(req.body, dict) else {})
+    return changes.detail(co_id, req.user)
 
 
 @api("GET", "/api/changes/{id:int}")
 def get_change(req: Req):
-    return changes.detail(req.int_param("id"))
+    return changes.detail(req.int_param("id"), req.user)
 
 
 @api("PATCH", "/api/changes/{id:int}", role="engineer")
 def patch_change(req: Req):
     cid = req.int_param("id")
-    co = changes.co_or_404(cid)
-    changes._editable(co, req.user)
-    upd = {k: req.b(k) for k in ("title", "reason", "description", "priority") if req.b(k) is not None}
-    db.update("change_orders", cid, upd)
-    return changes.detail(cid)
+    changes.update(req.user, cid, req.body if isinstance(req.body, dict) else {})
+    return changes.detail(cid, req.user)
 
 
 @api("POST", "/api/changes/{id:int}/items", role="engineer")
@@ -266,44 +264,50 @@ def add_change_item(req: Req):
     cid = req.int_param("id")
     for d in req.b("document_ids") or ([req.b("document_id")] if req.b("document_id") else []):
         changes.add_item(req.user, cid, int(d), req.b("action") or "release", req.b("replacement") or "")
-    return changes.detail(cid)
+    return changes.detail(cid, req.user)
 
 
 @api("DELETE", "/api/changes/{id:int}/items/{doc:int}", role="engineer")
 def remove_change_item(req: Req):
     changes.remove_item(req.user, req.int_param("id"), req.int_param("doc"))
-    return changes.detail(req.int_param("id"))
+    return changes.detail(req.int_param("id"), req.user)
 
 
 @api("POST", "/api/changes/{id:int}/approvers", role="engineer")
 def add_change_approver(req: Req):
     changes.add_approver(req.user, req.int_param("id"), int(req.b("user_id")))
-    return changes.detail(req.int_param("id"))
+    return changes.detail(req.int_param("id"), req.user)
 
 
 @api("DELETE", "/api/changes/{id:int}/approvers/{uid:int}", role="engineer")
 def remove_change_approver(req: Req):
     changes.remove_approver(req.user, req.int_param("id"), req.int_param("uid"))
-    return changes.detail(req.int_param("id"))
+    return changes.detail(req.int_param("id"), req.user)
 
 
 @api("POST", "/api/changes/{id:int}/revise", role="engineer")
 def revise_change_items(req: Req):
     n = changes.revise_items(req.user, req.int_param("id"))
-    return {**changes.detail(req.int_param("id")), "revised": n}
+    return {**changes.detail(req.int_param("id"), req.user), "revised": n}
 
 
 @api("POST", "/api/changes/{id:int}/submit", role="engineer")
 def submit_change(req: Req):
     changes.submit(req.user, req.int_param("id"))
     addins.registry.emit("change.submitted", {"change_id": req.int_param("id"), "user_id": req.uid})
-    return changes.detail(req.int_param("id"))
+    return changes.detail(req.int_param("id"), req.user)
 
 
-@api("POST", "/api/changes/{id:int}/decide", role="approver")
+@api("POST", "/api/changes/{id:int}/route", role="engineer")
+def use_change_route(req: Req):
+    used = changes.use_route(req.user, req.int_param("id"))
+    return {**changes.detail(req.int_param("id"), req.user), "routes_used": used}
+
+
+@api("POST", "/api/changes/{id:int}/decide", role="viewer")
 def decide_change(req: Req):
     changes.decide(req.user, req.int_param("id"), req.b("decision") or "", req.b("comment") or "")
-    return changes.detail(req.int_param("id"))
+    return changes.detail(req.int_param("id"), req.user)
 
 
 @api("POST", "/api/changes/{id:int}/implement", role="approver")
@@ -311,13 +315,13 @@ def implement_change(req: Req):
     res = changes.implement(req.user, req.int_param("id"))
     addins.registry.emit("change.implemented", {"change_id": req.int_param("id"), "user_id": req.uid})
     erp.process_pending()
-    return {**changes.detail(req.int_param("id")), **res}
+    return {**changes.detail(req.int_param("id"), req.user), **res}
 
 
 @api("POST", "/api/changes/{id:int}/cancel", role="engineer")
 def cancel_change(req: Req):
     changes.cancel(req.user, req.int_param("id"))
-    return changes.detail(req.int_param("id"))
+    return changes.detail(req.int_param("id"), req.user)
 
 
 @api("POST", "/api/changes/{id:int}/comments", role="viewer")
@@ -328,7 +332,7 @@ def comment_change(req: Req):
     if not text:
         raise bad("Write a comment first.")
     db.insert("co_comments", {"co_id": cid, "user_id": req.uid, "text": text[:4000], "at": db.now()})
-    return changes.detail(cid)
+    return changes.detail(cid, req.user)
 
 
 # -------------------------------------------------------------------- ERP --

@@ -50,6 +50,7 @@ MAX_ATTEMPTS = 6
 SEND_TIMEOUT_SECONDS = 30
 STUCK_MINUTES = 10
 WORKER_SECONDS = float(os.environ.get("KOSHA_NOTIFY_WORKER_SECONDS", "15"))
+REMINDER_SECONDS = 1800       # how often approvals waiting too long are checked
 
 # kind -> (label for people, who it is for, channels chosen until the person changes them)
 KINDS: dict[str, tuple[str, str, list[str]]] = {
@@ -349,10 +350,15 @@ def retry(outbox_id: int) -> dict | None:
 
 def start_worker() -> threading.Thread:
     def loop():
+        last_reminders = 0.0
         while True:
             _wake.wait(WORKER_SECONDS)
             _wake.clear()
             try:
+                if time.monotonic() - last_reminders > REMINDER_SECONDS:
+                    last_reminders = time.monotonic()
+                    from .approval import send_reminders
+                    send_reminders()        # change orders waiting too long (queues notices, then sent below)
                 while process_due() >= 50:
                     pass
             except Exception:  # pragma: no cover

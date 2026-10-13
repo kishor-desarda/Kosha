@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { S, h, mount, icon, logo, api, get, post, toast, fail, initials, logout, contextMenu, closeMenu, store } from './core.js';
+import { S, h, mount, icon, logo, api, get, post, toast, fail, initials, logout, contextMenu, closeMenu, store, can } from './core.js';
 import { renderHome } from './home.js';
 import { renderExplorer } from './explorer.js';
 import { closeViewer } from './viewer.js';
 import { renderDoc, renderItem } from './docpage.js';
 import { renderBoms, renderBom } from './bom.js';
 import { renderChanges, renderChange } from './changes.js';
+import { renderRequests, renderRequest, delegateDialog } from './ecr.js';
 import { renderErp } from './erp.js';
 import { renderCommon } from './common.js';
 import { renderAdmin, renderSearch } from './admin.js';
@@ -44,6 +45,8 @@ const ROUTES = [
   [/^#\/bom\/(\d+)$/, 'boms', () => renderBom],
   [/^#\/changes$/, 'changes', () => renderChanges],
   [/^#\/change\/(\d+)$/, 'changes', () => renderChange],
+  [/^#\/ecrs$/, 'changes', () => renderRequests],
+  [/^#\/ecr\/(\d+)$/, 'changes', () => renderRequest],
   [/^#\/deviations$/, 'deviations', () => renderDeviations],
   [/^#\/deviation\/(\d+)$/, 'deviations', () => renderDeviation],
   [/^#\/erp$/, 'erp', () => renderErp],
@@ -103,6 +106,7 @@ function buildShell() {
       { label: `${S.user.full_name} (${S.user.role})`, icon: 'users', disabled: true },
       '-',
       { label: 'My notifications', icon: 'bell', run: () => import('./notify.js').then(m => m.myNotifications()) },
+      ...(can('approver') || can('quality') ? [{ label: 'Stand-in while I am away', icon: 'users', run: delegateDialog }] : []),
       { label: `Theme: ${themeLabel(currentTheme())}`, icon: 'theme', run: themeDialog },
       { label: 'Change password', icon: 'checkout', run: changePassword },
       { label: 'Sign out', icon: 'logout', run: () => logout() },

@@ -169,7 +169,8 @@ function whereTab(c, d) {
 
 function changesTab(c, d) {
   c.appendChild(h('div', { class: 'row', style: { marginBottom: '10px' } },
-    can('engineer') ? h('button', { class: 'btn', onclick: () => import('./changes.js').then(m => m.newChangeDialog([d.id])) }, icon('plus', 16), 'New change request') : null));
+    S.user.kind === 'vendor' ? null : h('button', { class: 'btn', onclick: () => import('./ecr.js').then(m => m.raiseRequestDialog(d)) }, icon('review', 16), 'Raise change request'),
+    can('engineer') ? h('button', { class: 'btn', onclick: () => import('./changes.js').then(m => m.newChangeDialog([d.id])) }, icon('plus', 16), 'New change order') : null));
   c.appendChild(d.changes.length ? h('table', { class: 'tbl' }, h('tbody', null, d.changes.map(x => h('tr', { class: 'clickable', onclick: () => { location.hash = `#/change/${x.id}`; } },
     h('td', { class: 'mono' }, x.number), h('td', null, x.title), h('td', null, x.action), h('td', null, h('span', { class: `chip st-${x.state}` }, x.state))))))
     : h('div', { class: 'empty' }, 'No change orders mention this file.'));

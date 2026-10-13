@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from . import db, notifications
 from .web import ROLE_LEVEL, bad, conflict, forbidden, not_found
 
-ENTITY_TYPES = ("item", "document", "change_order", "deviation", "bom")
+ENTITY_TYPES = ("item", "document", "change_order", "change_request", "deviation", "bom")
 EDIT_WINDOW = timedelta(minutes=15)
 MAX_BODY = 4000
 MAX_TITLE = 200
@@ -66,6 +66,10 @@ def entity_info(entity_type: str, entity_id: int) -> dict:
         if not r:
             raise not_found("Change order not found")
         return {"label": r["number"], "link": f"#/change/{eid}", "revision": ""}
+    if entity_type == "change_request":
+        from .change_requests import cr_or_404
+        r = cr_or_404(eid)
+        return {"label": r["number"], "link": f"#/ecr/{eid}", "revision": ""}
     if entity_type == "deviation":
         r = db.one("SELECT number FROM deviations WHERE id = ?", (eid,))
         if not r:

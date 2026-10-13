@@ -81,6 +81,16 @@ def _seed_quality(asha, daniel, sofia, shaft_doc, housing_doc, eco_number: str) 
     discussions.reply(daniel, tid, "Ø115 h6 is the safer fix. @sofia please check the impeller disc bore before we submit.")
 
 
+def _seed_change_requests(asha, daniel, sofia, housing_doc) -> None:
+    """An approval route for every change, and an open change request from the shop floor."""
+    from . import approval, change_requests
+    approval.add_route(sofia["id"], {"name": "Normal parts", "scope": "default", "approver_ids": [daniel["id"]],
+                                     "lead_id": sofia["id"]})
+    tom = db.one("SELECT * FROM users WHERE username = 'tom'")
+    change_requests.create(tom, "Lifting eyes on the housing", "The fitters cannot lift the housing safely without "
+                           "slings around the flange.", housing_doc["id"])
+
+
 def _seed_item_master(sofia) -> None:
     """Families, a wear part sold as a spare, and the other maker's number for the same sleeve."""
     with db.tx():
@@ -247,6 +257,7 @@ def seed() -> None:
     changes.submit(asha, co2)
     _seed_quality(asha, daniel, sofia, shaft_doc, de, changes.co_or_404(co1)["number"])
     _seed_item_master(sofia)
+    _seed_change_requests(asha, daniel, sofia, de)
 
     # legacy leftovers: a byte-identical copy and look-alike bought-out parts from an old part master
     inlet = db.one("SELECT v.blob_sha FROM documents d JOIN versions v ON v.document_id = d.id WHERE d.part_number = 'CP-80-014'")
