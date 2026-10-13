@@ -77,6 +77,7 @@ function buildShell() {
     contextMenu(r.right - 240, r.bottom + 6, [
       { label: `${S.user.full_name} (${S.user.role})`, icon: 'users', disabled: true },
       '-',
+      { label: 'My notifications', icon: 'bell', run: () => import('./notify.js').then(m => m.myNotifications()) },
       { label: 'Change password', icon: 'checkout', run: changePassword },
       { label: 'Sign out', icon: 'logout', run: () => logout() },
     ]);

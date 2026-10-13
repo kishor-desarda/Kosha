@@ -74,6 +74,7 @@ class LoadedAddin:
 class Registry:
     def __init__(self) -> None:
         self._addins: dict[str, LoadedAddin] = {}
+        self._listeners: dict[str, list] = {}
         self._lock = threading.RLock()
         self._pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="addin")
 
@@ -284,8 +285,17 @@ class Registry:
                 self.disable(a.id, None, reason)
 
     # --------------------------------------------------------------- events
+    def listen(self, event: str, fn) -> None:
+        """Let a core feature (notices, for example) react to the same events as add-ins, in the background."""
+        with self._lock:
+            fns = self._listeners.setdefault(event, [])
+            if fn not in fns:
+                fns.append(fn)
+
     def emit(self, event: str, payload: dict) -> None:
         """Run add-in handlers for an event in the background, after the change is committed."""
+        for fn in list(self._listeners.get(event, ())):
+            self._pool.submit(self._run_listener, fn, event, dict(payload))
         for a in self.all():
             if a.status != "enabled" or event not in a.manifest.events:
                 continue
@@ -297,6 +307,13 @@ class Registry:
             for name, handler in a.handlers:
                 if name == event:
                     self._pool.submit(self._run_handler, a, handler, event, dict(payload))
+
+    @staticmethod
+    def _run_listener(fn, event: str, payload: dict) -> None:
+        try:
+            fn({"event": event, **payload})
+        except Exception:
+            log.exception("Kosha's own handler for %s failed; the change itself is safe", event)
 
     def _run_handler(self, a: LoadedAddin, handler, event: str, payload: dict) -> None:
         try:

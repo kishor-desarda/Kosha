@@ -14,7 +14,7 @@ from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from . import addins, config, db, erp, security, web
+from . import addins, config, db, erp, notify_outbox, security, web
 from .api import load_all as _load_api
 
 _load_api()   # every module in kosha/api registers its routes
@@ -43,6 +43,7 @@ async def lifespan(app):
     bootstrap()
     if os.environ.get("KOSHA_DISABLE_WORKER") != "1":
         erp.start_worker()
+        notify_outbox.start_worker()
     yield
 
 
