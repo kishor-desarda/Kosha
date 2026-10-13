@@ -1,26 +1,84 @@
 # SPDX-License-Identifier: CC-BY-4.0
 id: general-machinery
 name: General machinery
-version: 1.0.0
+version: 2.0.0
 licence: CC-BY-4.0
 description: >-
-  Categories, materials, number schemes and spec-code templates for common machine parts
-  (gears, shafts, flanges, bearing housings, frames).
+  Product families, the default categories and item types of the Kosha specification, materials,
+  number schemes and spec-code templates for common machine parts (gears, shafts, flanges).
 
-# Categories group items. "make_buy" and "uom" are the defaults for new items in the category.
+# Product families: two-letter codes used in machine model (MX-VA-1200) and serial numbers (MX26-0042).
+families:
+  - {code: PU, name: Pumps, examples: "Centrifugal, gear and screw pumps"}
+  - {code: MX, name: Mixers and agitators, examples: "Vertical agitators, high-shear mixers"}
+  - {code: CV, name: Conveyors, examples: "Belt, screw and chain conveyors"}
+  - {code: GB, name: Gearboxes and drives, examples: "Helical, worm and planetary gearboxes"}
+  - {code: CP, name: Compressors and blowers, examples: "Screw compressors, roots blowers"}
+  - {code: TK, name: Tanks and vessels, examples: "Process tanks, pressure vessels"}
+  - {code: SK, name: Skids and packaged units, examples: "Pre-piped, pre-wired modules"}
+  - {code: AU, name: Automation, examples: "Control panels, sensors, IoT gateways"}
+  - {code: PL, name: Plants and turnkey projects, examples: "Complete lines (project layouts and GA drawings)"}
+
+# Categories: three letters for what the part is, never where it is used (SHF-001234 is a shaft in any
+# machine). "make_buy" and "uom" are the defaults for new items; "item_type" the usual type; "required"
+# the fields a part needs before it can be sent for approval.
 categories:
-  - {code: GR, name: Gears}
-  - {code: SH, name: Shafts}
-  - {code: FL, name: Flanges}
-  - {code: BH, name: Bearing housings}
-  - {code: FR, name: Frames and weldments}
-  - {code: FST, name: Fasteners (bought out), make_buy: buy}
-  - {code: BRG, name: Bearings (bought out), make_buy: buy}
+  - {code: ASM, name: "Sub-assembly, weldment with BOM", item_type: assembly, make_buy: make}
+  - {code: SHF, name: "Shaft, spindle, axle", item_type: part, make_buy: make, required: [description, material]}
+  - {code: SLV, name: "Sleeve, bush, liner, wear ring", item_type: part, make_buy: make, required: [description, material]}
+  - {code: HSG, name: "Housing, bearing housing, gear case", item_type: part, make_buy: make, required: [description, material]}
+  - {code: CVR, name: "Cover, lid, guard, door", item_type: part, make_buy: make}
+  - {code: FLG, name: "Flange, ring, adapter", item_type: part, make_buy: make, required: [description, material]}
+  - {code: PLT, name: "Plate, gusset, strip, cut part", item_type: part, make_buy: make, required: [description, material]}
+  - {code: FRM, name: "Frame, base, stand, structure", item_type: part, make_buy: make}
+  - {code: TNK, name: "Tank, vessel, hood", item_type: part, make_buy: make, required: [description, material]}
+  - {code: PIP, name: "Pipe spool, nozzle, duct", item_type: part, make_buy: make}
+  - {code: ROT, name: "Rotor, impeller, screw flight, propeller", item_type: rotor, make_buy: make, required: [description, material]}
+  - {code: DSC, name: "Disc, cone, segment", item_type: part, make_buy: make}
+  - {code: GER, name: "Gear, pinion, sprocket", item_type: configured, make_buy: make, required: [description, material]}
+  - {code: FLT, name: "Filter element, strainer basket", item_type: configured, make_buy: make}
+  - {code: BLD, name: "Blade, knife, cutter", item_type: part, make_buy: make}
+  - {code: CST, name: "Casting, as cast (own or outside foundry)", item_type: part, make_buy: make, required: [description, material]}
+  - {code: PAT, name: "Foundry pattern, core box", item_type: tooling, make_buy: make}
+  - {code: MLD, name: "Mold, die, insert, fixture", item_type: tooling, make_buy: make}
+  - {code: PNL, name: "Control panel, junction box", item_type: assembly, make_buy: make}
+  - {code: MPT, name: "Other manufactured part (reviewed monthly by the data steward)", item_type: part, make_buy: make}
+  - {code: BRG, name: Bearing, item_type: bought-out, make_buy: buy}
+  - {code: SEA, name: "Seal, mechanical seal, gland packing, O-ring", item_type: bought-out, make_buy: buy}
+  - {code: MTR, name: Motor, item_type: bought-out, make_buy: buy}
+  - {code: GBX, name: "Gearbox, drive (bought in)", item_type: bought-out, make_buy: buy}
+  - {code: CPL, name: Coupling, item_type: bought-out, make_buy: buy}
+  - {code: VLV, name: Valve, item_type: bought-out, make_buy: buy}
+  - {code: PMP, name: "Pump (bought in)", item_type: bought-out, make_buy: buy}
+  - {code: INS, name: "Instrument, sensor", item_type: bought-out, make_buy: buy}
+  - {code: ELC, name: "Electrical component, cable", item_type: bought-out, make_buy: buy}
+  - {code: HYD, name: "Hydraulic or pneumatic component", item_type: bought-out, make_buy: buy}
+  - {code: FAB, name: "Belt, fabric, mesh, wire cloth", item_type: bought-out, make_buy: buy}
+  - {code: BOP, name: Other bought-out part, item_type: bought-out, make_buy: buy}
+  - {code: FST, name: Fasteners (bought out), item_type: standard-hardware, make_buy: buy}
+  - {code: RMP, name: Plate and sheet, item_type: raw-material, make_buy: buy, uom: Kg}
+  - {code: RMB, name: Bar and round, item_type: raw-material, make_buy: buy, uom: Kg}
+  - {code: RMT, name: Pipe and tube, item_type: raw-material, make_buy: buy, uom: Meter}
+  - {code: RMS, name: Structural section, item_type: raw-material, make_buy: buy, uom: Kg}
+  - {code: RMW, name: Wire and profile bar, item_type: raw-material, make_buy: buy, uom: Kg}
 
-# Item types are stored on the item; "base" is how Kosha treats it (a part or an assembly with a BOM).
+# Item types are stored on the item; "base" is how Kosha treats it (a part or an assembly with a BOM);
+# "erp: false" keeps items of the type out of the ERP.
 item_types:
-  - {code: part, name: Part, base: part}
+  - {code: machine-model, name: Machine model, base: assembly, description: "A catalogue machine and size, for example MX-VA-1200"}
+  - {code: machine-build, name: Machine build, base: assembly, description: "One machine for one customer order, with its serial number and as-built BOM"}
   - {code: assembly, name: Assembly, base: assembly}
+  - {code: part, name: Manufactured part, base: part}
+  - {code: configured, name: Configured product, base: part, description: "Defined by a spec-code template, for example a gear or a filter element"}
+  - {code: rotor, name: Rotor or impeller, base: part}
+  - {code: tooling, name: Tooling and mold, base: part}
+  - {code: oem-spare, name: OEM-compatible spare, base: part}
+  - {code: bought-out, name: Bought-out item, base: part}
+  - {code: standard-hardware, name: Standard hardware, base: part}
+  - {code: raw-material, name: Raw material, base: part}
+  - {code: kit, name: Kit, base: assembly, description: "Maintenance, shutdown, service and breakdown kits"}
+  - {code: document, name: Document, base: part, erp: false}
+  - {code: input, name: Input, base: part, erp: false}
   - {code: weldment, name: Weldment, base: assembly}
   - {code: casting, name: Casting, base: part}
 
@@ -44,6 +102,11 @@ dictionaries:
     - {code: "1.4301", name: "1.4301 stainless (304)"}
     - {code: "1.4401", name: "1.4401 stainless (316)"}
     - {code: "1.4404", name: "1.4404 stainless (316L)"}
+  project_drawings:
+    - {code: GAD, name: General arrangement}
+    - {code: LAY, name: Layout}
+    - {code: PID, name: "P&ID"}
+    - {code: FND, name: Foundation drawing}
   flange_types:
     - {code: EN01, name: "EN 1092-1 type 01, plate flange for welding"}
     - {code: EN05, name: "EN 1092-1 type 05, blind flange"}
@@ -58,16 +121,19 @@ spec_codes:
 numbering:
   - id: project
     label: Project number
-    hint: One number per customer project or job. Not a part, so no item is created.
-    pattern: "P-{yyyy}-{seq:3}"
+    hint: One number per customer project or job, for example PRJ-26-014. Not a part, so no item is created.
+    pattern: "PRJ-{yy}-{seq:3}"
     creates_item: false
   - id: general-arrangement
-    label: General-arrangement drawing number
-    hint: The overall drawing of a machine, numbered per product code (for example MX-GA-001).
-    pattern: "{product}-GA-{seq:3}"
+    label: Project drawing number (GA, layout, P&ID, foundation)
+    hint: >-
+      Drawings that belong to one project, for example GAD-26014-003 is the third general-arrangement
+      drawing of project PRJ-26-014.
+    pattern: "{kind}-{project}-{seq:3}"
     item_type: assembly
     fields:
-      product: {type: text, label: Product code, pattern: "^[A-Z0-9]{1,8}$", hint: "Letters and digits, for example MX"}
+      kind: {type: choice, label: Drawing kind, dictionary: project_drawings}
+      project: {type: text, label: Project, pattern: "^[0-9]{5}$", hint: "The project number without PRJ and dashes, for example 26014"}
 
 # Title-block attribute names found on drawings, and the Kosha field each one fills.
 title_blocks:

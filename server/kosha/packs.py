@@ -36,14 +36,16 @@ log = logging.getLogger("kosha.packs")
 PackError = DataError
 
 KINDS = {
-    "category": "Categories", "item_type": "Item types", "unit": "Units", "field": "Item fields",
+    "family": "Product families", "category": "Categories", "item_type": "Item types", "unit": "Units", "field": "Item fields",
     "dictionary": "Dictionary entries", "spec_template": "Spec-code templates", "numbering_scheme": "Number schemes",
     "title_block": "Title-block maps", "library_table": "Library tables", "library_row": "Library rows",
 }
-PACK_KEYS = {"id", "name", "version", "licence", "description", "categories", "item_types", "units", "fields",
+PACK_KEYS = {"id", "name", "version", "licence", "description", "families", "categories", "item_types", "units", "fields",
              "dictionaries", "spec_codes", "numbering", "title_blocks", "tables"}
 VERSION = re.compile(r"^\d+\.\d+\.\d+$")
 CATEGORY_CODE = re.compile(r"^[A-Z][A-Z0-9]{0,5}$")
+FAMILY_CODE = re.compile(r"^[A-Z]{2}$")
+REQUIRABLE = ("description", "material", "weight_kg", "uom", "make_buy", "family", "customer", "hsn")
 SLUG = re.compile(r"^[a-z][a-z0-9\-]{0,39}$")
 TITLE_FIELDS = ("part_number", "description", "material", "revision", "weight_kg", "scale", "drawn_by")
 
@@ -196,6 +198,9 @@ class PackLoader:
             seen.add((kind, key))
             recs.append(Record(kind, key, scope, value, src))
 
+        for i, f in enumerate(items("families"), 1):
+            src = f"{where}, families entry {i}"
+            keyed("family", *self._family(f, src), src)
         # categories
         for i, c in enumerate(items("categories"), 1):
             src = f"{where}, categories entry {i}"
@@ -265,10 +270,24 @@ class PackLoader:
 
     # -- record checks (also used for the company's own changes)
     @staticmethod
+    def _family(f: Any, src: str) -> tuple[str, dict]:
+        if not isinstance(f, dict):
+            raise DataError(f"{src}: must be a mapping such as {{code: PU, name: Pumps}}")
+        _check_keys(f, {"code", "name", "examples"}, src)
+        code = _text(f, "code", src)
+        if not FAMILY_CODE.match(code):
+            raise DataError(f"{src}: product family code '{code}' must be two capital letters, for example PU")
+        out = {"code": code, "name": _text(f, "name", src)}
+        if f.get("examples"):
+            out["examples"] = _text(f, "examples", src)
+        return code, out
+
+    @staticmethod
     def _category(c: Any, src: str) -> tuple[str, dict]:
         if not isinstance(c, dict):
-            raise DataError(f"{src}: must be a mapping such as {{code: GR, name: Gears}}")
-        _check_keys(c, {"code", "name", "make_buy", "uom", "description"}, src)
+            raise DataError(f"{src}: must be a mapping such as {{code: GER, name: Gears}}")
+        _check_keys(c, {"code", "name", "make_buy", "uom", "description", "item_type", "required", "erp_item_group",
+                        "hsn"}, src)
         code = _text(c, "code", src)
         if not CATEGORY_CODE.match(code):
             raise DataError(f"{src}: category code '{code}' must be 1 to 6 capital letters or digits, starting with a letter")
@@ -277,16 +296,27 @@ class PackLoader:
             if c["make_buy"] not in ("make", "buy"):
                 raise DataError(f"{src}: make_buy must be make or buy")
             out["make_buy"] = c["make_buy"]
-        for k in ("uom", "description"):
+        for k in ("uom", "description", "item_type", "erp_item_group"):
             if c.get(k):
                 out[k] = _text(c, k, src)
+        if c.get("hsn"):
+            hsn = str(c["hsn"]).strip()
+            if not re.match(r"^\d{4}(\d{2}){0,2}$", hsn):
+                raise DataError(f"{src}: HSN code '{hsn}' must be 4, 6 or 8 digits")
+            out["hsn"] = hsn
+        if c.get("required") is not None:
+            req = c["required"]
+            if not isinstance(req, list) or not all(isinstance(x, str) and x in REQUIRABLE for x in req):
+                raise DataError(f"{src}: required lists the fields a part of this category must have before review, "
+                                f"from: {', '.join(REQUIRABLE)}")
+            out["required"] = list(req)
         return code, out
 
     @staticmethod
     def _item_type(t: Any, src: str) -> tuple[str, dict]:
         if not isinstance(t, dict):
             raise DataError(f"{src}: must be a mapping such as {{code: weldment, name: Weldment, base: assembly}}")
-        _check_keys(t, {"code", "name", "base", "description"}, src)
+        _check_keys(t, {"code", "name", "base", "description", "erp"}, src)
         code = _text(t, "code", src)
         if not SLUG.match(code):
             raise DataError(f"{src}: item type code '{code}' may use small letters, digits and dashes only")
@@ -294,6 +324,10 @@ class PackLoader:
         if base not in ("part", "assembly"):
             raise DataError(f"{src}: base must be part or assembly (how Kosha treats this type)")
         out = {"code": code, "name": _text(t, "name", src), "base": base}
+        if t.get("erp") is not None:
+            if not isinstance(t["erp"], bool):
+                raise DataError(f"{src}: erp must be true or false (whether items of this type go to the ERP)")
+            out["erp"] = t["erp"]
         if t.get("description"):
             out["description"] = _text(t, "description", src)
         return code, out
@@ -448,6 +482,9 @@ class PackConfig:
 
     def item_type(self, code: str) -> dict | None:
         return self.value("item_type", code or "")
+
+    def families(self) -> list[dict]:
+        return [r.value for r in self.records("family")]
 
     def dictionary(self, name: str) -> list[Choice]:
         out = []
@@ -696,7 +733,9 @@ class PackManager:
         if not isinstance(key, str) or not key.strip():
             raise DataError(f"{where}: the key is missing.")
         L = PackLoader
-        if kind == "category":
+        if kind == "family":
+            k, v = L._family(value, where)
+        elif kind == "category":
             k, v = L._category(value, where)
         elif kind == "item_type":
             k, v = L._item_type(value, where)

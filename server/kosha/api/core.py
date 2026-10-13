@@ -237,8 +237,11 @@ def search(req: Req):
                    " ORDER BY d.updated_at DESC LIMIT ?", [*params, limit])
     iw, ip = [], []
     for t in terms:
-        iw.append("(part_number LIKE ? OR description LIKE ? OR material LIKE ?)")
-        ip += [f"%{t}%"] * 3
+        # an OEM part number, OEM machine model or the customer's own part number finds the part too
+        iw.append("(part_number LIKE ? OR description LIKE ? OR material LIKE ? OR customer_part_number LIKE ? "
+                  "OR id IN (SELECT item_id FROM item_oem_refs WHERE deleted = 0 AND (oem_part_number LIKE ? "
+                  "OR oem_model LIKE ?)))")
+        ip += [f"%{t}%"] * 6
     items = db.rows("SELECT * FROM items WHERE " + " AND ".join(iw) + " ORDER BY part_number LIMIT ?", [*ip, limit])
     changes = db.rows("SELECT id, number, title, state FROM change_orders WHERE number LIKE ? OR title LIKE ? "
                       "ORDER BY id DESC LIMIT 20", (f"%{q}%", f"%{q}%"))

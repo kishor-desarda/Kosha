@@ -6,9 +6,10 @@ import json
 
 from starlette.responses import Response
 
-from .. import addins, boms, changes, db, erp, lifecycle, similarity
+from .. import addins, boms, changes, db, erp, itemmaster, lifecycle, similarity
 from ..cad import process as cadproc
 from ..web import Req, api, as_bool, bad, conflict, not_found
+from ..packs import PackConfig
 from .core import DOC_SELECT, _with_preview
 
 from kosha_sdk import AddinError  # noqa: E402
@@ -23,8 +24,10 @@ def items(req: Req):
     q = (req.q("q") or "").strip()
     limit = min(int(req.q("limit", 100)), 1000)
     if q:
-        rows = db.rows("SELECT * FROM items WHERE part_number LIKE ? OR description LIKE ? ORDER BY part_number LIMIT ?",
-                       (f"%{q}%", f"%{q}%", limit))
+        # an OEM part number or the customer's part number finds the company's part as well
+        rows = db.rows("SELECT * FROM items WHERE part_number LIKE ? OR description LIKE ? OR customer_part_number LIKE ? "
+                       "OR id IN (SELECT item_id FROM item_oem_refs WHERE deleted = 0 AND (oem_part_number LIKE ? "
+                       "OR oem_model LIKE ?)) ORDER BY part_number LIMIT ?", (*[f"%{q}%"] * 5, limit))
     else:
         rows = db.rows("SELECT * FROM items ORDER BY updated_at DESC LIMIT ?", (limit,))
     return {"items": rows}
@@ -62,8 +65,16 @@ def item(req: Req):
     std = db.one("SELECT id, part_number, description FROM items WHERE id = ?", (it["standard_item_id"],)) \
         if it["standard_item_id"] else None
     dups = db.rows("SELECT id, part_number, description FROM items WHERE standard_item_id = ?", (iid,))
+    families = [{"code": f["code"], "name": f.get("name", f["code"])} for f in PackConfig.current().families()]
+    fam = next((f for f in families if f["code"] == it.get("family")), None)
+    reuse = db.rows("SELECT a.parent_item_id, i.part_number AS parent_part_number, a.reason, a.approved_by, "
+                    "a.approved_at FROM item_reuse_approvals a JOIN items i ON i.id = a.parent_item_id "
+                    "WHERE a.item_id = ? ORDER BY a.id", (iid,))
+    for r in reuse:
+        r["approved_by_name"] = names.get(r["approved_by"], "?")
     return {"item": it, "documents": docs, "boms": item_boms, "where_used": boms.where_used(iid), "erp_jobs": jobs,
-            "standard_part": std, "duplicates": dups}
+            "standard_part": std, "duplicates": dups, "family": fam, "families": families, "oem_refs": itemmaster.oem_refs(iid),
+            "reuse_allowed": reuse}
 
 
 @api("PATCH", "/api/items/{id:int}", role="engineer")
@@ -82,8 +93,12 @@ def update_item(req: Req):
             if k == "weight_kg":
                 v = float(v) if v not in (None, "") else None
             upd[k] = v
+    upd.update(itemmaster.clean_fields(body, it))
     if not upd:
         return {"item": it}
+    guarded = [k for k in itemmaster.GUARDED if k in upd and upd[k] != it.get(k)]
+    if guarded and not req.has("approver"):
+        raise conflict("Only an approver can change the customer, the restricted flag or the reuse lock of a part.")
     if it["state"] == "released" and not req.has("approver"):
         locked = {"description", "material", "uom"} & set(upd)
         if locked:

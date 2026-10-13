@@ -12,7 +12,7 @@ import io
 import logging
 import time
 
-from . import boms, changes, db, erp, lifecycle, security, similarity
+from . import boms, changes, db, erp, itemmaster, lifecycle, security, similarity
 from .cad import dxfwriter as W
 from .cad import mesh as M
 
@@ -79,6 +79,19 @@ def _seed_quality(asha, daniel, sofia, shaft_doc, housing_doc, eco_number: str) 
     tid = discussions.start(asha, "document", shaft_doc["id"], "@daniel the field report shows fretting at the hub "
                             f"seat. Do we go to Ø115 with {eco_number}, or try a shrink fit first?", "Hub seat fretting")
     discussions.reply(daniel, tid, "Ø115 h6 is the safer fix. @sofia please check the impeller disc bore before we submit.")
+
+
+def _seed_item_master(sofia) -> None:
+    """Families, a wear part sold as a spare, and the other maker's number for the same sleeve."""
+    with db.tx():
+        db.execute("UPDATE items SET family = 'MX' WHERE part_number LIKE 'MX-%'")
+        db.execute("UPDATE items SET spare = 1, wear_part = 1, recommended_spare = 1, hsn = '84879000' "
+                   "WHERE part_number = 'MX-100-021'")
+    itemmaster.add_oem(sofia["id"], "OMW", "Other Mixer Works (invented)")
+    sleeve = db.scalar("SELECT id FROM items WHERE part_number = 'MX-100-021'")
+    if sleeve:
+        itemmaster.add_oem_ref(sofia["id"], sleeve, {"oem": "OMW", "oem_model": "VA-1000", "oem_part_number": "S-4410-21",
+                                                     "source": "reverse_engineered", "fit": "direct"})
 
 
 def seed() -> None:
@@ -233,6 +246,7 @@ def seed() -> None:
                          [asm["id"]], [daniel["id"], sofia["id"]])
     changes.submit(asha, co2)
     _seed_quality(asha, daniel, sofia, shaft_doc, de, changes.co_or_404(co1)["number"])
+    _seed_item_master(sofia)
 
     # legacy leftovers: a byte-identical copy and look-alike bought-out parts from an old part master
     inlet = db.one("SELECT v.blob_sha FROM documents d JOIN versions v ON v.document_id = d.id WHERE d.part_number = 'CP-80-014'")
