@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir ./sdk/python
 COPY server server
 COPY web web
 COPY addins addins
+COPY packs packs
 RUN useradd --system --home /data --shell /usr/sbin/nologin kosha && mkdir -p /data && chown kosha /data
 USER kosha
 ENV KOSHA_DATA_DIR=/data KOSHA_HOST=0.0.0.0 KOSHA_PORT=8080

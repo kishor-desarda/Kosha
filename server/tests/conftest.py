@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pytest  # noqa: E402
 
 from harness import KoshaServer  # noqa: E402
+from packs_fixtures import kdb, packs_copy  # noqa: E402,F401  (database and packs-folder fixtures)
 
 
 @pytest.fixture(scope="module")
