@@ -186,6 +186,12 @@ async function outputsTab(c, d) {
 }
 
 function historyTab(c, d) {
+  const refs = d.legacy_refs || [];
+  if (refs.length) {   // where the file was before Kosha: old paths and numbers stay searchable
+    c.appendChild(h('div', { class: 'banner info', id: 'legacy-refs', style: { marginBottom: '12px' } }, icon('info'), h('div', null,
+      h('b', null, 'Before Kosha'), h('ul', { class: 'small', style: { margin: '4px 0 0', paddingLeft: '16px' } },
+        refs.map(r => h('li', null, r.kind === 'path' ? 'Old path: ' : 'Old number: ', h('span', { class: 'mono' }, r.value)))))));
+  }
   c.appendChild(h('div', { class: 'timeline' }, d.events.map(e => h('div', { class: 'tl' }, h('span', { class: `dot ${e.to_state}` }),
     h('div', null, h('div', null, h('b', null, `Revision ${e.revision}: ${({ in_work: 'In work', in_review: 'In review', released: 'Released', spares_only: 'Spares only', obsolete: 'Obsolete' })[e.to_state]}`),
       e.change_number ? [' · ', h('a', { href: `#/change/${e.change_order_id}` }, e.change_number)] : null),
@@ -267,6 +273,7 @@ export async function renderItem(container, [id], _p, { setTitle }) {
       h('div', { class: 'page-head' }, h('div', { style: { flex: 1 } }, h('div', { class: 'small muted' }, 'Part'),
         h('h1', { class: 'mono' }, it.part_number, ' ', favButton('item', it.id)), h('div', { class: 'sub' }, it.description),
         h('div', { class: 'row', style: { marginTop: '8px' } }, stateChip(it.state), h('span', { class: 'muted' }, `Revision ${it.revision} · ${it.item_type} · ${it.make_buy}`), ...itemBadges(r))),
+      S.user.kind === 'vendor' ? null : h('button', { class: 'btn', id: 'item-qr', title: 'A QR code for the job card or nameplate; scanning it opens the released drawing in the shop view', onclick: () => import('./shop.js').then(m => m.qrLabelDialog(it)).catch(fail) }, icon('qr', 16), 'Print QR label'),
       can('engineer') ? h('button', { class: 'btn', title: 'Start a new design from this one, with new part numbers', onclick: () => import('./copydesign.js').then(m => m.copyDesignDialog({ item_id: it.id })).catch(fail) }, icon('copy', 16), 'Copy design…') : null,
       can('approver') ? h('div', { class: 'row' },
         h('button', { class: 'btn primary', onclick: () => erpPush('item', it.id, load) }, icon('erp', 16), `Send to ${S.erp}`),

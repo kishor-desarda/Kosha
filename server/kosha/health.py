@@ -297,7 +297,8 @@ def send_alerts() -> int:
 
 # ------------------------------------------------------------------ timing --
 
-PERIODS = {"fingerprints": 3600, "consistency": 24 * 3600, "erp_reconcile": 24 * 3600, "alerts": 3600}
+PERIODS = {"fingerprints": 3600, "consistency": 24 * 3600, "erp_reconcile": 24 * 3600, "alerts": 3600,
+           "practice": 24 * 3600}
 
 
 def run_due() -> dict:
@@ -317,6 +318,9 @@ def run_due() -> dict:
             elif name == "erp_reconcile":
                 from . import erp_reconcile
                 done[name] = erp_reconcile.nightly()
+            elif name == "practice":
+                from . import practice
+                done[name] = practice.clear()
             else:
                 done[name] = send_alerts()
         except Exception:

@@ -37,6 +37,7 @@ def start(req: Req):
         "keep_revision": as_bool(req.b("keep_revision", True)),
         "skip_identical": as_bool(req.b("skip_identical", True)),
         "dry_run": as_bool(req.b("dry_run", False)),
+        "unpack_archives": as_bool(req.b("unpack_archives", True)),
         "groups": groups or importer.DEFAULT_GROUPS,
         "extensions": [e.strip().lower().lstrip(".") for e in str(req.b("extensions") or "").split(",") if e.strip()],
     }

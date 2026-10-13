@@ -353,8 +353,10 @@ def search(req: Req):
     where = []
     params: list = []
     for g in groups:
-        where.append("(" + " OR ".join("(d.filename LIKE ? OR d.part_number LIKE ? OR d.description LIKE ?)" for _ in g) + ")")
-        params += [f"%{t}%" for t in g for _ in range(3)]
+        # an old path or old number from a legacy import finds the file too
+        where.append("(" + " OR ".join("(d.filename LIKE ? OR d.part_number LIKE ? OR d.description LIKE ? OR d.id IN "
+                                       "(SELECT document_id FROM legacy_refs WHERE value LIKE ?))" for _ in g) + ")")
+        params += [f"%{t}%" for t in g for _ in range(4)]
     docs = db.rows(DOC_SELECT + "WHERE d.deleted = 0" + access.scope().documents() + " AND " + " AND ".join(where) +
                    " ORDER BY d.updated_at DESC LIMIT ?", [*params, limit])
     iw, ip = [], []

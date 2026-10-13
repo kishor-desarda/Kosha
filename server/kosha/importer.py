@@ -16,7 +16,10 @@ What it does
   * keeps the legacy revision (Rev 3, R-2, B …) and can mark files Released at once
   * is resumable: files already in the target folder are skipped, so a broken run can be
     started again
+  * unpacks ZIP archives into a staging folder and imports what is inside, under a folder named after the archive
   * writes an Excel/CSV report of every file and what happened to it
+  * keeps a record of every file per batch (kosha/legacy.py): quality score and work queue, old paths and numbers
+    as cross-references, the count check, and Undo batch
 """
 from __future__ import annotations
 
@@ -28,12 +31,15 @@ import json
 import logging
 import os
 import re
+import shutil
 import sys
 import threading
+import uuid
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import db, lifecycle, store
+from . import config, db, legacy, lifecycle, store
 from .cad import dwg as dwgmod
 from .cad import process as cadproc
 
@@ -49,6 +55,10 @@ TYPE_GROUPS = {
     "images": {"png", "jpg", "jpeg", "tif", "tiff", "bmp"},
 }
 DEFAULT_GROUPS = ["solidworks", "cad2d", "pdf", "neutral3d"]
+# archives are unpacked within these limits (a damaged or hostile archive is reported, never half-imported)
+ZIP_MAX_FILES = 20000
+ZIP_MAX_BYTES = 4 * 1024 ** 3
+ZIP_MAX_RATIO = 1000
 META_ALIASES = {
     "filename": ("file", "filename", "file name", "drawing file", "dwg file"),
     "part_number": ("part number", "part no", "part no.", "partno", "item code", "item_code", "drawing no",
@@ -148,7 +158,8 @@ def upsert_items(rows: list[dict], user_id) -> int:
 class Importer:
     def __init__(self, source: str, target: str, user: dict, state: str = "released", keep_revision: bool = True,
                  skip_identical: bool = True, groups: list[str] | None = None, extensions: set | None = None,
-                 metadata: tuple | None = None, dry_run: bool = False, job_id: int | None = None, progress=None):
+                 metadata: tuple | None = None, dry_run: bool = False, job_id: int | None = None, progress=None,
+                 unpack_archives: bool = True):
         self.source = Path(source)
         self.target = target.strip().strip("/\\") or "Legacy Drawings"
         self.user = user
@@ -165,6 +176,12 @@ class Importer:
         self.progress = progress or (lambda **kw: None)
         self.report: list[dict] = []
         self.counts = {"imported": 0, "duplicates": 0, "skipped": 0, "errors": 0}
+        self.unpack_archives = unpack_archives
+        self.staging: Path | None = None
+        self.shown_as: dict[Path, str] = {}      # files unpacked from an archive: "archive.zip!/inner/path"
+        self.reldirs: dict[Path, str] = {}       # ... and the folder they go to, relative to the target
+        self.doc_of_sha: dict[str, int] = {}
+        self.found = self.junk = self.unpacked = 0
 
     # -- helpers
     def cancelled(self) -> bool:
@@ -176,23 +193,95 @@ class Importer:
             dirs[:] = sorted(d for d in dirs if not d.startswith((".", "~", "$")) and d.lower() not in ("_vti_cnf", "backup"))
             for n in sorted(names):
                 p = Path(root) / n
-                ext = n.rsplit(".", 1)[-1].lower() if "." in n else ""
-                if JUNK.search(n):
-                    ignored.append({"path": str(p), "reason": "temporary or backup file"})
-                elif ext not in self.extensions:
-                    ignored.append({"path": str(p), "reason": f".{ext or '?'} files not selected"})
+                self.found += 1
+                if self.unpack_archives and n.lower().endswith(".zip") and not JUNK.search(n):
+                    files += self.unpack(p, ignored)
                 else:
-                    files.append(p)
+                    self.sort_one(p, n, files, ignored)
         return files, ignored
 
+    def sort_one(self, p: Path, n: str, files: list, ignored: list) -> None:
+        ext = n.rsplit(".", 1)[-1].lower() if "." in n else ""
+        if JUNK.search(n):
+            ignored.append({"path": p, "reason": "temporary or backup file"})
+            self.junk += 1
+        elif ext not in self.extensions:
+            ignored.append({"path": p, "reason": f".{ext or '?'} files not selected"})
+        else:
+            files.append(p)
+
+    def shown(self, p: Path) -> str:
+        return self.shown_as.get(p) or str(p)
+
+    def reldir(self, p: Path) -> str:
+        if p in self.reldirs:
+            return self.reldirs[p]
+        rel = str(p.parent.relative_to(self.source)).replace("\\", "/")
+        return "" if rel == "." else rel
+
+    def unpack(self, zp: Path, ignored: list) -> list[Path]:
+        """Unpack a ZIP archive into staging; its files go to a folder named after it. Returns the files to import."""
+        if self.staging is None:
+            self.staging = Path(config.WORK_DIR) / f"import-{self.job_id or 'run'}-{uuid.uuid4().hex[:8]}"
+        dest = self.staging / uuid.uuid4().hex[:12]
+        out: list[Path] = []
+        try:
+            with zipfile.ZipFile(zp) as z:
+                infos = [i for i in z.infolist() if not i.is_dir()]
+                if len(infos) > ZIP_MAX_FILES:
+                    raise ValueError(f"more than {ZIP_MAX_FILES} files inside")
+                if sum(i.file_size for i in infos) > ZIP_MAX_BYTES:
+                    raise ValueError("more than 4 GB when unpacked")
+                for i in infos:
+                    name = i.filename.replace("\\", "/")
+                    parts = [x for x in name.split("/") if x not in ("", ".")]
+                    if name.startswith("/") or ".." in parts or (parts and ":" in parts[0]):
+                        raise ValueError(f"an unsafe path inside ({i.filename})")
+                    if i.flag_bits & 0x1:
+                        raise ValueError("it is protected with a password")
+                    if i.compress_size and i.file_size > 50 * 1024 ** 2 and i.file_size / i.compress_size > ZIP_MAX_RATIO:
+                        raise ValueError(f"{i.filename} unpacks to far more than it should")
+                staged = []
+                for i in infos:
+                    parts = [x for x in i.filename.replace("\\", "/").split("/") if x not in ("", ".")]
+                    target = dest.joinpath(*parts)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    written = 0
+                    with z.open(i) as src, open(target, "wb") as f:
+                        for chunk in iter(lambda: src.read(1024 * 1024), b""):
+                            written += len(chunk)
+                            if written > i.file_size:
+                                raise ValueError(f"{i.filename} is bigger than the archive says")
+                            f.write(chunk)
+                    staged.append((target, parts))
+        except (zipfile.BadZipFile, ValueError, OSError, RuntimeError, NotImplementedError) as e:
+            shutil.rmtree(dest, ignore_errors=True)
+            self.add(zp, "error", folder=self.target, msg=f"The archive could not be unpacked: {e}")
+            return []
+        base = "/".join(x for x in (self.reldir(zp), zp.stem) if x)
+        for target, parts in staged:
+            self.found += 1
+            self.shown_as[target] = f"{zp}!/{'/'.join(parts)}"
+            self.reldirs[target] = "/".join(x for x in (base, *parts[:-1]) if x)
+            self.sort_one(target, parts[-1], out, ignored)
+        self.unpacked += 1
+        self.add(zp, "unpacked", folder="/".join(x for x in (self.target, base) if x),
+                 msg=f"Archive unpacked: {len(staged)} files inside, imported from the folder {zp.stem}")
+        return out
+
     def add(self, path: Path, status: str, **kw):
-        row = {"source": str(path), "status": status, "kosha_folder": kw.get("folder", ""), "file": path.name,
-               "part_number": kw.get("pn", ""), "description": kw.get("desc", ""), "revision": kw.get("rev", ""),
-               "duplicate_of": kw.get("dup", ""), "message": kw.get("msg", ""), "document_id": kw.get("doc_id")}
+        row = {"source": self.shown(path), "status": status, "kosha_folder": kw.get("folder", ""),
+               "file": self.shown(path).replace("\\", "/").rsplit("/", 1)[-1], "part_number": kw.get("pn", ""),
+               "description": kw.get("desc", ""), "revision": kw.get("rev", ""), "duplicate_of": kw.get("dup", ""),
+               "message": kw.get("msg", ""), "document_id": kw.get("doc_id")}
         self.report.append(row)
         key = {"imported": "imported", "would import": "imported", "identical copy": "duplicates",
-               "already in Kosha": "skipped", "ignored": "skipped"}.get(status, "errors")
+               "already in Kosha": "skipped", "ignored": "skipped", "unpacked": "skipped"}.get(status, "errors")
         self.counts[key] += 1
+        if self.job_id:
+            legacy.add_record(self.job_id, row, kw.get("sha"), kw.get("scored"), kw.get("material", ""))
+            if kw.get("doc_id") and not self.dry_run and status != "imported":
+                legacy.add_ref(self.job_id, kw["doc_id"], "path", row["source"])
 
     # -- main
     def run(self) -> dict:
@@ -201,10 +290,7 @@ class Importer:
         self.progress(phase="Scanning folders")
         files, ignored = self.scan()
         for ig in ignored:
-            self.report.append({"source": ig["path"], "status": "ignored", "kosha_folder": "", "file": Path(ig["path"]).name,
-                                "part_number": "", "description": "", "revision": "", "duplicate_of": "",
-                                "message": ig["reason"], "document_id": None})
-        self.counts["skipped"] += len(ignored)
+            self.add(ig["path"], "ignored", msg=ig["reason"])
         total = len(files)
         self.progress(phase="Loading part master", total=total)
         if self.meta_items and not self.dry_run:
@@ -218,6 +304,7 @@ class Importer:
             if r["folder_id"] not in fpath:
                 fpath[r["folder_id"]] = "/".join(f["name"] for f in lifecycle.folder_path(r["folder_id"]))
             known.setdefault(r["blob_sha"], f"{fpath[r['folder_id']]}/{r['filename']}")
+            self.doc_of_sha.setdefault(r["blob_sha"], r["id"])
 
         root_target = None if self.dry_run else lifecycle.ensure_folder_path("Kosha/" + self.target, self.user["id"])
         if self.job_id and root_target:
@@ -232,7 +319,7 @@ class Importer:
             try:
                 hashes[p] = sha256_file(p)
             except OSError as e:
-                self.add(p, "error", msg=f"Cannot read file: {e}")
+                self.add(p, "error", folder=self.target, msg=f"Cannot read file: {e}")
         clusters: dict[str, list[Path]] = {}
         for p, h in hashes.items():
             clusters.setdefault(h, []).append(p)
@@ -265,22 +352,22 @@ class Importer:
                 self.one(p, hashes[p], known, seen_in_run, root_target)
                 self.progress(done=len(self.report) - len(ignored), **self.counts)
             cadproc.DWG_CACHE.clear()
-        for other, rep in sorted(copies.items(), key=lambda kv: str(kv[0]).lower()):
-            rel = str(other.parent.relative_to(self.source)).replace("\\", "/")
-            folder = "/".join(x for x in (self.target, "" if rel == "." else rel) if x)
-            self.add(other, "identical copy", folder=folder,
-                     dup=seen_in_run.get(hashes[rep]) or known.get(hashes[rep]) or str(rep),
+        for other, rep in sorted(copies.items(), key=lambda kv: self.shown(kv[0]).lower()):
+            folder = "/".join(x for x in (self.target, self.reldir(other)) if x)
+            self.add(other, "identical copy", folder=folder, sha=hashes[rep], doc_id=self.doc_of_sha.get(hashes[rep]),
+                     dup=seen_in_run.get(hashes[rep]) or known.get(hashes[rep]) or self.shown(rep),
                      msg="Same content as another file; only one copy was imported")
+        if self.staging:
+            shutil.rmtree(self.staging, ignore_errors=True)
+        if self.job_id:
+            db.update("import_jobs", self.job_id, {"found": self.found, "junk": self.junk, "unpacked": self.unpacked})
         self.progress(phase="Finished", done=total, **self.counts)
         return {"total": total, **self.counts}
 
     def name_quality(self, p: Path):
         """Lower is better: avoid 'Copy of', '(1)', backup/old folders; prefer descriptive names."""
         name = p.name.lower()
-        try:
-            rel = str(p.relative_to(self.source)).lower().replace("\\", "/")
-        except ValueError:
-            rel = str(p).lower()
+        rel = "/".join(x for x in (self.reldir(p), p.name) if x).lower()
         bad = 0
         if name.startswith("copy of") or " - copy" in name or re.search(r"\(\d+\)", name):
             bad += 4
@@ -289,15 +376,15 @@ class Importer:
         return (bad, rel.count("/"), -len(name), rel)
 
     def one(self, p: Path, sha: str, known: dict, seen: dict, root_target):
-        rel_dir = str(p.parent.relative_to(self.source)).replace("\\", "/")
-        rel_dir = "" if rel_dir == "." else rel_dir
+        rel_dir = self.reldir(p)
         kosha_folder = "/".join(x for x in (self.target, rel_dir) if x)
         dup = known.get(sha) or seen.get(sha)
         if dup and dup.lower() == f"kosha/{kosha_folder}/{p.name}".lower():
-            self.add(p, "already in Kosha", folder=kosha_folder, msg="Imported in an earlier run (unchanged)")
+            self.add(p, "already in Kosha", folder=kosha_folder, sha=sha, doc_id=self.doc_of_sha.get(sha),
+                     msg="Imported in an earlier run (unchanged)")
             return
         if dup and self.skip_identical:
-            self.add(p, "identical copy", folder=kosha_folder, dup=dup,
+            self.add(p, "identical copy", folder=kosha_folder, dup=dup, sha=sha, doc_id=self.doc_of_sha.get(sha),
                      msg="Same content as a file already imported; not imported again")
             return
         meta = self.meta_by_file.get(p.name.lower()) or self.meta_by_file.get(p.stem.lower()) or {}
@@ -308,7 +395,7 @@ class Importer:
             pn, desc = lifecycle.parse_name(p.name)
             seen[sha] = f"{kosha_folder}/{p.name}"
             self.add(p, "would import", folder=kosha_folder, pn=props.get("part_number") or pn,
-                     desc=props.get("description") or desc, rev=props.get("revision", ""))
+                     desc=props.get("description") or desc, rev=props.get("revision", ""), sha=sha)
             return
         try:
             fid = lifecycle.ensure_subfolder(root_target, rel_dir, self.user["id"]) if rel_dir else root_target
@@ -316,21 +403,39 @@ class Importer:
                               (fid, p.name))
             if existing:
                 seen[sha] = f"{kosha_folder}/{p.name}"
-                self.add(p, "already in Kosha", folder=kosha_folder, doc_id=existing["id"],
+                self.add(p, "already in Kosha", folder=kosha_folder, doc_id=existing["id"], sha=sha,
                          msg="A file with this name is already in the target folder (skipped; resumable import)")
                 return
             mtime = datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc).replace(microsecond=0).isoformat()
             with open(p, "rb") as f:
-                d = lifecycle.checkin(self.user, fid, p.name, f, f"Imported from {p}", False, props,
-                                      extra_meta={"source_path": str(p), "source_modified": mtime, "imported": True})
+                d = lifecycle.checkin(self.user, fid, p.name, f, f"Imported from {self.shown(p)}", False, props,
+                                      extra_meta={"source_path": self.shown(p), "source_modified": mtime,
+                                                  "imported": True})
             if self.state == "released":
                 self.release_quietly(d)
             seen[sha] = f"{kosha_folder}/{p.name}"
+            self.doc_of_sha[sha] = d["id"]
+            scored, material = self.score(d, props)
             self.add(p, "imported", folder=kosha_folder, pn=d["part_number"], desc=d["description"], rev=d["revision"],
-                     doc_id=d["id"], msg=self.note_for(d))
+                     doc_id=d["id"], msg=self.note_for(d), sha=sha, scored=scored, material=material)
+            if self.job_id:
+                self.cross_references(d)
         except Exception as e:
             log.warning("Import failed for %s: %s", p, e)
             self.add(p, "error", folder=kosha_folder, msg=getattr(e, "message", None) or str(e))
+
+    def score(self, d: dict, props: dict) -> tuple[tuple[int, list[str]], str]:
+        v = db.one("SELECT meta_json, preview_kind FROM versions WHERE document_id = ? AND version = 1", (d["id"],))
+        tb = (json.loads(v["meta_json"] or "{}") if v else {}).get("title_block") or {}
+        material = (props.get("material") or tb.get("material") or "").strip()
+        return legacy.score(d, props, tb, bool(v and v["preview_kind"])), material
+
+    def cross_references(self, d: dict) -> None:
+        """Old paths and old numbers stay searchable for ever (specification 11.1)."""
+        legacy.add_ref(self.job_id, d["id"], "path", self.report[-1]["source"])
+        name_pn, _ = lifecycle.parse_name(d["filename"])
+        if name_pn and name_pn.upper() != (d["part_number"] or "").upper():
+            legacy.add_ref(self.job_id, d["id"], "old_number", name_pn.upper())
 
     @staticmethod
     def note_for(d: dict) -> str:
@@ -416,7 +521,8 @@ def start_job(user: dict, source: str, target: str, options: dict, metadata: tup
         try:
             imp = Importer(source, target, user, options.get("state", "released"), options.get("keep_revision", True),
                            options.get("skip_identical", True), options.get("groups"), set(options.get("extensions") or []),
-                           metadata, options.get("dry_run", False), job_id, progress)
+                           metadata, options.get("dry_run", False), job_id, progress,
+                           options.get("unpack_archives", True))
             res = imp.run()
             cancelled = db.scalar("SELECT cancel FROM import_jobs WHERE id = ?", (job_id,))
             status = "cancelled" if cancelled else "done"

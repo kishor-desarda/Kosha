@@ -335,6 +335,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "default_theme": "system",
     # dates, numbers and money (kosha/locales.py): India by default
     "locale": "en-IN",
+    # the practice folder, Training — safe to try (kosha/practice.py): never sent to the ERP, emptied once a day
+    "practice_folder": True,
     # Kosha's own ERP settings; the connector's address and keys belong to the connector add-in.
     "erp": {
         "enabled": False,

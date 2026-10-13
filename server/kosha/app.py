@@ -57,6 +57,8 @@ def bootstrap() -> None:
     db.execute("UPDATE cp_runs SET status = 'failed', message = 'Server restarted' WHERE status = 'running'")
     if not db.scalar("SELECT COUNT(*) FROM folders"):
         db.insert("folders", {"parent_id": None, "name": "Kosha", "created_at": db.now()})
+    from . import practice
+    practice.ensure()
     addins.registry.discover()
     try:
         from .vault import seal_existing

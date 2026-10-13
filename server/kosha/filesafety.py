@@ -127,8 +127,11 @@ def restore(user: dict, doc_id: int) -> dict:
                   (folder, name)):
             raise conflict(f"{name} already exists in that folder. Rename or move that file first, then put this one "
                            "back.", "name_taken")
-        db.update("documents", doc_id, {"deleted": 0, "deleted_at": None, "deleted_by": None, "folder_id": folder,
-                                        "updated_at": db.now()})
+        upd = {"deleted": 0, "deleted_at": None, "deleted_by": None, "folder_id": folder, "updated_at": db.now()}
+        if not d["item_id"] and d["part_number"]:        # its part was removed while it was in the bin (Undo batch)
+            from .lifecycle import _link_item
+            upd["item_id"] = _link_item(d["part_number"], d["description"], d["doc_type"], user["id"])
+        db.update("documents", doc_id, upd)
         db.audit(user["id"], "restore", "document", doc_id, f"{name} to {folder_text(folder) or 'the top folder'}")
     return db.one("SELECT * FROM documents WHERE id = ?", (doc_id,))
 
