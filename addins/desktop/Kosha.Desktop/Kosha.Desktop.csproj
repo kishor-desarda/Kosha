@@ -3,8 +3,9 @@
   <!--
     Kosha Desktop: a small Windows tray application and Explorer right-click verbs for files that are not CAD
     files (Office documents, PDFs, images). The windows live here; everything else is in Kosha.Desktop.Core,
-    which is tested in CI. Build:  dotnet publish addins\desktop\Kosha.Desktop -c Release -r win-x64 --self-contained false
-    It needs the .NET 8 Desktop Runtime on the PC (or publish with  self-contained true). Install with install.ps1.
+    which is tested in CI. Build it with "dotnet publish addins\desktop\Kosha.Desktop -c Release -r win-x64" and the
+    option self-contained set to false; the PC then needs the .NET 8 Desktop Runtime (set it to true to bundle the
+    runtime instead). Install with install.ps1. (An XML comment may not contain two hyphens in a row.)
   -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>

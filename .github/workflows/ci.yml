@@ -3,7 +3,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, "wip/**"]     # wip/<topic>: work in progress that needs the full CI (C# builds) before merging
   pull_request:
   workflow_dispatch:
 
@@ -100,8 +100,8 @@ jobs:
         run: python scripts/spdx_headers.py
       - name: Web client syntax
         run: node scripts/check_js.mjs
-      - name: Office add-in manifest and AutoCAD bundle are well-formed XML
-        run: python -c "import sys, xml.etree.ElementTree as ET; [ET.parse(f) for f in sys.argv[1:]]" web/office-addin/manifest.xml addins/autocad/Kosha.bundle/PackageContents.xml
+      - name: XML files (project files, Office manifest, AutoCAD bundle) are well-formed
+        run: python -c "import sys, xml.etree.ElementTree as ET; [ET.parse(f) for f in sys.argv[1:]]" $(git ls-files '*.csproj' '*.props' '*.targets' '*.xml' '*.config' '*.resx' '*.addin')
       - name: PowerShell scripts (Kosha Desktop install and uninstall)
         shell: pwsh
         run: |
