@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from starlette.responses import Response
 
-from .. import access, addins, apisafety, boms, changes, db, erp, itemmaster, lifecycle, similarity
+from .. import access, addins, apisafety, boms, changes, db, erp, erp_inbound, itemmaster, lifecycle, similarity
 from ..cad import process as cadproc
 from ..web import ApiError, Req, api, as_bool, bad, conflict, not_found
 from ..packs import PackConfig
 from .core import DOC_SELECT, _with_preview
 
 from kosha_sdk import AddinError  # noqa: E402
+
+log = logging.getLogger("kosha.api.eng")
 
 # ------------------------------------------------------------------ items --
 
@@ -412,6 +415,25 @@ def erp_settings(req: Req):
     return cfg
 
 
+def _category_map(v) -> dict:
+    """{CATEGORY: {item_group, hsn}} with empty entries left out; a wrong HSN code is refused with an example."""
+    import re
+    if not isinstance(v, dict):
+        raise bad("The category mapping must list categories with their item group and HSN code.")
+    out = {}
+    for code, m in v.items():
+        code = str(code).strip().upper()
+        if not code or not isinstance(m, dict):
+            continue
+        group = " ".join(str(m.get("item_group") or "").split())[:140]
+        hsn = str(m.get("hsn") or "").strip()
+        if hsn and not re.match(r"^\d{4}(\d{2}){0,2}$", hsn):
+            raise bad(f"The HSN code for {code} has 4, 6 or 8 digits, for example 84833000.")
+        if group or hsn:
+            out[code] = {"item_group": group, "hsn": hsn}
+    return out
+
+
 @api("PUT", "/api/erp/settings", role="admin")
 def put_erp_settings(req: Req):
     body = req.body if isinstance(req.body, dict) else {}
@@ -424,6 +446,10 @@ def put_erp_settings(req: Req):
             v = as_bool(v)
         if k == "uom_map" and not isinstance(v, dict):
             raise bad("uom_map must be an object")
+        if k in ("attach_pdfs", "nightly_reconcile"):
+            v = as_bool(v)
+        if k == "category_map":
+            v = _category_map(v)
         if k == "connector" and v and v not in {a.id for a in addins.registry.by_kind("erp-connector", enabled_only=False)}:
             raise bad("Choose one of the ERP connector add-ins that are installed.")
         generic[k] = v
@@ -480,6 +506,12 @@ def _apply_erp_events(events) -> dict:
                 continue
             projects_made += made
             continue
+        if e.kind in erp_inbound.ORDER_KINDS or e.kind in erp_inbound.PARTY_KINDS or e.kind == "price_list":
+            try:
+                queued += erp_inbound.apply(e)
+            except Exception:       # one bad event must not lose the others; the ERP's own record is untouched
+                log.exception("Could not take in the ERP event %s %s", e.kind, e.code)
+            continue
         item = db.one("SELECT id FROM items WHERE part_number = ? COLLATE NOCASE", (e.code,))
         if not item:
             continue
@@ -502,13 +534,15 @@ def erp_jobs(req: Req):
     for r in rows:
         if r["kind"] in ("item", "refresh"):
             it = db.one("SELECT part_number, description FROM items WHERE id = ?", (r["entity_id"],))
+        elif r["kind"] == "attach":
+            it = db.one("SELECT part_number, filename AS description FROM documents WHERE id = ?", (r["entity_id"],))
         else:
             it = db.one("SELECT i.part_number, i.description, b.revision FROM boms b JOIN items i ON i.id = b.item_id "
                         "WHERE b.id = ?", (r["entity_id"],))
         r["label"] = (f"{it['part_number']} {it['description']}" + (f" (BOM rev {it['revision']})" if r["kind"] == "bom" else "")) \
             if it else f"#{r['entity_id']}"
     counts = {s: db.scalar("SELECT COUNT(*) FROM erp_jobs WHERE status = ?", (s,))
-              for s in ("pending", "running", "sent", "failed", "dry_run")}
+              for s in ("pending", "running", "sent", "failed", "dry_run", "skipped")}
     return {"jobs": rows, "counts": counts}
 
 

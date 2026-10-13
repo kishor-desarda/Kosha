@@ -1,14 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
 id: org.kosha.erpnext
 name: ERPNext connector
-version: 0.5.0
+version: 0.6.0
 publisher: Kosha project
 licence: Apache-2.0
 kosha: ">=0.5,<2.0"
 kind: [erp-connector]
 description: >
-  Sends released items and BOMs to ERPNext through its REST API (children first, BOMs
-  submitted), reads stock and valuation back, and adds a Kosha tab inside ERPNext.
+  Sends released items, BOMs and stamped drawing PDFs to ERPNext through its REST API (children
+  first, BOMs submitted), reads stock and valuation back, takes in orders, customers and suppliers,
+  and adds a Kosha tab inside ERPNext.
 help: >
   In ERPNext, open your integration user › Settings › API Access › Generate Keys, and paste
   the key and secret here. The user needs permission to create Items and BOMs and to read Bins.
@@ -25,6 +26,10 @@ settings:
   default_item_group: {type: string, default: Products, label: Default item group, hint: "Used for new items"}
   revision_field:     {type: string, label: Revision custom field, hint: "Optional, e.g. custom_kosha_revision on Item and BOM"}
   material_field:     {type: string, label: Material custom field, hint: "Optional, e.g. custom_kosha_material"}
+  hsn_field:          {type: string, label: HSN custom field, hint: "Optional, e.g. gst_hsn_code (India compliance app)"}
+  oem_field:          {type: string, label: OEM references custom field, hint: "Optional text field, e.g. custom_kosha_oem_refs"}
+  customer_field:     {type: string, label: Customer restriction custom field, hint: "Optional, e.g. custom_kosha_customer"}
+  spares_only_field:  {type: string, label: Spares only custom field, hint: "Optional check field, e.g. custom_kosha_spares_only"}
   submit_boms:        {type: bool, default: true, label: Submit BOMs in ERPNext after creating them}
   verify_tls:         {type: bool, default: true, label: Verify the HTTPS certificate}
   timeout_s:          {type: int, default: 30, label: Time-out per call (seconds)}

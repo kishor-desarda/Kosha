@@ -87,6 +87,19 @@ def start(user_id: int | None) -> int:
     return run_id
 
 
+def nightly() -> int | None:
+    """The nightly check (run by the health worker): only when the ERP is connected for real and the admin left it on.
+    Returns the run's id, or None when it was not started. Differences show on the health page."""
+    cfg = erp.settings()
+    if not (cfg.get("enabled") and not cfg.get("dry_run") and cfg.get("nightly_reconcile", True)):
+        return None
+    try:
+        return start(None)
+    except (ReconcileError, erp.ErpError) as e:
+        log.info("Nightly ERP check not started: %s", e)
+        return None
+
+
 def cancel(run_id: int) -> None:
     db.execute("UPDATE erp_recon_runs SET cancel = 1 WHERE id = ? AND status = 'running'", (run_id,))
 

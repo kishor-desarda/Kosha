@@ -41,7 +41,8 @@ SCREENS = ["#/home", "#/files", "#/boms", "#/changes", "#/erp", "#/common", "#/a
            "#/admin?tab=notify", "#/ask", "#/admin?tab=ai", "#/admin?tab=access",
            "#/ecrs", "#/ecr/1", "#/change/1", "#/admin?tab=approvals",
            "#/admin?tab=webhooks", "#/bin", "#/shares", "#/doc/1?tab=outputs",
-           "#/machines", "#/bom-view/1?view=in_work&cost=1", "#/transmittals"]
+           "#/machines", "#/bom-view/1?view=in_work&cost=1", "#/transmittals", "#/erp?tab=orders",
+           "#/erp?tab=mapping"]
 ADMIN_ONLY = ("#/admin", "#/erp?tab=")
 
 

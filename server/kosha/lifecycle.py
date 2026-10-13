@@ -458,9 +458,14 @@ def set_state(user: dict, doc_id: int, to: str, comment: str = "", co_id: int | 
     if released_doc:
         from . import outputs
         outputs.on_release(doc_id, user)      # stamped PDF and release sheet; never undoes the release
+        from . import erp
+        erp.on_outputs(doc_id, user["id"], f"{released_doc['filename']} rev {released_doc['revision']}")
         from . import transmittals
         transmittals.on_release(doc_id)        # tell senders of open transmittals that carry an older revision
     if to in ("obsolete", "spares_only"):
+        if d["item_id"]:
+            from . import erp
+            erp.on_status(d["item_id"], user["id"], f"{d['filename']} made " + ("spares only" if to == "spares_only" else "obsolete"))
         from .addins import registry
         registry.emit("revision.obsoleted", {"document_id": doc_id, "item_id": d["item_id"], "state": to,
                                              "filename": d["filename"], "revision": d["revision"],

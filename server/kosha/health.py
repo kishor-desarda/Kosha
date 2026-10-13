@@ -260,6 +260,11 @@ def problems() -> list[dict]:
         out.append({"key": "erp_queue", "severity": "warning", "title": f"{erp} ERP transfer(s) waiting for over "
                     f"{QUEUE_STUCK_HOURS} hours", "text": "Releases are safe in Kosha; they reach the ERP once it "
                     "answers. Open ERP › Queue to see the reason and send them again."})
+    recon = db.one("SELECT * FROM erp_recon_runs WHERE started_by IS NULL AND status = 'done' ORDER BY id DESC LIMIT 1")
+    if recon and recon["differences"]:
+        out.append({"key": "erp_reconcile", "severity": "warning", "title": f"The nightly ERP check found "
+                    f"{recon['differences']} difference(s)", "text": "Open ERP sync › Reconciliation to see them; "
+                    f"{recon['fixable']} can be fixed by sending again."})
     notes = db.scalar("SELECT COUNT(*) FROM notify_outbox WHERE status = 'failed' AND updated_at >= ?",
                       (_iso(_now() - timedelta(days=1)),))
     if notes:
@@ -292,7 +297,7 @@ def send_alerts() -> int:
 
 # ------------------------------------------------------------------ timing --
 
-PERIODS = {"fingerprints": 3600, "consistency": 24 * 3600, "alerts": 3600}
+PERIODS = {"fingerprints": 3600, "consistency": 24 * 3600, "erp_reconcile": 24 * 3600, "alerts": 3600}
 
 
 def run_due() -> dict:
@@ -309,6 +314,9 @@ def run_due() -> dict:
                 done[name] = check_fingerprints()
             elif name == "consistency":
                 done[name] = check_consistency()
+            elif name == "erp_reconcile":
+                from . import erp_reconcile
+                done[name] = erp_reconcile.nightly()
             else:
                 done[name] = send_alerts()
         except Exception:

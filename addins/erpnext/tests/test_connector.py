@@ -166,3 +166,50 @@ def test_webhook_reads_only_known_events(erp_url):
         c.handle_webhook(signing.sign("wrong", body), body)
     with pytest.raises(ErpError, match="No webhook secret"):
         connector(erp_url).handle_webhook(signing.sign("s3cret", body), body)
+
+
+def test_hsn_oem_customer_and_status_go_to_the_named_fields(erp_url):
+    c = connector(erp_url, hsn_field="gst_hsn_code", oem_field="custom_kosha_oem_refs",
+                  customer_field="custom_kosha_customer", spares_only_field="custom_kosha_spares_only")
+    item = ErpItem("DE-700", "IMPELLER 200 DIA", "A", "Nos", hsn="84139190", oem_refs=("ABC 12-345",),
+                   customer="Example Foods")
+    assert c.upsert_item(item).action == "created"
+    it = FE.STATE["items"]["DE-700"]
+    assert (it["gst_hsn_code"], it["custom_kosha_oem_refs"], it["custom_kosha_customer"]) == \
+        ("84139190", "ABC 12-345", "Example Foods")
+    assert it["custom_kosha_spares_only"] == 0 and not it["disabled"]
+    assert c.upsert_item(item).action == "unchanged"
+    from dataclasses import replace
+    assert c.upsert_item(replace(item, status="spares_only")).action == "updated"
+    assert FE.STATE["items"]["DE-700"]["custom_kosha_spares_only"] == 1 and not FE.STATE["items"]["DE-700"]["disabled"]
+    assert c.upsert_item(replace(item, status="obsolete")).action == "updated"
+    assert FE.STATE["items"]["DE-700"]["disabled"] == 1
+    # without the settings nothing extra is sent, so an ERPNext without those fields is not disturbed
+    connector(erp_url).upsert_item(ErpItem("DE-701", "SHAFT", "A", "Nos", hsn="8483"))
+    assert "gst_hsn_code" not in FE.STATE["items"]["DE-701"]
+
+
+def test_released_pdf_is_attached_and_the_older_one_taken_off(erp_url):
+    c = connector(erp_url)
+    c.upsert_item(ErpItem("DE-710", "BEARING HOUSING", "A", "Nos"))
+    FE.STATE["files"]["HAND-1"] = {"name": "HAND-1", "file_name": "supplier quote.pdf", "file_size": 3,
+                                   "attached_to_doctype": "Item", "attached_to_name": "DE-710"}
+    a = c.attach_file("DE-710", "A", "DE-710 Rev A.pdf", b"%PDF-A")
+    assert a.action == "created"
+    assert c.attach_file("DE-710", "A", "DE-710 Rev A.pdf", b"%PDF-A").action == "unchanged"
+    b = c.attach_file("DE-710", "B", "DE-710 Rev B.pdf", b"%PDF-BB")
+    assert b.action == "created"
+    on_item = sorted(f["file_name"] for f in FE.STATE["files"].values() if f["attached_to_name"] == "DE-710")
+    assert on_item == ["DE-710 Rev B.pdf", "supplier quote.pdf"]       # files attached by hand stay
+    assert FE.STATE["files"][b.external_id]["content"] == b"%PDF-BB"
+    with pytest.raises(ErpError, match="not in ERPNext yet"):
+        c.attach_file("DE-799", "A", "DE-799 Rev A.pdf", b"%PDF")
+
+
+def test_webhook_takes_orders_and_parties(erp_url):
+    c = connector(erp_url, webhook_secret="s3cret")
+    body = json.dumps({"events": [{"kind": "purchase_order", "code": "PO-26-0007", "detail": "Example Castings|DE-100"},
+                                  {"kind": "customer", "code": "Example Foods"},
+                                  {"kind": "price_list", "code": "Standard Buying"}]}).encode()
+    assert [e.kind for e in c.handle_webhook(signing.sign("s3cret", body), body)] == \
+        ["purchase_order", "customer", "price_list"]

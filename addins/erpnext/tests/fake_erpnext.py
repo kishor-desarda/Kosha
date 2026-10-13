@@ -2,6 +2,7 @@
 """In-memory stand-in for the ERPNext REST API, used by the Kosha and connector tests."""
 from __future__ import annotations
 
+import base64
 import json
 import re
 
@@ -11,7 +12,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 KEY, SECRET = "testkey", "testsecret"
-STATE = {"items": {}, "boms": {}, "bins": {}, "calls": []}
+STATE = {"items": {}, "boms": {}, "bins": {}, "files": {}, "calls": []}
 
 
 def _auth(request: Request):
@@ -34,6 +35,8 @@ def _matches(row: dict, filters: list) -> bool:
         if op == "<" and not (have or 0) < value:
             return False
         if op == "is" and (value == "set") != bool(have):
+            return False
+        if op == "like" and not re.fullmatch(re.escape(value).replace("%", ".*"), str(have or "")):
             return False
     return True
 
@@ -137,6 +140,36 @@ async def bins(request: Request):
     return JSONResponse({"data": STATE["bins"].get(code, [])})
 
 
+async def files(request: Request):
+    if (r := _auth(request)):
+        return r
+    if request.method == "GET":
+        flt = json.loads(request.query_params.get("filters", "[]"))
+        fields = json.loads(request.query_params.get("fields", '["name"]'))
+        rows = [f for f in STATE["files"].values() if _matches(f, flt)]
+        return JSONResponse({"data": [{k: f.get(k) for k in fields} for f in rows]})
+    body = await request.json()
+    STATE["calls"].append(("POST", "File", body.get("file_name")))
+    if body.get("attached_to_name") not in STATE["items"]:
+        return _err(f"Item {body.get('attached_to_name')} not found")
+    content = base64.b64decode(body["content"]) if body.get("decode") else body["content"].encode()
+    name = f"FILE-{len(STATE['files']) + 1:04d}"
+    STATE["files"][name] = {"name": name, "file_name": body["file_name"], "file_size": len(content), "content": content,
+                            "attached_to_doctype": body.get("attached_to_doctype"),
+                            "attached_to_name": body.get("attached_to_name"), "is_private": body.get("is_private", 0)}
+    return JSONResponse({"data": {k: v for k, v in STATE["files"][name].items() if k != "content"}})
+
+
+async def file(request: Request):
+    if (r := _auth(request)):
+        return r
+    name = request.path_params["name"]
+    STATE["calls"].append(("DELETE", "File", name))
+    if STATE["files"].pop(name, None) is None:
+        return JSONResponse({"exc_type": "DoesNotExistError"}, status_code=404)
+    return JSONResponse({"message": "ok"})
+
+
 app = Starlette(routes=[
     Route("/api/method/frappe.auth.get_logged_user", whoami),
     Route("/api/resource/Item", items, methods=["GET", "POST"]),
@@ -144,5 +177,6 @@ app = Starlette(routes=[
     Route("/api/resource/BOM", boms, methods=["GET", "POST"]),
     Route("/api/resource/BOM/{name:path}", bom, methods=["GET", "PUT"]),
     Route("/api/resource/Bin", bins, methods=["GET"]),
+    Route("/api/resource/File", files, methods=["GET", "POST"]),
+    Route("/api/resource/File/{name:path}", file, methods=["DELETE"]),
 ])
-del re

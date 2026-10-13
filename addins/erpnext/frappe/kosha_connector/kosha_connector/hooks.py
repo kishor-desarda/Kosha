@@ -17,4 +17,11 @@ doc_events = {
     "BOM": {"on_cancel": "kosha_connector.notify.bom_cancelled"},
     "Stock Ledger Entry": {"on_submit": "kosha_connector.notify.stock_changed"},
     "Sales Order": {"on_submit": "kosha_connector.notify.sales_order_submitted"},
+    "Purchase Order": {"on_submit": "kosha_connector.notify.purchase_order_submitted",
+                       "on_cancel": "kosha_connector.notify.purchase_order_cancelled"},
+    "Request for Quotation": {"on_submit": "kosha_connector.notify.rfq_submitted"},
+    "Subcontracting Order": {"on_submit": "kosha_connector.notify.subcontracting_order_submitted"},
+    "Customer": {"on_update": "kosha_connector.notify.customer_changed"},
+    "Supplier": {"on_update": "kosha_connector.notify.supplier_changed"},
+    "Item Price": {"on_update": "kosha_connector.notify.price_list_changed"},
 }
