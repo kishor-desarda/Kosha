@@ -338,3 +338,8 @@ dialog.dlg::backdrop { background: rgba(17, 20, 23, .45); }
 .st-disabled { background: var(--obs-bg); color: var(--obs); }
 .st-incompatible, .st-invalid { background: var(--err-bg); color: var(--err); }
 .perm-list { margin: 8px 0 0; padding-left: 18px; line-height: 1.6; }
+
+/* filter chips (ERP reconciliation, delivery log) */
+.filter-chips button.chip { border: 1px solid var(--line); background: var(--panel); color: var(--muted); cursor: pointer; padding: 3px 9px; }
+.filter-chips button.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--ink); }
+.st-sending { background: var(--rev-bg); color: var(--rev); }
