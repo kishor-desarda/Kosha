@@ -6,6 +6,7 @@ on:
     branches: [main, "wip/**"]     # wip/<topic>: work in progress that needs the full CI (C# builds) before merging
   pull_request:
   workflow_dispatch:
+  workflow_call:                   # the release workflow runs the full CI first
 
 permissions:
   contents: read
