@@ -119,9 +119,11 @@ def test_reconciliation(kosha, erpnext):
     again = admin.call("POST", f"/api/erp/reconcile/{d['run']['id']}/resend")
     assert again["queued"] == 0                                    # already queued once: nothing twice
 
-    # 7. checking again leaves only what people must fix in ERPNext by hand
+    # 7. checking again leaves only what people must fix in ERPNext by hand (the obsolete part's queued status job
+    # has disabled it in ERPNext meanwhile)
+    assert FE.STATE["items"]["DE-100-004"]["disabled"] == 1
     d = run_check(admin)
-    assert set(_by_check(d)) == {("DE-100-002", "uom"), ("DE-100-004", "obsolete_active"), ("DE-999-999", "erp_only")}
+    assert set(_by_check(d)) == {("DE-100-002", "uom"), ("DE-999-999", "erp_only")}
     assert d["run"]["fixable"] == 0 and len(d["runs"]) == 3
 
 

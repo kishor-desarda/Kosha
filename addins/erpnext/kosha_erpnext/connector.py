@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 """ERPNext (Frappe) connector.
 
-    Item  -> /api/resource/Item   create, or update only when something changed
+    Item  -> /api/resource/Item   create, or update only when something changed (HSN, OEM references, spares only
+                                  and customer go to the fields named in the settings; obsolete disables the item)
     BOM   -> /api/resource/BOM    create and submit when the lines differ from the default BOM
+    PDF   -> /api/resource/File   the released drawing attached to its Item; earlier revisions taken off
     Stock <- /api/resource/Bin and Item.valuation_rate
     Reconciliation <- /api/resource/Item and BOM, read only
 
@@ -12,6 +14,7 @@ Every method is idempotent, as the ErpConnector contract requires.
 """
 from __future__ import annotations
 
+import base64
 import html
 import json
 import re
@@ -24,7 +27,8 @@ from kosha_sdk.http import HttpError
 
 from . import signing
 
-EVENT_KINDS = {"item_changed", "stock_changed", "bom_cancelled", "sales_order"}
+EVENT_KINDS = {"item_changed", "stock_changed", "bom_cancelled", "sales_order", "purchase_order", "rfq",
+               "subcontracting_order", "customer", "supplier", "price_list"}
 
 
 def _q(value: str) -> str:
@@ -101,6 +105,16 @@ class ERPNextConnector(ErpConnector):
         if item.weight_kg:
             common["weight_per_unit"] = item.weight_kg
             common["weight_uom"] = "Kg"
+        if cfg.get("hsn_field") and item.hsn:
+            common[cfg["hsn_field"]] = item.hsn
+        if cfg.get("oem_field"):
+            common[cfg["oem_field"]] = "; ".join(item.oem_refs)
+        if cfg.get("customer_field"):
+            common[cfg["customer_field"]] = item.customer
+        if cfg.get("spares_only_field"):
+            common[cfg["spares_only_field"]] = 1 if item.status == "spares_only" else 0
+        if item.status == "obsolete":
+            common["disabled"] = 1          # only ever switched off from Kosha; switching back on is the ERP's call
         existing = self._get_item(item.code)
         if existing:
             if all(existing.get(k) == v for k, v in common.items()):
@@ -234,3 +248,28 @@ class ERPNextConnector(ErpConnector):
             if len(rows) < page:
                 return out
             start += page
+
+    # ------------------------------------------------- attachments
+    def attach_file(self, code: str, revision: str, filename: str, content: bytes) -> ErpResult:
+        """Attach the released PDF to the Item as a private file, then take off the PDFs of earlier revisions that
+        Kosha attached (named "<code> Rev <x>.pdf"). Files people attached by hand are never touched."""
+        if not self._get_item(code):
+            raise ErpError(f"The item {code} is not in ERPNext yet. It is sent first; retry this afterwards.")
+        files = self._call("GET", "/api/resource/File", params={
+            "filters": [["attached_to_doctype", "=", "Item"], ["attached_to_name", "=", code],
+                        ["file_name", "like", f"{code} Rev %"]],
+            "fields": ["name", "file_name", "file_size"], "limit_page_length": 100}).get("data") or []
+        same = [f for f in files if f.get("file_name") == filename and int(f.get("file_size") or 0) == len(content)]
+        if same:
+            result = ErpResult.unchanged(f"{filename} already attached", same[0]["name"])
+        else:
+            created = self._call("POST", "/api/resource/File", {
+                "file_name": filename, "attached_to_doctype": "Item", "attached_to_name": code, "is_private": 1,
+                "content": base64.b64encode(content).decode("ascii"), "decode": 1}).get("data") or {}
+            result = ErpResult.created(f"{filename} attached", {"file_name": filename, "size": len(content)},
+                                       str(created.get("name") or ""))
+        keep = {result.external_id}
+        for f in files:                     # new one first, old ones after: the item is never without its drawing
+            if f.get("name") not in keep:
+                self._call("DELETE", f"/api/resource/File/{_q(f['name'])}", allow_404=True)
+        return result

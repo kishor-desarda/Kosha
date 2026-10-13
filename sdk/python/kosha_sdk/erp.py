@@ -9,6 +9,9 @@ it again after a crash or a retry, and the second call must not create a second 
 Reading back (optional): `fetch_items`, `fetch_bom` and `list_items_from_kosha`
 let Kosha compare its released items and BOMs with what the ERP holds (reconciliation). They
 only read; a connector that does not offer them raises `ErpNotSupported` and Kosha says so.
+
+Attachments (optional): `attach_file` puts the released, stamped PDF of a drawing on the ERP item
+and takes off the PDFs of earlier revisions that Kosha attached.
 """
 from __future__ import annotations
 
@@ -40,6 +43,10 @@ class ErpItem:
     weight_kg: float | None = None
     item_group: str = ""
     make_or_buy: str = ""
+    hsn: str = ""                 # HSN code for GST (India), from the item or its category
+    status: str = ""              # "" (in use), "spares_only" (not for new machines) or "obsolete" (disable it)
+    oem_refs: tuple[str, ...] = ()  # "ABC 12-345 (model X)": other makers' numbers this part replaces
+    customer: str = ""            # set when the part is restricted to one customer
 
     @property
     def payload_hash(self) -> str:
@@ -83,8 +90,13 @@ class ErpResult:
 
 @dataclass(frozen=True)
 class ErpEvent:
-    """Something that changed in the ERP and matters to Kosha: `item_changed`, `stock_changed`, `bom_cancelled`,
-    `sales_order` (code: the order number; detail: "customer|delivery date")."""
+    """Something that changed in the ERP and matters to Kosha:
+
+    * `item_changed`, `stock_changed` (code: the item code), `bom_cancelled` (code: the item; detail: the BOM);
+    * `sales_order` (code: the order number; detail: "customer|delivery date");
+    * `purchase_order`, `rfq`, `subcontracting_order` (code: the order number; detail: "supplier|code,code,...");
+    * `customer`, `supplier` (code: the name as the ERP shows it; detail: "disabled" when it was switched off);
+    * `price_list` (code: the price list's name)."""
     kind: str
     code: str
     detail: str = ""
@@ -164,3 +176,9 @@ class ErpConnector(ABC):
         """Codes of every item the ERP marks as created by Kosha, so Kosha can find items it no longer has.
         Must only read."""
         raise ErpNotSupported("This connector cannot list the items Kosha created in the ERP.")
+
+    # ------------------------------------------------- optional: attachments
+    def attach_file(self, code: str, revision: str, filename: str, content: bytes) -> ErpResult:
+        """Attach `content` (the released PDF of `revision`) to the item `code`, and remove the files of earlier
+        revisions that Kosha attached before. Return `unchanged` when the same file is already there."""
+        raise ErpNotSupported("This connector cannot attach files to ERP items.")
