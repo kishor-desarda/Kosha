@@ -167,7 +167,7 @@ def test_change_log_draft_is_editable_and_its_use_is_audited(server):
     assert sec["what"].startswith("- Hub seat") and sec["effect"] == "- Shafts in stock need rework"
     assert sug["result"]["from_rules"] == []
     sent = admin.call("GET", f"/api/ai/requests/{sug['id']}/sent")["sent"]["messages"][1]["content"]
-    assert "Change order ECO-0001" in sent and "Fretting seen at two sites" in sent
+    assert f"Change order {co['number']}" in sent and "Fretting seen at two sites" in sent
     assert "Asha" not in sent                                        # people's names are not sent by default
     with server.db() as con:
         gens = [r[0] for r in con.execute("SELECT generator FROM changelog_drafts WHERE subject = 'change_order' AND "

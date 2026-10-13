@@ -190,7 +190,8 @@ async function signOutEverywhere(u) {
 }
 
 async function rules(body) {
-  const s = await get('/api/settings');
+  const [s, cap] = await Promise.all([get('/api/settings'), get('/api/numbering/capacity')]);
+  const full = cap.series.filter(c => c.percent >= 50).slice(0, 20);
   const rx = h('input', { class: 'input mono', id: 'st-rx', value: s.part_number_regex });
   const skip = h('input', { class: 'input mono', id: 'st-skip', value: s.revision_skip_letters });
   const first = h('input', { class: 'input mono', id: 'st-first', value: s.first_revision, style: { maxWidth: '120px' } });
@@ -212,6 +213,11 @@ async function rules(body) {
       h('div', { class: 'field' }, h('label', { for: 'st-first' }, 'First revision'), first),
       h('div', { class: 'field' }, h('label', { for: 'st-skip' }, 'Letters never used for revisions'), skip, h('span', { class: 'hint' }, 'ASME Y14.35 skips I, O, Q, S, X, Z'))),
     h('label', { class: 'check' }, eco, 'Files can only be released through an approved change order'),
+    h('div', { class: 'field' }, h('label', null, 'How full the number series are'),
+      full.length ? h('table', { class: 'tbl' }, h('tbody', null, full.map(c => h('tr', null,
+        h('td', { class: 'mono' }, c.series), h('td', null, `${c.used.toLocaleString()} of ${c.of.toLocaleString()} used`),
+        h('td', null, c.warning ? h('span', { class: 'chip out' }, icon('warn', 12), `${c.percent}%: plan a new series`) : `${c.percent}%`)))))
+        : h('span', { class: 'hint' }, `All ${cap.series.length} series are less than half used. Kosha warns the admins when one reaches 80%.`)),
     h('div', null, h('button', { class: 'btn primary', onclick: async () => {
       try { await put('/api/settings', { part_number_regex: rx.value, revision_skip_letters: skip.value, first_revision: first.value, require_eco_for_release: eco.checked }); toast('Saved', 'ok'); } catch (e) { fail(e); }
     } }, 'Save'))));

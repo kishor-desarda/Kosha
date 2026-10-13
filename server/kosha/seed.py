@@ -57,7 +57,7 @@ def _tb(pn, desc, mat, rev):
     return {"PART_NO": pn, "DESCRIPTION": desc, "MATERIAL": mat, "REV": rev}
 
 
-def _seed_quality(asha, daniel, sofia, shaft_doc, housing_doc) -> None:
+def _seed_quality(asha, daniel, sofia, shaft_doc, housing_doc, eco_number: str) -> None:
     """Two deviations (one active, one waiting for Sofia) and a discussion with mentions on the agitator shaft."""
     from datetime import timedelta
 
@@ -77,7 +77,7 @@ def _seed_quality(asha, daniel, sofia, shaft_doc, housing_doc) -> None:
         "qty_limit": 4, "affected": [{"document_id": housing_doc["id"]}], "approver_ids": [sofia["id"]]})
     deviations.submit(asha, d2)
     tid = discussions.start(asha, "document", shaft_doc["id"], "@daniel the field report shows fretting at the hub "
-                            "seat. Do we go to Ø115 with ECO-0001, or try a shrink fit first?", "Hub seat fretting")
+                            f"seat. Do we go to Ø115 with {eco_number}, or try a shrink fit first?", "Hub seat fretting")
     discussions.reply(daniel, tid, "Ø115 h6 is the safer fix. @sofia please check the impeller disc bore before we submit.")
 
 
@@ -232,7 +232,7 @@ def seed() -> None:
     co2 = changes.create(asha, "Assembly model first release", "New product variant", "", "normal",
                          [asm["id"]], [daniel["id"], sofia["id"]])
     changes.submit(asha, co2)
-    _seed_quality(asha, daniel, sofia, shaft_doc, de)
+    _seed_quality(asha, daniel, sofia, shaft_doc, de, changes.co_or_404(co1)["number"])
 
     # legacy leftovers: a byte-identical copy and look-alike bought-out parts from an old part master
     inlet = db.one("SELECT v.blob_sha FROM documents d JOIN versions v ON v.document_id = d.id WHERE d.part_number = 'CP-80-014'")

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Numbering service: template checks, code building, find-before-create and allocation under concurrency."""
 import threading
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -145,7 +146,7 @@ def test_series_numbers_skip_taken_ones_and_share_the_cad_counter(kdb):
     assert a["part_number"] == "MX-5-002" and a["item"]["description"] == "ROTOR"
     assert svc.next_in_series("MX-5-", 3, None) == "MX-5-003"          # the CAD add-ins' series
     assert svc.allocate("prefix", {"prefix": "MX-5-"}, None)["part_number"] == "MX-5-004"
-    assert svc.allocate("category", {"category": "GR"}, None)["part_number"] == "GR-00001"
+    assert svc.allocate("category", {"category": "GR"}, None)["part_number"] == "GR-000001"
     proj = svc.allocate("project", {}, None, "Customer job")
     assert proj["item"] is None and proj["part_number"].startswith("P-20") and proj["part_number"].endswith("-001")
     assert not db.scalar("SELECT 1 FROM items WHERE part_number = ?", (proj["part_number"],))
@@ -194,3 +195,88 @@ def test_concurrent_allocation_never_duplicates(kdb):
     assert set(gear_ids) == {"GR-1-8-10-C45", "GR-1-9-10-C45"}
     assert all(len(ids) == 1 for ids in gear_ids.values())                    # one item per spec code
     assert db.scalar("SELECT COUNT(*) FROM number_allocations WHERE part_number LIKE 'CC-1-%'") == 120
+
+
+# ------------------------------------------- number formats, reservations, voiding, capacity --
+
+def test_spec_number_formats(kdb):
+    _install("general-machinery")
+    svc = NumberingService()
+    assert svc.allocate("category", {"category": "SH"}, None)["part_number"] == "SH-000001"
+    with db.tx():                                  # a series started before 6 digits keeps its width
+        db.execute("INSERT INTO numbering(prefix, next_value, width) VALUES ('FL-', 13, 5)")
+    assert svc.allocate("category", {"category": "FL"}, None)["part_number"] == "FL-00013"
+    assert svc.allocate("document", {}, None, "Pump test procedure")["part_number"] == "DOC-000001"
+    assert svc.allocate("kit", {}, None, "Shutdown kit")["part_number"] == "KIT-000001"
+    yy = f"{datetime.now(timezone.utc).year % 100:02d}"
+    build = svc.allocate("machine-build", {"family": "mx"}, None, "Mixer for an order")
+    assert build["part_number"] == f"MX{yy}-0001" and build["item"]["description"] == "Mixer for an order"
+    with pytest.raises(NumberingError):
+        svc.allocate("machine-build", {"family": "MIX"}, None)
+
+
+def test_change_orders_carry_the_year(kdb):
+    from kosha import changes
+    yy = f"{datetime.now(timezone.utc).year % 100:02d}"
+    with db.tx():
+        db.insert("change_orders", {"number": "ECO-0007", "title": "older style", "created_at": db.now()})
+    assert changes._next_number() == f"ECO-{yy}-0001"
+    with db.tx():
+        db.insert("change_orders", {"number": f"ECO-{yy}-0041", "title": "t", "created_at": db.now()})
+    assert changes._next_number() == f"ECO-{yy}-0042"
+
+
+def test_bulk_reservation_and_voiding_unused_numbers(kdb):
+    _install("general-machinery")
+    svc = NumberingService()
+    r = svc.reserve("prefix", {"prefix": "RV-"}, 4, None, "copy of MX-100")
+    assert r["numbers"] == ["RV-001", "RV-002", "RV-003", "RV-004"]
+    assert not db.scalar("SELECT 1 FROM items WHERE part_number LIKE 'RV-%'")      # numbers only, no parts yet
+    with pytest.raises(NumberingError, match="between 1 and 500"):
+        svc.reserve("prefix", {"prefix": "RV-"}, 501, None)
+    with pytest.raises(NumberingError, match="cannot be reserved"):
+        svc.reserve("spec:spur-gear", {}, 2, None)
+    project = svc.allocate("project", {}, None, "Customer job")["part_number"]
+    with db.tx():
+        boms.ensure_item("RV-002", "USED FOR A PART", None)                         # something was made from it
+    assert svc.void_unused(now=datetime.now(timezone.utc)) == 0                     # not 30 days yet
+    later = datetime.now(timezone.utc) + timedelta(days=31)
+    assert svc.void_unused(now=later) == 3
+    voided = {r["part_number"] for r in db.rows("SELECT part_number FROM number_allocations WHERE voided_at IS NOT NULL")}
+    assert voided == {"RV-001", "RV-003", "RV-004"} and project not in voided
+    assert svc.void_unused(now=later) == 0                                          # once only
+    assert svc.allocate("prefix", {"prefix": "RV-"}, None)["part_number"] == "RV-005"  # never reused
+    assert "voided after 30 days" in db.scalar("SELECT details FROM audit WHERE action = 'number_void'")
+
+
+def test_near_matches_are_offered_before_a_new_spec_code(kdb):
+    _install("general-machinery")
+    svc = NumberingService()
+    values = {"module": "2", "teeth": 40, "face_width_mm": 30, "material": "C45"}
+    first = svc.allocate("spec:spur-gear", values, None)
+    assert first["existing_matches"] == []
+    svc.allocate("spec:spur-gear", {**values, "module": "3", "teeth": 20}, None)     # two values differ: not near
+    p = svc.preview("spec:spur-gear", {**values, "teeth": 41})
+    assert p["existing"] is None and [n["part_number"] for n in p["near"]] == ["GR-2-40-30-C45"]
+    assert p["near"][0]["differs"] == "Teeth: 40 instead of 41" and "differ in one value" in p["message"]
+    again = svc.allocate("spec:spur-gear", values, None)
+    assert [m["part_number"] for m in again["existing_matches"]] == ["GR-2-40-30-C45"]
+
+
+def test_a_series_warns_at_80_percent_once(kdb):
+    _install("general-machinery")
+    svc = NumberingService()
+    with db.tx():
+        db.execute("INSERT INTO numbering(prefix, next_value, width) VALUES ('ZZ-', 700, 3)")
+        db.insert("users", {"username": "boss", "full_name": "Boss", "email": "", "role": "admin",
+                            "password_hash": "x", "created_at": db.now()})
+    assert svc.allocate("prefix", {"prefix": "ZZ-"}, None)["warning"] == ""
+    with db.tx():
+        db.execute("UPDATE numbering SET next_value = 820 WHERE prefix = 'ZZ-'")
+    w = svc.allocate("prefix", {"prefix": "ZZ-"}, None)["warning"]
+    assert "ZZ-NNN has used 820 of its 999 numbers (82%)" in w
+    svc.allocate("prefix", {"prefix": "ZZ-"}, None)
+    assert db.scalar("SELECT COUNT(*) FROM audit WHERE action = 'number_capacity'") == 1
+    assert db.scalar("SELECT COUNT(*) FROM notifications WHERE title LIKE 'Number series ZZ-NNN%'") == 1
+    cap = {c["series"]: c for c in NumberingService.capacity()}
+    assert cap["ZZ-NNN"]["warning"] and cap["ZZ-NNN"]["used"] == 821

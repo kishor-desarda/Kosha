@@ -189,21 +189,19 @@ def audit(req: Req):
 
 @api("POST", "/api/numbering/next", role="engineer")
 def next_number(req: Req):
+    """The next number of a series such as MX-100- (the CAD add-ins). Recorded in the numbering ledger, so a number
+    is never handed out twice, even one reserved without a part."""
+    from ..numbering import NumberingService
     prefix = (req.b("prefix") or "").strip().upper()
     if not re.match(r"^[A-Z0-9][A-Z0-9\-_/]{0,20}$", prefix):
         raise bad("Prefix may use letters, digits and dashes, e.g. MX-100-")
-    width = int(req.b("width") or 3)
-    with db.tx():
-        row = db.one("SELECT * FROM numbering WHERE prefix = ?", (prefix,))
-        n = row["next_value"] if row else 1
-        if row:
-            width = row["width"]
-        while db.scalar("SELECT 1 FROM items WHERE part_number = ? COLLATE NOCASE", (f"{prefix}{n:0{width}d}",)):
-            n += 1
-        pn = f"{prefix}{n:0{width}d}"
-        db.execute("INSERT INTO numbering(prefix, next_value, width) VALUES (?, ?, ?) "
-                   "ON CONFLICT(prefix) DO UPDATE SET next_value = excluded.next_value", (prefix, n + 1, width))
-    return {"part_number": pn}
+    try:
+        width = int(req.b("width") or 3)
+    except (TypeError, ValueError):
+        raise bad("Width is the number of digits, from 1 to 9.") from None
+    if not 1 <= width <= 9:
+        raise bad("Width is the number of digits, from 1 to 9.")
+    return {"part_number": NumberingService().next_in_series(prefix, width, req.uid)}
 
 
 # ----------------------------------------------------------------- search --
