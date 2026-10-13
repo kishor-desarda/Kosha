@@ -23,8 +23,8 @@ jobs:
       matrix:
         python: ["3.10", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
           cache: pip
@@ -51,11 +51,11 @@ jobs:
     name: Lint, licences, web
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
       - name: Ruff
@@ -71,8 +71,8 @@ jobs:
     name: Browser smoke test
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Install
@@ -87,21 +87,28 @@ jobs:
     name: C# shared CAD core
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "8.0.x"
       - name: Build and test Kosha.Client and Kosha.CadCore
-        run: dotnet test sdk/dotnet/Kosha.CadCore.Tests/Kosha.CadCore.Tests.csproj --configuration Release
+        run: |
+          dotnet test sdk/dotnet/Kosha.CadCore.Tests/Kosha.CadCore.Tests.csproj --configuration Release \
+            --logger "trx;LogFileName=results.trx" --results-directory test-results
+      - name: Report the test count
+        if: always()
+        run: |
+          f=$(find test-results -name '*.trx' | head -1)
+          [ -n "$f" ] && echo "::notice title=C# tests::$(grep -o '<Counters [^/]*' "$f" | head -1)" || true
       - name: Build the shared task pane (net48 and net8.0-windows)
         run: dotnet build sdk/dotnet/Kosha.CadCore.UI/Kosha.CadCore.UI.csproj --configuration Release
 
   dco:
     name: Signed-off commits
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Every commit carries Signed-off-by
