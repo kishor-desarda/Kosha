@@ -6,7 +6,7 @@ import json
 import re
 from typing import BinaryIO
 
-from . import db, store
+from . import db, store, uploads
 from .cad import process as cadproc
 from .web import bad, conflict, forbidden, not_found
 
@@ -67,12 +67,11 @@ def parse_name(filename: str) -> tuple[str, str]:
 
 
 def clean_filename(name: str) -> str:
-    name = name.replace("\\", "/").split("/")[-1].strip()
-    if not name or name in (".", ".."):
-        raise bad("Invalid file name")
-    if re.search(r'[<>:"|?*\x00-\x1f]', name):
-        raise bad("The file name contains characters Windows does not allow: < > : \" | ? *")
-    return name
+    """Drop any folder part and refuse names that are unsafe or impossible on Windows (see uploads.clean_filename)."""
+    try:
+        return uploads.clean_filename(name)
+    except ValueError as e:
+        raise bad(str(e))
 
 
 # --------------------------------------------------------------- folders --

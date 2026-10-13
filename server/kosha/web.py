@@ -20,7 +20,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from . import db, security
+from . import db, sessions, uploads
 
 log = logging.getLogger("kosha")
 
@@ -94,6 +94,7 @@ class Req:
 
 
 def _authenticate(request: Request) -> dict | None:
+    """The signed-in user for a request (Bearer header, or access_token for links), when the session is open."""
     token = None
     auth = request.headers.get("authorization", "")
     if auth.lower().startswith("bearer "):
@@ -102,9 +103,11 @@ def _authenticate(request: Request) -> dict | None:
         token = request.query_params.get("access_token")
     if not token:
         return None
-    user_id = security.verify_token(token)
-    if user_id is None:
+    # background polls (X-Kosha-Background) do not count as activity for the idle limit
+    found = sessions.check(token, touch=not request.headers.get("x-kosha-background"))
+    if found is None:
         return None
+    user_id, request.state.session_id = found
     user = db.one("SELECT id, username, full_name, email, role, ui_mode, active FROM users WHERE id = ?", (user_id,))
     if not user or not user["active"]:
         return None
@@ -118,18 +121,24 @@ def api(method: str, path: str, role: str | None = "viewer", auth: bool = True):
         async def endpoint(request: Request) -> Response:
             form = None
             try:
-                user = _authenticate(request) if auth else None
+                # in a worker thread: checking the session may write (last activity), which must never block the loop
+                user = await run_in_threadpool(_authenticate, request) if auth else None
                 if auth and user is None:
                     raise ApiError(401, "Please sign in.", "unauthorized")
+                if role and auth and ROLE_LEVEL[user["role"]] < ROLE_LEVEL[role]:   # before reading any upload
+                    raise forbidden(f"This needs the '{role}' role or higher.")
                 body = None
                 files: dict = {}
                 ctype = request.headers.get("content-type", "")
                 if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+                    request = uploads.limited(request)
                     if ctype.startswith("multipart/form-data"):
                         form = await request.form(max_files=500, max_fields=2000, max_part_size=64 * 1024 * 1024)
                         for key, value in form.multi_items():
                             if hasattr(value, "filename") and hasattr(value, "file"):
                                 files.setdefault(key, []).append(value)
+                        if files:
+                            await run_in_threadpool(uploads.scan_files, files, user["id"] if user else None, path)
                     elif ctype.startswith("application/json"):
                         raw = await request.body()
                         body = json.loads(raw) if raw else {}
@@ -150,8 +159,10 @@ def api(method: str, path: str, role: str | None = "viewer", auth: bool = True):
                 if isinstance(result, Response):
                     return result
                 return JSONResponse(result if result is not None else {"ok": True})
-            except ApiError as e:
-                return JSONResponse({"error": e.message, "code": e.code, **e.extra}, status_code=e.status)
+            except (ApiError, uploads.UploadRefused) as e:
+                headers = {"Retry-After": str(e.extra["retry_after"])} if "retry_after" in e.extra else None
+                return JSONResponse({"error": e.message, "code": e.code, **e.extra}, status_code=e.status,
+                                    headers=headers)
             except Exception:  # pragma: no cover - logged for admins with a reference the user can quote
                 ref = secrets.token_hex(3).upper()
                 log.error("Unhandled error ref %s on %s %s\n%s", ref, method, path, traceback.format_exc())
@@ -162,6 +173,8 @@ def api(method: str, path: str, role: str | None = "viewer", auth: bool = True):
                 if form is not None:
                     await form.close()
 
+        # read by the API description (/api/openapi.json, /api/docs)
+        endpoint.kosha = {"method": method, "path": path, "role": role if auth else None, "auth": auth, "handler": fn}
         routes.append(Route(path, endpoint, methods=[method]))
         return fn
 

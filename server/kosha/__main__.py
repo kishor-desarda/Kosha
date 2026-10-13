@@ -18,9 +18,12 @@ def main() -> None:
     args = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     if args.demo:
-        from .app import bootstrap
+        from .app import StartupError, bootstrap
         from .seed import seed
-        bootstrap()
+        try:
+            bootstrap()
+        except StartupError as e:
+            raise SystemExit(f"Kosha did not start: {e}")
         seed()
     uvicorn.run("kosha.app:app", host=args.host, port=args.port, limit_concurrency=200,
                 timeout_keep_alive=30, log_level="info")

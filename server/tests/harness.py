@@ -91,7 +91,8 @@ class KoshaServer:
 
     def start(self) -> "KoshaServer":
         env = dict(os.environ, KOSHA_DATA_DIR=str(self.data_dir / "data"), KOSHA_ADMIN_PASSWORD=ADMIN_PASSWORD,
-                   KOSHA_DISABLE_WORKER="1", KOSHA_HOST="127.0.0.1", KOSHA_PORT=str(self.port), **self.env)
+                   KOSHA_DISABLE_WORKER="1", KOSHA_HOST="127.0.0.1", KOSHA_PORT=str(self.port))
+        env.update(self.env)     # a test may override any of the above
         cmd = [sys.executable, "-m", "kosha"] + (["--demo"] if self.demo else [])
         self._logf = open(self.log, "wb")
         self.proc = subprocess.Popen(cmd, cwd=SERVER_DIR, env=env, stdout=self._logf, stderr=subprocess.STDOUT)
