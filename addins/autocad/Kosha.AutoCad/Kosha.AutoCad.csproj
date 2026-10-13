@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- SPDX-License-Identifier: Apache-2.0 -->
+  <!--
+    Kosha add-in for AutoCAD. Only AutoCadHost.cs, AutoCadPlugin.cs and AutoCadApi.cs are AutoCAD's own.
+    The DWG logic is shared with the GStarCAD add-in (sdk/dotnet/Kosha.CadCore.Dwg, compiled in below) and the
+    task pane and check-in logic with every Kosha CAD add-in (sdk/dotnet).
+
+    AutoCAD 2025 and later load .NET 8 add-ins (the default here). AutoCAD 2021 to 2024 use .NET Framework 4.8:
+    build with  -p:AutoCadNet8=false .
+    Point AutoCadDir at the folder that holds AcCoreMgd.dll, AcDbMgd.dll and AcMgd.dll: the inc folder of the
+    ObjectARX SDK for your AutoCAD version, or the AutoCAD program folder:
+        dotnet build -c Release -p:AutoCadDir="C:\Program Files\Autodesk\AutoCAD 2025"
+        dotnet build -c Release -p:AutoCadNet8=false -p:AutoCadDir="C:\ObjectARX 2024\inc"
+    The AutoCAD assemblies are referenced only (Private=false): AutoCAD supplies them at run time.
+  -->
+  <PropertyGroup>
+    <AutoCadNet8 Condition="'$(AutoCadNet8)' == ''">true</AutoCadNet8>
+    <TargetFramework Condition="'$(AutoCadNet8)' == 'true'">net8.0-windows</TargetFramework>
+    <TargetFramework Condition="'$(AutoCadNet8)' != 'true'">net48</TargetFramework>
+    <OutputType>Library</OutputType>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>Kosha.AutoCad</AssemblyName>
+    <RootNamespace>Kosha.AutoCad</RootNamespace>
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- AutoCAD's own assemblies refer to WPF types -->
+    <UseWPF>true</UseWPF>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Version>0.5.0</Version>
+    <Company>Kosha contributors</Company>
+    <Product>Kosha</Product>
+    <!-- copy Newtonsoft.Json and the other packages next to the add-in; a .NET 8 library does not do it by default -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <AutoCadDir Condition="'$(AutoCadDir)' == ''">C:\Program Files\Autodesk\AutoCAD 2025</AutoCadDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\sdk\dotnet\Kosha.CadCore.UI\Kosha.CadCore.UI.csproj" />
+    <!-- the DWG host and palette, the same source as in the GStarCAD add-in -->
+    <Compile Include="..\..\..\sdk\dotnet\Kosha.CadCore.Dwg\*.cs" Link="Shared\%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="AcCoreMgd">
+      <HintPath>$(AutoCadDir)\AcCoreMgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="AcDbMgd">
+      <HintPath>$(AutoCadDir)\AcDbMgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="AcMgd">
+      <HintPath>$(AutoCadDir)\AcMgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>

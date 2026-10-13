@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+id: org.kosha.autocad
+name: AutoCAD add-in
+version: 0.5.0
+publisher: Kosha project
+licence: Apache-2.0
+kosha: ">=0.5,<2.0"
+kind: [cad-addin]
+description: >
+  A Kosha palette inside AutoCAD 2021 and later: check drawings in and out, read part numbers
+  from title blocks and drawing properties, allocate numbers, get the latest version. Shares its
+  DWG code with the GStarCAD add-in and its task pane with every Kosha CAD add-in.
+entry_points:
+  cad: Kosha.AutoCad.dll
+permissions: [items:read, files:read, files:write, numbers:allocate]
