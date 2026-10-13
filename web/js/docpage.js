@@ -6,7 +6,7 @@ import {
 } from './core.js';
 import { openViewer } from './viewer.js';
 import { mountRecordPanels } from './deviations.js';
-import { classifyBox } from './ai.js';
+import { classifyBox, drawingCheckBox, ocrBox } from './ai.js';
 import { itemBadges, masterPanel, oemPanel } from './itemmaster.js';
 import { favButton } from './workbench.js';
 
@@ -116,6 +116,8 @@ function overview(c, d, reload) {
       d.meta?.source ? ['Checked in from', d.meta.source === 'solidworks-addin' ? 'SolidWorks add-in' : d.meta.source] : null,
     ].filter(Boolean).flatMap(([k, v]) => [h('dt', null, k), h('dd', null, String(v))])),
     classifyBox('document', d.id, { onApplied: reload, locked: it ? lockedFor(it) : (editable ? {} : { description: d.actions.edit.why }) }),
+    ocrBox(d, { onApplied: reload, locked: it ? lockedFor(it) : (editable ? {} : { description: d.actions.edit.why }) }),
+    /\.(dxf|dwg|pdf|slddrw)$/i.test(d.filename) ? drawingCheckBox(d.id) : null,
     d.meta?.preview_note ? h('div', { class: 'banner info small' }, icon('info'), h('div', null, d.meta.preview_note)) : null,
     Object.keys(tb).length ? h('div', null, h('h3', { style: { margin: '6px 0' } }, 'Title block'),
       h('dl', { class: 'props' }, Object.entries(tb).flatMap(([k, v]) => [h('dt', null, k.replace(/_/g, ' ')), h('dd', null, v)]))) : null,

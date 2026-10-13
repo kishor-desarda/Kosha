@@ -15,6 +15,10 @@ to the audit log (`ai_accept`) together with the change it made.
 | **Classification** | Part page and file page: **Suggest with AI** | A category from the installed packs, a material (from the packs' list or the materials already used), a matching standard part from the standard-parts library, and a cleaner description. Each line can be ticked, edited or left out; **Accept ticked** applies only those lines, with the same rules as the Save button (a released part's description and material only by an approver). |
 | **Change-log drafts** | Change order and file page (**Change log** tab, also for a new revision): **Draft with AI** next to **Build draft** | A draft of the four change-log sections written from the changes Kosha measured, where the parts are used, stock and the engineer's note. It fills the editor; the engineer edits it and presses **Save change log**. The rule-based **Build draft** stays available and needs no AI. |
 | **Ask Kosha** | **Ask Kosha** next to the search box, and on the search results page | An answer to a question, written from Kosha's own records (parts, files, change orders, inputs) that the asking person may open, with links to the records cited. When the records do not answer the question it says "I don't know" and shows the records that came closest. Answers are private to the person who asked. |
+| **Drawing check** | File page of a drawing: **Check drawing**, then **Ask AI for more** | Kosha's own checks always run, with AI off too: title block filled, part number and revision matching the file, description, material (matching the part and in the packs' materials list), drawn by, scale, a general tolerance note such as ISO 2768, and dimensions (texts read from DXF drawings). With the feature on, the AI assistant adds what a checker would still question, each with what it is based on. |
+| **Duplicate explanation** | **Duplicates**, on a group of look-alike parts: **Why alike?** | Kosha's own line on what is the same and what differs (size, holes, material, description, number), then one AI sentence saying why they look alike and whether one can probably replace the other. |
+| **Title-block reading (OCR)** | File page of a scanned drawing (PDF or photo): **Read title block** | Part number, description, material, revision, drawn by and scale read from the bottom-right corner of the first page. Only that corner is sent, never the whole sheet. Description and material can be accepted like a classification; a part number or revision that disagrees with the file is pointed out. When no AI provider answers and Tesseract is installed on the server, Kosha reads it there. |
+| **Voice** | **Ask Kosha**: **Speak** | The spoken question (English, Hindi or a mix) as text in the question box, to check and send. The recording is not kept. |
 
 Kosha checks every answer before it shows it: a category or standard part that is not in Kosha's lists
 is dropped (and the screen says so), links point only to records that were actually sent, and an answer
@@ -61,6 +65,29 @@ and **What was sent**, the complete request exactly as it went to the provider.
   message in the request list. Nothing on the screen is lost.
 - A request cut off by a restart is reported as failed, never left waiting.
 
+## The AI engine: a model for each job, cost and local-only data
+
+Every request goes through one part of the Kosha server, the AI engine. No browser, add-in or user holds an AI key.
+
+- **A model for each job.** Under **Admin › AI › A model for each job** each feature can name its own model
+  (a small, cheap one for classification, a larger one for questions, a vision model for title blocks, a
+  speech model for voice) and a **fallback**: another model, or another provider such as a model server
+  inside the company. Model names change often; test a new one, then switch here without a software update.
+  An empty model uses the one in the provider's settings. Providers that cannot switch models (their add-in
+  does not say `supports_model_choice`) always use their own setting.
+- **One retry.** An answer that does not fit what the job expects is asked for once more, then dropped and
+  reported. A provider that cannot be reached hands the request to the fallback.
+- **The log.** Every call is recorded with its job, provider, model, person, tokens, time and cost, never
+  the content (table `ai_calls`). **Use and cost this month** shows it per job, with the share of
+  suggestions people accepted.
+- **Budget.** Enter the prices of your models per million tokens and a monthly budget. Administrators get a
+  notification at 50%, 80% and 100%. At 100% the AI extras pause until the next month, unless you untick
+  **Pause the AI extras when the budget is used up**; everything else keeps working.
+- **Local only.** Restricted parts, and the categories, customers and folders you list, are *local only*:
+  their data goes only to the provider you choose as **AI server inside the company**. Without one, the AI
+  assistant skips them: classification and drawing checks say so, and Ask Kosha leaves those records out
+  and says how many.
+
 ## Running it fully local
 
 The official add-in **OpenAI-compatible AI provider** (`addins/openai-compatible/`) talks to any server
@@ -83,6 +110,8 @@ possible (leave people's names and file text off).
 ## For add-in authors
 
 An AI provider is an add-in of kind `ai-provider` with the permission `ai:provide`, built on
-`kosha_sdk.ai.AiProvider` (`health`, `complete`, optionally `embed`). See the
+`kosha_sdk.ai.AiProvider` (`health`, `complete`, optionally `embed` and `transcribe`). A provider that can
+use a model other than the one in its settings sets `supports_model_choice = True` and accepts `model=`;
+messages can carry images (`Message.images`, data URLs) for vision models. See the
 [SDK README](../sdk/python/README.md#ai-providers); `kosha-sdk new ai-provider my-model` starts one, and
 `kosha_sdk.testing.check_ai_provider` checks it.

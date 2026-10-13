@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 id: org.kosha.openai-compatible
 name: OpenAI-compatible AI provider
-version: 0.5.0
+version: 0.6.0
 publisher: Kosha project
 licence: Apache-2.0
 kosha: ">=0.5,<2.0"
@@ -25,6 +25,7 @@ settings:
   model:           {type: string, required: true, label: Model name, hint: "As the server lists it, for example the name you pulled or loaded"}
   api_key:         {type: secret, label: API key, hint: "Leave empty for a local server that needs none"}
   embedding_model: {type: string, label: Embedding model (optional), hint: "Only if the server offers embeddings; Kosha works without"}
+  speech_model:    {type: string, label: Speech model (optional), hint: "For voice questions and notes, for example a Whisper model the server offers"}
   json_mode:       {type: bool, default: true, label: Ask the server for JSON answers when Kosha needs them}
   verify_tls:      {type: bool, default: true, label: Verify the HTTPS certificate}
   timeout_s:       {type: int, default: 60, label: Time-out per request (seconds)}

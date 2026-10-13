@@ -11,7 +11,7 @@ FAKE = "com.example.fake-ai"
 
 PROVIDER = '''
 import json, re, time
-from kosha_sdk.ai import AiError
+from kosha_sdk.ai import AiError, Completion
 from kosha_sdk.testing import FakeAiProvider
 
 
@@ -27,12 +27,17 @@ class Provider(FakeAiProvider):
 
     def complete(self, messages, **kw):
         mode = self.mode()
-        if mode == "broken":
+        if mode == "broken" or kw.get("model") == "fake-down":
             raise AiError("The fake AI service is down.")
+        if mode == "garbage-once":          # one unusable answer, then good ones
+            (self.ctx.workdir / "mode").write_text("ok")
+            return Completion(text="Sorry, no JSON today.", model=kw.get("model") or self.model,
+                              usage={"prompt_tokens": 10, "completion_tokens": 5})
         if mode == "slow":
             time.sleep(3)
         with open(self.ctx.workdir / "requests.jsonl", "a", encoding="utf-8") as f:
-            f.write(json.dumps({"system": messages[0].content[:60], "user": messages[-1].content}) + "\\n")
+            f.write(json.dumps({"system": messages[0].content[:60], "user": messages[-1].content,
+                                "images": [i[:40] for i in messages[-1].images], "model": kw.get("model")}) + "\\n")
         return super().complete(messages, **kw)
 
     def answer(self, messages):
@@ -64,6 +69,15 @@ class Provider(FakeAiProvider):
                 return json.dumps({"answer": "I don't know.", "known": False, "cited": []})
             ref, line = refs[0]
             return json.dumps({"answer": f"From the records: {line[:60]} [{ref}].", "known": True, "cited": [ref]})
+        if "design checker" in system:
+            return json.dumps({"findings": [{"severity": "medium", "text": "No surface finish is given for the bore.",
+                                             "evidence": "drawing texts"}, {"text": ""}]})
+        if "duplicate parts" in system:
+            return json.dumps({"line": "Both are bearing housings of the same size; only the material differs.",
+                               "interchangeable": "likely"})
+        if "title block of an engineering drawing" in system:
+            return json.dumps({"part_number": "OC-100-001", "description": "PUMP COVER DN80", "material": "EN-GJL-250",
+                               "revision": "B", "drawn_by": "asha", "scale": "1:2", "date": None})
         return "OK"
 '''
 

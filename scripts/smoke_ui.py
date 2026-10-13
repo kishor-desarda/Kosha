@@ -196,6 +196,7 @@ def check_workbench(page, errors: list[str]) -> None:
     check_language(page, errors)
     check_shop(page, errors)
     check_legacy_batch(page, errors)
+    check_drawing_check(page, errors)
 
 
 def close_first_tour(page, user: str, errors: list[str]) -> None:
@@ -237,6 +238,30 @@ def check_shop(page, errors: list[str]) -> None:
         page.click("#tour-close")
     except Exception as e:
         errors.append(f"Take the tour did not start the tour again: {e}")
+
+
+FIRST_DXF = """async () => {
+  const core = await import('/static/js/core.js');
+  const r = await core.get('/api/search?q=MX-100');
+  const d = (r.documents || []).find(x => /\\.dxf$/i.test(x.filename));
+  return d ? d.id : null;
+}"""
+
+
+def check_drawing_check(page, errors: list[str]) -> None:
+    """A drawing's page checks the title block, material, revision and notes before approval (no AI needed)."""
+    doc = page.evaluate(FIRST_DXF)
+    if not doc:
+        errors.append("no DXF drawing found for the drawing check")
+        return
+    page.goto(f"{BASE}/#/doc/{doc}")
+    try:
+        page.click("#drawing-check", timeout=15000)
+        page.wait_for_selector(".check-list li", timeout=15000)
+        if not wait_until(page, "document.querySelectorAll('.check-list li').length >= 6"):
+            errors.append("the drawing check showed too few checks")
+    except Exception as e:
+        errors.append(f"the drawing check did not run: {e}")
 
 
 IMPORT_BATCH = """async (source) => {

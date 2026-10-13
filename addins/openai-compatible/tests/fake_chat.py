@@ -12,7 +12,7 @@ from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.routing import Route
 
 KEY = "test-key-123"
-MODELS = ["kosha-test-model", "kosha-embed"]
+MODELS = ["kosha-test-model", "kosha-embed", "kosha-vision", "kosha-whisper"]
 # modes: ok | open (no key needed) | busy | broken | no_format (refuses response_format) | no_models | parts | cut
 STATE: dict = {"requests": [], "mode": "ok", "reply": None}
 
@@ -76,5 +76,20 @@ async def embeddings(request: Request):
     return JSONResponse({"object": "list", "data": list(reversed(data)), "model": j.get("model")})
 
 
+async def transcriptions(request: Request):
+    bad = _auth(request)
+    if bad:
+        return bad
+    form = await request.form()
+    f = form.get("file")
+    data = await f.read()
+    STATE["requests"].append({"form": {k: v for k, v in form.items() if k != "file"}, "file": f.filename,
+                              "size": len(data), "type": f.content_type})
+    if form.get("model") not in MODELS:
+        return JSONResponse({"error": {"message": "model not found"}}, status_code=404)
+    return JSONResponse({"text": " 32 teeth wala gear ka drawing dikhao "})
+
+
 app = Starlette(routes=[Route("/v1/models", models), Route("/v1/chat/completions", chat, methods=["POST"]),
-                        Route("/v1/embeddings", embeddings, methods=["POST"])])
+                        Route("/v1/embeddings", embeddings, methods=["POST"]),
+                        Route("/v1/audio/transcriptions", transcriptions, methods=["POST"])])

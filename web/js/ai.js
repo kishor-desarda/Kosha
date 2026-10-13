@@ -2,9 +2,9 @@
 // AI assistance (optional): suggestion panels for parts and files, the AI draft in the change-log editor,
 // the "Ask Kosha" screen and Admin › AI. When AI is off, every function here adds nothing to the screen
 // (Ask Kosha and Admin › AI say plainly that it is off). Suggestions are never saved without a click.
-import { S, h, mount, icon, get, post, put, toast, fail, dialog, ago, fmtDate, can } from './core.js';
+import { S, h, mount, icon, get, post, put, toast, fail, dialog, ago, fmtDate, can, upload } from './core.js';
 
-const OFF = { on: false, features: { classify: false, changelog: false, ask: false }, provider: '', why: '' };
+const OFF = { on: false, features: { classify: false, changelog: false, ask: false, drawing_check: false, duplicates: false, ocr: false, voice: false }, provider: '', why: '' };
 let statusPromise = null;
 let statusAt = 0;
 
@@ -133,6 +133,152 @@ function classificationPanel(sug, opts, close) {
     h('div', { class: 'row' }, accept, dismiss, h('span', { class: 'small muted' }, 'Only the ticked lines change, with the text as shown.')));
 }
 
+// ------------------------------------------------------------------ drawing check
+const SEV = { problem: 'sev-error', missing: 'sev-warning', high: 'sev-error', medium: 'sev-warning', low: 'muted' };
+
+/** "Check drawing": Kosha's own checks (always), then "Ask AI for more" when the drawing check is switched on. */
+export function drawingCheckBox(docId) {
+  const out = h('div', { class: 'col', style: { gap: '8px' } });
+  const btn = h('button', { class: 'btn sm', id: 'drawing-check', title: 'Check the title block, material, revision, notes and dimensions before you send the drawing for approval. Nothing is changed.' }, icon('check', 14), 'Check drawing');
+  const result = h('div');
+  const aiOut = h('div');
+  const run = async () => {
+    btn.disabled = true;
+    try {
+      const r = await get(`/api/documents/${docId}/drawing-check`);
+      const st = await aiStatus();
+      const allowed = can('engineer');
+      const more = st.features.drawing_check ? h('button', { class: 'btn sm', disabled: !allowed, title: allowed ? 'Ask the AI assistant what a checker would still question. Suggestions only.' : 'You have view-only access.' }, icon('sparkle', 14), 'Ask AI for more') : null;
+      if (more) {
+        const ask = async () => {
+          more.disabled = true;
+          mount(aiOut, working('The AI assistant is looking at the drawing…'));
+          try {
+            const sug = await waitForSuggestion(await post('/api/ai/drawing-check', { id: Number(docId) }));
+            if (sug.status !== 'ready') { mount(aiOut, failed(sug, ask)); return; }
+            const f = sug.result.findings;
+            mount(aiOut, h('div', { class: 'ai-box col' }, h('div', { class: 'row' }, aiBadge(), h('b', null, f.length ? 'A checker would also look at' : 'The AI assistant found nothing more to question.')),
+              f.length ? h('ul', { class: 'check-list' }, f.map(x => h('li', null, h('span', { class: SEV[x.severity] || '' }, x.text),
+                x.evidence ? h('div', { class: 'small muted' }, `Based on: ${x.evidence}`) : null))) : null,
+              sug.result.note ? h('div', { class: 'small sev-warning' }, sug.result.note) : null));
+          } catch (e) { mount(aiOut, failed({ error: e.message }, null)); } finally { more.disabled = !allowed; }
+        };
+        more.addEventListener('click', ask);
+      }
+      mount(result, h('div', { class: 'ai-box col' },
+        h('div', { class: 'row' }, h('b', { style: { flex: 1 } }, r.summary), more),
+        h('ul', { class: 'check-list' }, r.checks.map(c => h('li', { class: 'row', style: { alignItems: 'flex-start' } },
+          icon(c.ok ? 'check' : c.ok === false ? 'warn' : 'info', 14, c.ok ? 'sev-ok' : c.ok === false ? (SEV[c.severity] || '') : 'muted'),
+          h('div', null, h('b', null, c.label), ' ', h('span', { class: c.ok === false ? (SEV[c.severity] || '') : 'muted' }, c.text))))),
+        aiOut));
+    } catch (e) { mount(result, failed({ error: e.message }, null)); } finally { btn.disabled = false; }
+  };
+  btn.addEventListener('click', run);
+  mount(out, h('div', { class: 'row wrap' }, btn, h('span', { class: 'small muted' }, 'Before approval: title block, material, revision, notes.')), result);
+  return out;
+}
+
+// ------------------------------------------------------------------ title-block reading (OCR)
+const SCANS = /\.(pdf|png|jpe?g|tiff?|bmp|webp)$/i;
+
+/** "Read title block" for scanned drawings and photos; nothing when the feature is off or the file is not a scan. */
+export function ocrBox(doc, opts = {}) {
+  const box = h('div', { class: 'col', style: { gap: '8px' } });
+  if (!SCANS.test(doc.filename || '')) return box;
+  aiStatus().then(st => {
+    if (!st.features.ocr) return;
+    const allowed = can('engineer');
+    const out = h('div');
+    const btn = h('button', { class: 'btn sm', id: 'ocr-read', disabled: !allowed, title: allowed ? 'Send only the title-block corner of the first page to the AI assistant and read part number, description, material and revision. Nothing changes until you accept.' : 'You have view-only access.' },
+      icon('sparkle', 14), 'Read title block');
+    const run = async () => {
+      btn.disabled = true;
+      mount(out, working('Reading the title block…'));
+      try {
+        const sug = await waitForSuggestion(await post('/api/ai/ocr', { id: Number(doc.id) }));
+        if (!out.isConnected) return;
+        if (sug.status !== 'ready') { mount(out, failed(sug, run)); return; }
+        const r = sug.result;
+        const read = Object.entries(r.read).filter(([, v]) => v);
+        mount(out, h('div', { class: 'col', style: { gap: '8px' } },
+          h('div', { class: 'ai-box col' }, h('div', { class: 'row' }, aiBadge('Read by AI'), h('b', null, 'Read from the title block')),
+            read.length ? h('dl', { class: 'props' }, read.flatMap(([k, v]) => [h('dt', null, k.replace(/_/g, ' ')), h('dd', null, v)])) : h('div', { class: 'small muted' }, 'Nothing could be read.'),
+            (r.checks || []).map(c => h('div', { class: 'small sev-warning' }, c))),
+          r.fields.length ? classificationPanel(sug, opts, () => mount(out)) : null));
+      } catch (e) { mount(out, failed({ error: e.message }, null)); } finally { btn.disabled = !allowed; }
+    };
+    btn.addEventListener('click', run);
+    mount(box, h('div', { class: 'row wrap' }, btn, h('span', { class: 'small muted' }, 'Only the title-block corner is sent.')), out);
+  });
+  return box;
+}
+
+// ------------------------------------------------------------------ duplicates
+/** "Why alike?" on a group of look-alike parts: Kosha's own line, then one AI sentence when switched on. */
+export function whyAlike(groupId) {
+  const out = h('div', { class: 'col', style: { gap: '6px' } });
+  const btn = h('button', { class: 'btn sm', id: 'why-alike', title: 'Say what is alike and what differs between these parts' }, icon('info', 14), 'Why alike?');
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    try {
+      const r = await get(`/api/common-parts/groups/${groupId}/why`);
+      const line = h('div', { class: 'small' }, r.line);
+      const aiLine = h('div');
+      mount(out, h('div', { class: 'ai-box col' }, line, aiLine));
+      const st = await aiStatus();
+      if (st.features.duplicates && can('engineer')) {
+        mount(aiLine, working());
+        const sug = await waitForSuggestion(await post('/api/ai/duplicates', { id: Number(groupId) }));
+        mount(aiLine, sug.status === 'ready' ? h('div', { class: 'row' }, aiBadge(), h('span', null, sug.result.line),
+          h('span', { class: 'small muted' }, sug.result.interchangeable === 'likely' ? 'One can probably replace the other.' : sug.result.interchangeable === 'unlikely' ? 'Probably not interchangeable.' : ''))
+          : failed(sug, null));
+      }
+    } catch (e) { mount(out, failed({ error: e.message }, null)); } finally { btn.disabled = false; }
+  });
+  mount(out, btn);
+  return out;
+}
+
+// ------------------------------------------------------------------ voice
+/** A microphone button that fills `input` with what was said. Nothing when voice is off or the browser cannot record. */
+export function micButton(input) {
+  const slot = h('span');
+  if (!navigator.mediaDevices || !window.MediaRecorder) return slot;
+  aiStatus().then(st => {
+    if (!st.features.voice) return;
+    let rec = null;
+    const btn = h('button', { class: 'btn', type: 'button', id: 'ask-mic', 'aria-pressed': 'false', title: 'Speak your question (English, Hindi or a mix). Press again to stop.' }, icon('mic', 16), 'Speak');
+    const stop = () => { if (rec && rec.state === 'recording') rec.stop(); };
+    btn.addEventListener('click', async () => {
+      if (rec && rec.state === 'recording') { stop(); return; }
+      let stream;
+      try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch (e) { toast('Kosha may not use the microphone. Allow it in the browser, or type the question.', 'err'); return; }
+      const chunks = [];
+      rec = new MediaRecorder(stream);
+      rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+      rec.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        btn.classList.remove('primary');
+        btn.setAttribute('aria-pressed', 'false');
+        btn.lastChild.textContent = 'Speak';
+        const blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' });
+        const form = new FormData();
+        form.append('file', blob, 'question.webm');
+        form.append('language', (S.user && S.user.language) || '');
+        btn.disabled = true;
+        try { input.value = (await upload('/api/ai/transcribe', form)).text; input.focus(); } catch (e) { fail(e); } finally { btn.disabled = false; }
+      };
+      rec.start();
+      setTimeout(stop, 60000);      // a question, not a speech
+      btn.classList.add('primary');
+      btn.setAttribute('aria-pressed', 'true');
+      btn.lastChild.textContent = 'Stop';
+    });
+    mount(slot, btn);
+  });
+  return slot;
+}
+
 // ------------------------------------------------------------------ change-log draft
 /**
  * "Draft with AI" next to "Build draft" in the change-log editor. Returns null when the feature is off.
@@ -209,6 +355,7 @@ function answerCard(q, sug, retry) {
   const r = sug.result;
   return h('div', { class: 'panel panel-b col', style: { gap: '10px' } },
     h('div', { class: 'row' }, h('b', { style: { flex: 1 } }, r.question), aiBadge('AI answer'), h('span', { class: 'small muted' }, ago(sug.finished_at || sug.created_at))),
+    r.left_out ? h('div', { class: 'small muted' }, r.left_out) : null,
     r.known ? null : h('div', { class: 'banner info small' }, icon('info'), h('div', null, 'The assistant does not know the answer from the records you may open. Check the records below, or search for them yourself.')),
     answerText(r.answer, r.sources),
     r.note ? h('div', { class: 'small sev-warning' }, r.note) : null,
@@ -248,7 +395,7 @@ export async function renderAsk(container, _m, params, { setTitle }) {
   const form = h('form', { class: 'panel panel-b col', style: { gap: '10px' } },
     h('div', { class: 'field' }, h('label', { for: 'ask-q' }, 'Your question'), q,
       h('span', { class: 'hint' }, `The AI assistant${st.provider ? ` (${st.provider})` : ''} sees only records you may open, and only what your administrator allows to be sent.`)),
-    h('div', { class: 'row' }, btn, h('span', { class: 'spacer' }), h('a', { class: 'btn ghost sm', href: `#/search?q=${encodeURIComponent(params.q || '')}` }, icon('search', 14), 'Search instead')));
+    h('div', { class: 'row' }, btn, micButton(q), h('span', { class: 'spacer' }), h('a', { class: 'btn ghost sm', href: `#/search?q=${encodeURIComponent(params.q || '')}` }, icon('search', 14), 'Search instead')));
   form.addEventListener('submit', e => {
     e.preventDefault();
     const text = q.value.trim();
@@ -265,8 +412,8 @@ export async function renderAsk(container, _m, params, { setTitle }) {
 }
 
 // ------------------------------------------------------------------ Admin › AI
-const FEATURE_NAME = { classify: 'Classification', changelog: 'Change-log draft', ask: 'Ask Kosha' };
-const SUBJECT_LINK = { item: id => `#/item/${id}`, document: id => `#/doc/${id}`, change_order: id => `#/change/${id}` };
+const FEATURE_NAME = { classify: 'Classification', changelog: 'Change-log draft', ask: 'Ask Kosha', drawing_check: 'Drawing check', duplicates: 'Duplicate explanation', ocr: 'Title-block reading', voice: 'Voice' };
+const SUBJECT_LINK = { item: id => `#/item/${id}`, document: id => `#/doc/${id}`, change_order: id => `#/change/${id}`, cp_group: id => `#/common?group=${id}` };
 
 export async function aiAdminTab(body) {
   const d = await get('/api/ai/settings');
@@ -290,13 +437,61 @@ export async function aiAdminTab(body) {
   const sends = Object.fromEntries(Object.keys(d.send_options).map(k => [k, h('input', { type: 'checkbox', checked: !!cfg[k] })]));
   const timeout = h('input', { class: 'input', id: 'ai-timeout', type: 'number', min: 10, max: 600, value: cfg.timeout_s });
   const maxRec = h('input', { class: 'input', id: 'ai-max', type: 'number', min: 3, max: 30, value: cfg.max_records });
+  // a model for each job, with a fallback
+  const provOpts = (sel, none) => [h('option', { value: '', selected: !sel }, none), d.providers.map(p => h('option', { value: p.id, selected: sel === p.id }, p.name))];
+  const jobs = Object.fromEntries(Object.keys(d.features).map(k => {
+    const j = cfg.jobs[k] || {};
+    return [k, {
+      model: h('input', { class: 'input', value: j.model || '', placeholder: 'provider\'s own', 'aria-label': `Model for ${FEATURE_NAME[k] || k}` }),
+      fallback_provider: h('select', { class: 'input', 'aria-label': `Fallback provider for ${FEATURE_NAME[k] || k}` }, provOpts(j.fallback_provider, 'same provider')),
+      fallback_model: h('input', { class: 'input', value: j.fallback_model || '', placeholder: 'no fallback', 'aria-label': `Fallback model for ${FEATURE_NAME[k] || k}` }),
+      timeout_s: h('input', { class: 'input', type: 'number', min: 0, max: 600, value: j.timeout_s || 0, style: { width: '90px' }, 'aria-label': `Time-out for ${FEATURE_NAME[k] || k} (0: the general one)` }),
+    }];
+  }));
+  const budget = h('input', { class: 'input', id: 'ai-budget', type: 'number', min: 0, step: '0.01', value: cfg.monthly_budget || 0 });
+  const stopAt = h('input', { type: 'checkbox', checked: !!cfg.stop_at_budget });
+  const prices = h('textarea', { class: 'input mono', id: 'ai-prices', rows: 3, placeholder: 'model-name  price-in  price-out',
+    value: Object.entries(cfg.prices || {}).map(([m, p]) => `${m}  ${p.in}  ${p.out}`).join('\n') });
+  const localProv = h('select', { class: 'input', id: 'ai-local', style: { maxWidth: '420px' } }, provOpts(cfg.local_provider, 'None: local-only records are skipped by AI'));
+  const lo = cfg.local_only || {};
+  const loRestricted = h('input', { type: 'checkbox', checked: lo.restricted !== false });
+  const loCats = h('input', { class: 'input', id: 'ai-lo-cats', value: (lo.categories || []).join(', '), placeholder: 'for example HSG, GBX' });
+  const loCust = h('input', { class: 'input', id: 'ai-lo-cust', value: (lo.customers || []).join(', '), placeholder: 'customer names as on the parts' });
+  const folders = await get('/api/folders').then(r => r.folders).catch(() => []);
+  const loFolders = h('select', { class: 'input', id: 'ai-lo-folders', multiple: true, size: Math.min(6, Math.max(3, folders.length)) },
+    folders.map(f => h('option', { value: f.id, selected: (lo.folders || []).includes(f.id) }, f.name)));
+  const list = v => v.split(',').map(x => x.trim()).filter(Boolean);
+  const readPrices = () => Object.fromEntries(prices.value.split('\n').map(l => l.trim().split(/\s+/)).filter(p => p[0]).map(p => [p[0], { in: p[1] || 0, out: p[2] || 0 }]));
   const save = async () => {
     const r = await put('/api/ai/settings', {
       provider: provider.value, features: Object.fromEntries(Object.entries(feats).map(([k, c]) => [k, c.checked])),
       ...Object.fromEntries(Object.entries(sends).map(([k, c]) => [k, c.checked])), timeout_s: timeout.value, max_records: maxRec.value,
+      jobs: Object.fromEntries(Object.entries(jobs).map(([k, j]) => [k, { model: j.model.value, fallback_provider: j.fallback_provider.value, fallback_model: j.fallback_model.value, timeout_s: Number(j.timeout_s.value) || 0 }])),
+      monthly_budget: budget.value, stop_at_budget: stopAt.checked, prices: readPrices(), local_provider: localProv.value,
+      local_only: { restricted: loRestricted.checked, categories: list(loCats.value), customers: list(loCust.value), folders: [...loFolders.selectedOptions].map(o => Number(o.value)) },
     });
     aiStatus(true);
+    drawUsage(r.usage);
     return r;
+  };
+  const usageBox = h('div');
+  const money = v => (v == null ? '—' : Number(v).toFixed(2));
+  const drawUsage = u => {
+    if (!u) return;
+    const acc = Object.fromEntries((u.acceptance || []).map(a => [a.feature, a]));
+    mount(usageBox, h('div', { class: 'col', style: { gap: '8px' } },
+      h('div', { class: 'small' }, `${u.month}: spent ${money(u.spent)}`, u.budget ? ` of ${money(u.budget)} (${u.percent}%)` : ' (no budget set)',
+        u.budget && u.percent >= 100 ? h('span', { class: 'sev-error' }, u.stop_at_budget ? ' · used up: AI extras are paused until next month' : ' · used up') : null),
+      u.jobs.length || u.acceptance.length ? h('div', { style: { overflow: 'auto' } }, h('table', { class: 'tbl ai-usage' },
+        h('thead', null, h('tr', null, ['Job', 'Calls', 'Failed', 'Fallback', 'Tokens in', 'Tokens out', 'Average time', 'Cost', 'Accepted'].map(t => h('th', null, t)))),
+        h('tbody', null, [...new Set([...u.jobs.map(j => j.job), ...Object.keys(acc)])].map(k => {
+          const j = u.jobs.find(x => x.job === k) || {};
+          const a = acc[k];
+          return h('tr', null, h('td', null, FEATURE_NAME[k] || k), ...[j.calls, j.failed, j.fallbacks, j.prompt_tokens, j.completion_tokens].map(v => h('td', { class: 'num' }, v ?? 0)),
+            h('td', { class: 'num' }, j.avg_ms ? `${(j.avg_ms / 1000).toFixed(1)} s` : '—'), h('td', { class: 'num' }, money(j.cost)),
+            h('td', { class: 'num', title: a ? `${a.accepted} accepted (${a.edited} with changes), ${a.dismissed} dismissed` : 'Nothing decided yet' }, a && a.rate != null ? `${a.rate}%` : '—'));
+        })))) : h('div', { class: 'empty' }, 'No AI calls this month.'),
+      u.months.length > 1 ? h('div', { class: 'small muted' }, 'Earlier months: ', u.months.slice(1).map(m => `${m.month} ${money(m.cost)} (${m.calls} calls)`).join(' · ')) : null));
   };
   const reqBox = h('div');
   const drawRequests = rows => mount(reqBox, rows.length ? h('div', { style: { overflow: 'auto', maxHeight: '50vh' } }, h('table', { class: 'tbl' },
@@ -326,14 +521,36 @@ export async function aiAdminTab(body) {
     h('section', { class: 'form-grid' },
       h('div', { class: 'field' }, h('label', { for: 'ai-timeout' }, 'Time-out per request (seconds)'), timeout),
       h('div', { class: 'field' }, h('label', { for: 'ai-max' }, 'Records sent with a question (at most)'), maxRec)),
+    h('section', { class: 'col', style: { gap: '8px' } }, h('h2', null, 'A model for each job'),
+      h('p', { class: 'small muted', style: { margin: 0 } }, 'Model names change often: test a new one, then switch here without a software update. Leave a model empty to use the one in the provider\'s settings. When the main model cannot be reached, the fallback answers; an answer that does not fit is asked for once more, then dropped.'),
+      h('div', { style: { overflow: 'auto' } }, h('table', { class: 'tbl' },
+        h('thead', null, h('tr', null, ['Job', 'Model', 'Fallback provider', 'Fallback model', 'Time-out (s)'].map(t => h('th', null, t)))),
+        h('tbody', null, Object.entries(jobs).map(([k, j]) => h('tr', null, h('td', { class: 'small' }, FEATURE_NAME[k] || k), h('td', null, j.model), h('td', null, j.fallback_provider), h('td', null, j.fallback_model), h('td', null, j.timeout_s))))))),
+    h('section', { class: 'col', style: { gap: '8px' } }, h('h2', null, 'Budget'),
+      h('div', { class: 'form-grid' },
+        h('div', { class: 'field' }, h('label', { for: 'ai-budget' }, 'Monthly budget (0: none)'), budget,
+          h('span', { class: 'hint' }, 'In the currency of your prices. Administrators are told at 50%, 80% and 100%.')),
+        h('div', { class: 'field' }, h('label', { for: 'ai-prices' }, 'Prices per million tokens'), prices,
+          h('span', { class: 'hint' }, 'One model per line: name, price for what is sent, price for the answer.'))),
+      h('label', { class: 'check' }, stopAt, 'Pause the AI extras when the budget is used up (everything else keeps working)')),
+    h('section', { class: 'col', style: { gap: '8px' } }, h('h2', null, 'Local only'),
+      h('p', { class: 'small muted', style: { margin: 0 } }, 'Records marked local only go only to an AI server inside the company (for example a model server on your own network). Without one, the AI assistant skips them.'),
+      h('div', { class: 'field' }, h('label', { for: 'ai-local' }, 'AI server inside the company'), localProv),
+      h('label', { class: 'check' }, loRestricted, 'Restricted parts are local only'),
+      h('div', { class: 'form-grid' },
+        h('div', { class: 'field' }, h('label', { for: 'ai-lo-cats' }, 'Categories (comma between them)'), loCats),
+        h('div', { class: 'field' }, h('label', { for: 'ai-lo-cust' }, 'Customers (comma between them)'), loCust),
+        h('div', { class: 'field' }, h('label', { for: 'ai-lo-folders' }, 'Folders'), loFolders, h('span', { class: 'hint' }, 'Hold Ctrl to choose more than one; subfolders are included.')))),
     h('div', { class: 'row wrap' },
       h('button', { class: 'btn primary', onclick: async () => { try { await save(); toast('AI settings saved', 'ok'); } catch (e) { fail(e); } } }, 'Save settings'),
       h('button', { class: 'btn', onclick: async () => { try { await save(); mount(result, working('Testing the provider…')); say(await post('/api/ai/test')); } catch (e) { fail(e); } } }, icon('play', 14), 'Test the provider')),
     result,
+    h('section', { class: 'col', style: { gap: '10px' } }, h('h2', null, 'Use and cost this month'), usageBox),
     h('section', { class: 'col', style: { gap: '10px' } }, h('div', { class: 'row' }, h('h2', null, 'Recent requests'), h('span', { class: 'spacer' }),
       h('button', { class: 'btn sm', onclick: async () => { try { drawRequests((await get('/api/ai/settings')).requests); } catch (e) { fail(e); } } }, icon('refresh', 14), 'Refresh')),
     h('p', { class: 'small muted', style: { margin: 0 } }, 'Who asked for what, and what became of it. Answers to questions stay private to the person who asked.'), reqBox)));
   drawRequests(d.requests);
+  drawUsage(d.usage);
 }
 
 async function showSent(id) {
@@ -342,7 +559,8 @@ async function showSent(id) {
     dialog({ title: `What Kosha sent for request #${id}`, wide: true,
       body: h('div', { class: 'col' }, h('p', { class: 'small muted', style: { margin: 0 } }, `To ${r.provider}. This is the complete request.`),
         (r.sent.messages || []).map(m => h('div', null, h('div', { class: 'small', style: { fontWeight: 600 } }, m.role === 'system' ? 'Instructions' : m.role === 'user' ? 'Request' : m.role),
-          h('pre', { class: 'ai-pre' }, m.content)))),
+          h('pre', { class: 'ai-pre' }, m.content), (m.images || []).map(i => h('div', { class: 'small muted' }, `With one picture: ${i} (the title-block corner only).`)))),
+        r.sent.local_only ? h('div', { class: 'small' }, 'Marked local only: sent to the AI server inside the company.') : null),
       actions: [{ label: 'Close' }] });
   } catch (e) { fail(e); }
 }
