@@ -168,10 +168,12 @@ function buildLayout(container) {
 }
 
 function renderAll() {
+  if (!ui) return;   // the Explorer was closed while data was loading
   renderTree(); renderCrumbs(); renderList(); renderSelection();
 }
 
 function renderCrumbs() {
+  if (!ui) return;   // the Explorer was closed while data was loading
   clear(ui.crumbs);
   pathTo(E.cur).forEach((f, i, arr) => {
     if (i) ui.crumbs.appendChild(h('span', { class: 'sep' }, icon('chevR', 14)));
@@ -181,6 +183,7 @@ function renderCrumbs() {
 
 // ------------------------------------------------------------------ tree
 function renderTree() {
+  if (!ui) return;   // the Explorer was closed while data was loading
   clear(ui.tree);
   const add = (parent, depth) => {
     for (const f of (E.kids.get(parent) || [])) {
@@ -231,6 +234,7 @@ const COLS = [
 ];
 
 function renderList() {
+  if (!ui) return;   // the Explorer was closed while data was loading
   clear(ui.list);
   const rs = rows();
   if (!rs.length) {
@@ -285,6 +289,7 @@ function rowEl(r, cols) {
 }
 
 function renderTiles(rs) {
+  if (!ui) return;   // the Explorer was closed while data was loading
   const grid = h('div', { class: 'ex-tiles' });
   for (const r of rs) {
     const t = h('div', { class: `tile ${E.sel.has(r.key) ? 'sel' : ''}`, 'data-key': r.key, role: 'gridcell', 'aria-selected': String(E.sel.has(r.key)) },
@@ -343,6 +348,7 @@ function select(key, additive, range) {
 }
 
 function renderSelection() {
+  if (!ui) return;   // the Explorer was closed while data was loading
   if (!ui) return;
   for (const el of ui.list.querySelectorAll('[data-key]')) {
     const on = E.sel.has(el.dataset.key);
@@ -365,6 +371,7 @@ async function loadDetail(id) {
 }
 
 function renderStatus() {
+  if (!ui) return;   // the Explorer was closed while data was loading
   if (!ui) return;
   const rs = rows();
   const mine = (E.data?.documents || []).filter(d => d.checked_out_by === S.user.id).length;
@@ -386,6 +393,7 @@ function tbBtn(ic, label, desc, run, enabled, whyText, key, primary) {
 }
 
 function renderToolbar() {
+  if (!ui) return;   // the Explorer was closed while data was loading
   if (!ui) return;
   const docs = selectedDocs();
   const one = docs.length === 1 ? docs[0] : null;
@@ -411,6 +419,7 @@ function renderToolbar() {
 
 // ------------------------------------------------------------------ guidance
 function renderBanner() {
+  if (!ui) return;   // the Explorer was closed while data was loading
   if (!ui) return;
   clear(ui.banner);
   if (S.mode !== 'guided') return;
@@ -441,6 +450,7 @@ function renderBanner() {
 
 // ------------------------------------------------------------------ preview pane
 function renderPreview() {
+  if (!ui) return;   // the Explorer was closed while data was loading
   if (!ui) return;
   clear(ui.preview);
   if (!E.showPreview) return;
@@ -550,6 +560,7 @@ function folderMenu(e, f) {
 
 // ------------------------------------------------------------------ keyboard
 function listKeys(e) {
+  if (!ui) return;   // the Explorer was closed while data was loading
   const rs = rows();
   if (!rs.length) return;
   const idx = rs.findIndex(r => r.key === E.focus);

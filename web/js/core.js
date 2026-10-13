@@ -166,7 +166,7 @@ export async function api(method, path, body) {
   if (body instanceof FormData) opt.body = body;
   else if (body !== undefined) { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
   let r;
-  try { r = await fetch(path, opt); } catch (e) { throw new ApiError('Cannot reach Kosha server. Check your network connection.', 0, 'network'); }
+  try { r = await fetch(path, opt); } catch (e) { throw new ApiError(leaving ? '' : 'Cannot reach the Kosha server. Check your network connection.', 0, leaving ? 'aborted' : 'network'); }
   if (r.status === 401 && !path.includes('/auth/login')) { logout(true); throw new ApiError('Please sign in again.', 401, 'unauthorized'); }
   const ct = r.headers.get('content-type') || '';
   const data = ct.includes('json') ? await r.json() : await r.blob();
@@ -222,7 +222,11 @@ export function toast(msg, kind = '') {
   toastBox.appendChild(t);
   setTimeout(() => t.remove(), kind === 'err' ? 8000 : 4000);
 }
-export function fail(e) { console.error(e); toast(e.message || String(e), 'err'); }
+// Requests cut off because the page is closing or reloading are not errors the user needs to see.
+let leaving = false;
+window.addEventListener('pagehide', () => { leaving = true; });
+window.addEventListener('beforeunload', () => { leaving = true; });
+export function fail(e) { if (e && e.code === 'aborted') return; console.error(e); toast(e.message || String(e), 'err'); }
 
 export async function busy(btn, fn) {
   const b = btn instanceof Element ? btn : null;

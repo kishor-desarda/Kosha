@@ -55,9 +55,12 @@ def main() -> int:
                     if hash_ == "#/admin" and user != "admin":
                         continue
                     page.goto(BASE + "/" + hash_)
-                    page.wait_for_timeout(700)
-                    if not page.inner_text("#app").strip():
-                        errors.append(f"{user} {hash_}: empty screen")
+                    try:   # each screen shows its title in the top bar once it has loaded
+                        page.wait_for_function("document.querySelector('#app') && document.querySelector('#app').innerText.trim().length > 40",
+                                               timeout=10000)
+                    except Exception:
+                        errors.append(f"{user} {hash_}: the screen stayed empty")
+                    page.wait_for_load_state("networkidle")
                 print(f"ok: {user} opened {len(SCREENS)} screens")
             browser.close()
     finally:
@@ -65,9 +68,14 @@ def main() -> int:
         proc.wait(timeout=20)
         shutil.rmtree(data, ignore_errors=True)
     for e in errors:
-        print("FAIL", e)
+        print(("::error title=Browser smoke test::" if os.environ.get("GITHUB_ACTIONS") else "FAIL ") + e)
     return 1 if errors else 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except Exception as exc:  # make the reason visible as a CI annotation, not only in the log
+        if os.environ.get("GITHUB_ACTIONS"):
+            print(f"::error title=Browser smoke test::{type(exc).__name__}: {str(exc).splitlines()[0][:300]}")
+        raise
