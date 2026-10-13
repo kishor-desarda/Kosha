@@ -341,6 +341,8 @@ def revise(req: Req):
 def update_document(req: Req):
     did = req.int_param("id")
     d = lifecycle.doc_or_404(did)
+    from .. import apisafety
+    apisafety.guard(req, "documents", did, d["filename"])
     body = req.body if isinstance(req.body, dict) else {}
     upd: dict = {}
     if "folder_id" in body:
@@ -375,6 +377,7 @@ def update_document(req: Req):
     if "description" in upd and d["item_id"]:
         db.execute("UPDATE items SET description = ?, updated_at = ? WHERE id = ? AND state != 'released'",
                    (upd["description"], db.now(), upd.get("item_id", d["item_id"])))
+    apisafety.bump("documents", did, req.uid)
     db.audit(req.uid, "document_update", "document", did, ",".join(k for k in upd if k != "updated_at"))
     return lifecycle.doc_summary(lifecycle.doc_or_404(did), lifecycle.user_names())
 

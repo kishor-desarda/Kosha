@@ -100,5 +100,19 @@ export async function securityTab(body) {
         toast('Saved. The new limits apply to open sessions at once.', 'ok');
       } catch (ex) { fail(ex); } finally { e.target.disabled = false; }
     } }, 'Save'))));
+  await apiLimitSection(body);
   await directorySection(body);
+}
+
+// How many calls a minute each account may make through the API (protects the server from a runaway script).
+async function apiLimitSection(body) {
+  const s = await get('/api/settings');
+  const limit = h('input', { class: 'input', id: 'api-rate', type: 'number', min: 0, value: s.api_rate_limit_per_minute, style: { maxWidth: '140px' } });
+  body.appendChild(h('section', { class: 'col', style: { gap: '10px', maxWidth: '820px', marginTop: '24px' } },
+    h('h2', null, 'Programs using the API'),
+    h('div', { class: 'field' }, h('label', { for: 'api-rate' }, 'Calls each account may make per minute'), limit,
+      h('span', { class: 'hint' }, 'A script that goes over it waits a minute; people never come near it. 0 switches the limit off; at least 60 otherwise.')),
+    h('div', null, h('button', { class: 'btn', onclick: async () => {
+      try { await put('/api/settings', { api_rate_limit_per_minute: Number(limit.value) }); toast('Saved', 'ok'); } catch (e) { fail(e); }
+    } }, 'Save limit'))));
 }

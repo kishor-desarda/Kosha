@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from .. import access, approval, db, security, sessions, signin
+from .. import access, apisafety, approval, db, security, sessions, signin
 from ..lifecycle import STATE_LABEL, doc_summary, user_names
 from ..web import ROLE_LEVEL, Req, api, as_bool, bad, conflict, not_found
 
@@ -182,7 +182,7 @@ def update_user(req: Req):
 
 PUBLIC_SETTINGS = ("part_number_regex", "revision_skip_letters", "first_revision", "require_eco_for_release",
                    "company_name", "default_theme", "revision_scheme", "four_eyes_categories",
-                   "allow_self_approval_with_reason", "obsolete_needs_change_order")
+                   "allow_self_approval_with_reason", "obsolete_needs_change_order", "api_rate_limit_per_minute")
 BOOL_SETTINGS = ("require_eco_for_release", "allow_self_approval_with_reason", "obsolete_needs_change_order")
 
 
@@ -223,16 +223,31 @@ def put_settings(req: Req):
                 v = sorted({c.upper() for c in v})
             if k == "default_theme":
                 _check_theme(v, allow_default=False)
+            if k == "api_rate_limit_per_minute":
+                try:
+                    v = int(v)
+                except (TypeError, ValueError):
+                    v = -1
+                if not 0 <= v <= 1_000_000:
+                    raise bad("The API limit is a number of calls per minute; 0 switches it off.")
+                if v and v < 60:
+                    raise bad("Allow at least 60 calls a minute, or the browser itself would be refused.")
             db.set_setting(k, v)
+            if k == "api_rate_limit_per_minute":
+                from ..apisafety import forget_rate_setting
+                forget_rate_setting()
     db.audit(req.uid, "settings", "settings", None, "")
     return get_settings(req)
 
 
 @api("GET", "/api/audit", role="approver")
 def audit(req: Req):
-    limit = min(int(req.q("limit", 200)), 1000)
+    paged, after, limit = apisafety.cursor_args(req, 200)
     params: list = []
     where = []
+    if after is not None:
+        where.append("id < ?")
+        params.append(after)
     if req.q("entity"):
         where.append("entity = ?")
         params.append(req.q("entity"))
@@ -241,7 +256,12 @@ def audit(req: Req):
         params.append(int(req.q("entity_id")))
     sql = "SELECT * FROM audit" + (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY id DESC LIMIT ?"
     names = user_names()
-    return {"entries": [{**r, "user": names.get(r["user_id"], "system")} for r in db.rows(sql, [*params, limit])]}
+    rows = [{**r, "user": names.get(r["user_id"], "system")} for r in
+            db.rows(sql, [*params, limit + 1 if paged else limit])]
+    if paged:
+        rows, nxt = apisafety.next_cursor(rows, limit)
+        return {"entries": rows, "next_cursor": nxt}
+    return {"entries": rows}
 
 
 # -------------------------------------------------------------- numbering --

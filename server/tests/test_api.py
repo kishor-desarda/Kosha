@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(HERE)), "addins"
 DATA = tempfile.mkdtemp(prefix="kosha_test_")
 os.environ["KOSHA_DATA_DIR"] = DATA
 os.environ["KOSHA_DISABLE_WORKER"] = "1"
+os.environ["KOSHA_API_RATE_LIMIT_PER_MINUTE"] = "0"
 os.environ["KOSHA_ADMIN_PASSWORD"] = "admin-pass-1"
 
 import uvicorn  # noqa: E402

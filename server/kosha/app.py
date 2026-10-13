@@ -15,6 +15,7 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from . import addins, config, db, erp, notify_outbox, security, sessions, web
+from .apisafety import ApiMiddleware
 from .headers import SecurityHeadersMiddleware
 from .api import load_all as _load_api
 
@@ -92,11 +93,17 @@ def create_app() -> Starlette:
 
     async def not_found(request, exc):
         if request.url.path.startswith("/api/"):
-            return JSONResponse({"error": "Not found", "code": "not_found"}, status_code=404)
+            return JSONResponse(web.error_body("Not found", "not_found", request), status_code=404)
         return FileResponse(config.STATIC_DIR / "index.html")
 
-    middleware = [Middleware(SecurityHeadersMiddleware), Middleware(GZipMiddleware, minimum_size=1024)]
-    return Starlette(routes=routes, lifespan=lifespan, middleware=middleware, exception_handlers={404: not_found})
+    async def not_allowed(request, exc):
+        return JSONResponse(web.error_body(f"{request.method} is not possible here.", "method_not_allowed", request),
+                            status_code=405)
+
+    middleware = [Middleware(ApiMiddleware), Middleware(SecurityHeadersMiddleware),
+                  Middleware(GZipMiddleware, minimum_size=1024)]
+    return Starlette(routes=routes, lifespan=lifespan, middleware=middleware,
+                     exception_handlers={404: not_found, 405: not_allowed})
 
 
 app = create_app()
