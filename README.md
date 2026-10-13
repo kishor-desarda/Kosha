@@ -126,12 +126,16 @@ Other ERPs plug into the same `ErpConnector` interface (see *Add-ins* below).
 | Add-in | Folder | State |
 | --- | --- | --- |
 | SolidWorks 2021 and later | `addins/solidworks` | Written against the SolidWorks API; build and pilot on one PC first |
-| GStarCAD | `addins/gstarcad` | Starter add-in on the shared CAD core; build against your GStarCAD SDK |
-| Shared CAD core (`Kosha.Client`, `Kosha.CadCore`) | `sdk/dotnet` | Used by every CAD add-in |
+| AutoCAD 2021 and later | `addins/autocad` | Preview on the shared CAD core and DWG code (.NET 8 for 2025+, .NET Framework 4.8 before); autoloader bundle included; build against your AutoCAD assemblies, not built in CI |
+| GStarCAD | `addins/gstarcad` | Starter add-in on the shared CAD core and DWG code; build against your GStarCAD SDK, not built in CI |
+| Kosha Desktop (Office files, PDFs, images) | `addins/desktop` | Windows tray program with Explorer right-click commands; logic tested in CI, program compiled in CI; see [docs/desktop.md](docs/desktop.md) |
+| Word, Excel, PowerPoint | `web/office-addin` | Task pane served by Kosha: insert part data, check the document in; tested in a browser in CI; see [docs/office-addin.md](docs/office-addin.md) |
+| Shared CAD core (`Kosha.Client`, `Kosha.CadCore`, `Kosha.CadCore.UI`, `Kosha.CadCore.Dwg`) | `sdk/dotnet` | Used by every CAD add-in; the DWG code is shared by AutoCAD and GStarCAD |
 
 Each designer keeps a local workspace folder (for example `C:\Kosha`) that mirrors Kosha's folders.
 The add-ins check files in and out, upload properties, previews, 3D meshes and assembly structure,
-and warn about duplicates.
+and warn about duplicates. Kosha Desktop and the CAD add-ins share one sign-in and one workspace
+folder per Windows user.
 
 ## Add-ins
 
@@ -159,7 +163,8 @@ server/tests/        unit tests (pytest) and end-to-end suites with a simulated 
 web/                 browser client (plain JavaScript modules, no build step)
 sdk/python/          add-in SDK (Apache-2.0): manifest, base classes, safe HTTP, conformance tests
 sdk/dotnet/          shared C# libraries for CAD add-ins (Apache-2.0)
-addins/              official add-ins (Apache-2.0): ERPNext, SolidWorks, GStarCAD
+addins/              official add-ins (Apache-2.0): ERPNext, SolidWorks, AutoCAD, GStarCAD, Kosha Desktop
+web/office-addin/    the Office add-in (task pane for Word, Excel and PowerPoint), served by Kosha
 packs/               industry packs and standard-parts data (CC BY 4.0)
 deploy/              Linux service, backup timer, Caddy example, Windows scripts for trying Kosha
 docs/                documentation and decision records
@@ -174,7 +179,9 @@ python tests/test_api.py     # main workflows end to end, with a simulated ERPNe
 python tests/test_import.py  # legacy import of a messy folder tree and all duplicate checks
 cd .. && pytest sdk/python/tests addins/erpnext/tests
 python scripts/smoke_ui.py   # browser smoke test (needs Playwright)
+python scripts/test_office_taskpane.py       # Office task pane, in test mode and a simulated Word
 dotnet test sdk/dotnet/Kosha.CadCore.Tests   # shared CAD core (needs the .NET 8 SDK)
+dotnet test addins/desktop/Kosha.Desktop.Core.Tests   # Kosha Desktop logic
 ```
 
 The same suites run on every pull request in GitHub Actions.

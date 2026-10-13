@@ -22,11 +22,14 @@ cd server && python tests/test_api.py     # end-to-end API workflows (simulated 
 cd server && python tests/test_import.py  # legacy import and duplicate checks
 pytest -q sdk/python/tests addins/erpnext/tests
 python scripts/smoke_ui.py                # browser smoke test (Playwright)
+python scripts/test_office_taskpane.py    # Office task pane (web/office-addin) in test mode and a simulated Word
 ruff check server sdk addins scripts
 python scripts/spdx_headers.py            # every source file needs an SPDX header (--fix adds it)
 ```
 
-CI (`.github/workflows/ci.yml`) runs all of these plus `dotnet test sdk/dotnet/Kosha.CadCore.Tests`.
+CI (`.github/workflows/ci.yml`) runs all of these plus `dotnet test sdk/dotnet/Kosha.CadCore.Tests` and
+`dotnet test addins/desktop/Kosha.Desktop.Core.Tests`. The AutoCAD and GStarCAD add-ins (and the DWG code they share in
+`sdk/dotnet/Kosha.CadCore.Dwg`, compiled into both) need the CAD programs' assemblies and are not built in CI.
 
 ## Tests
 

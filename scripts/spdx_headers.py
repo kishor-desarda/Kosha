@@ -14,7 +14,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 COMMENT = {".py": "#", ".sh": "#", ".yml": "#", ".yaml": "#", ".toml": "#", ".js": "//", ".cs": "//",
-           ".css": "/*", ".bat": "REM", ".html": "<!--", ".csproj": "<!--", ".service": "#", ".timer": "#"}
+           ".css": "/*", ".bat": "REM", ".html": "<!--", ".csproj": "<!--", ".service": "#", ".timer": "#",
+           ".ps1": "#", ".xml": "<!--", ".props": "<!--"}
 SKIP_DIRS = {"LICENSES", ".git", "node_modules", "bin", "obj", "__pycache__"}
 SKIP_FILES = {"LICENSE"}
 
