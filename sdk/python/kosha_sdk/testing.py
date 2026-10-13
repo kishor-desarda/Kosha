@@ -2,18 +2,24 @@
 # SPDX-License-Identifier: Apache-2.0
 """Conformance test kit. Run it in an add-in's own tests before publishing:
 
-    from kosha_sdk.testing import check_manifest, check_erp_connector, check_notifier
+    from kosha_sdk.testing import check_manifest, check_erp_connector, check_notifier, check_ai_provider
     assert check_manifest("path/to/addin") == []
     assert check_erp_connector(MyConnector(ctx)) == []      # against a TEST system, never production
     assert check_notifier(MyNotifier(ctx)) == []            # posts a few test messages to a TEST channel
+    assert check_ai_provider(MyProvider(ctx)) == []         # a few short requests to a TEST model
+
+`FakeAiProvider` stands in for an AI service in Kosha's own tests and in add-ins that use AI.
 
 Each check returns a list of problems in plain words; an empty list means the add-in passes.
 """
 from __future__ import annotations
 
+import time
 from pathlib import Path
+from typing import Callable, Sequence
 
-from .context import Health
+from .ai import AiError, AiNotSupported, AiProvider, Completion, Message
+from .context import AddinContext, Health
 from .erp import (ErpBom, ErpBomLine, ErpBomRecord, ErpConnector, ErpError, ErpItem, ErpItemRecord, ErpNotSupported,
                   ErpResult, StockInfo)
 from .errors import AddinError, ManifestError
@@ -24,6 +30,7 @@ _NEEDS = {
     "erp-connector": ("server", "erp:sync"),
     "file-type": ("server", "files:read"),
     "notifier": ("server", "notify:send"),
+    "ai-provider": ("server", "ai:provide"),
     "web-extension": ("web", None),
     "cad-addin": ("cad", None),
     "office-addin": ("office", None),
@@ -38,10 +45,11 @@ def check_manifest(path: str | Path) -> list[str]:
     problems = []
     for kind in m.kinds:
         place, perm = _NEEDS.get(kind, (None, None))
+        a = "an" if kind[0] in "aeiou" else "a"
         if place and place not in m.entry_points:
-            problems.append(f"a {kind} add-in needs entry_points.{place}")
+            problems.append(f"{a} {kind} add-in needs entry_points.{place}")
         if perm and perm not in m.permissions:
-            problems.append(f"a {kind} add-in needs the permission {perm}")
+            problems.append(f"{a} {kind} add-in needs the permission {perm}")
     for s in m.settings:
         if s.type == "secret" and s.key.lower() in ("url", "base_url"):
             problems.append(f"setting {s.key} looks like an address, not a secret")
@@ -167,4 +175,119 @@ def check_notifier(notifier: Notifier) -> list[str]:
             problems.append(f"send() refused {label}: {e}")
         except AddinError as e:
             problems.append(f"send() must raise NotifyError, not {e.__class__.__name__} ({label}): {e}")
+    return problems
+
+
+# ------------------------------------------------------------------------------------------------ AI --
+
+Responder = Callable[[Sequence[Message]], "str | Completion"]
+
+
+class FakeAiProvider(AiProvider):
+    """An AI provider that answers from a script instead of a model, for tests.
+
+        fake = FakeAiProvider(ctx, '{"answer": "Yes"}')                 # always this text
+        fake = FakeAiProvider(ctx, ["first answer", "second answer"])  # one after the other
+        fake = FakeAiProvider(ctx, lambda messages: "...")             # worked out from the messages
+        fake.fail_with = AiError("The service is down.")               # every call fails like this
+        fake.delay_s = 2                                               # every call waits first
+
+    Every call is kept in `calls` (the messages and the options), so a test can check what Kosha sent.
+    With no context it makes its own (AddinContext("org.kosha.fake-ai")).
+    """
+
+    def __init__(self, ctx: AddinContext | None = None, answers: "str | list[str] | Responder" = "OK", *,
+                 model: str = "fake-model", embedding_size: int | None = 8):
+        super().__init__(ctx or AddinContext("org.kosha.fake-ai"))
+        self.answers = answers
+        self.model = model
+        self.embedding_size = embedding_size
+        self.calls: list[dict] = []
+        self.fail_with: Exception | None = None
+        self.delay_s = 0.0
+
+    def health(self) -> Health:
+        if isinstance(self.fail_with, Exception):
+            return Health.down(str(self.fail_with))
+        return Health.up(f"Fake AI provider, model {self.model}")
+
+    def complete(self, messages: Sequence[Message], *, max_tokens: int = 512, temperature: float = 0.2,
+                 json_mode: bool = False) -> Completion:
+        self.calls.append({"messages": list(messages), "max_tokens": max_tokens, "temperature": temperature,
+                           "json_mode": json_mode})
+        if self.delay_s:
+            time.sleep(self.delay_s)
+        if self.fail_with is not None:
+            raise self.fail_with
+        if callable(self.answers):
+            out = self.answers(messages)
+        elif isinstance(self.answers, list):
+            if not self.answers:
+                raise AiError("The fake AI provider has no answers left.")
+            out = self.answers.pop(0)
+        else:
+            out = self.answers
+        if isinstance(out, Completion):
+            return out
+        return Completion(text=str(out), model=self.model, finish_reason="stop",
+                          usage={"prompt_tokens": sum(len(m.content.split()) for m in messages),
+                                 "completion_tokens": len(str(out).split())})
+
+    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        if self.embedding_size is None:
+            return super().embed(texts)
+        if self.fail_with is not None:
+            raise self.fail_with
+        out = []
+        for t in texts:       # a stable, meaningless vector per text: enough to test the plumbing
+            v = [0.0] * self.embedding_size
+            for i, ch in enumerate(t):
+                v[i % self.embedding_size] += (ord(ch) % 31) / 31.0
+            out.append(v)
+        return out
+
+
+def check_ai_provider(provider: AiProvider) -> list[str]:
+    """Check the AI provider contract with three short requests. Point it at a TEST model or a local runner."""
+    problems: list[str] = []
+
+    def expect(cond: bool, msg: str) -> None:
+        if not cond:
+            problems.append(msg)
+
+    h = provider.health()
+    expect(isinstance(h, Health), "health() must return a Health")
+    if not getattr(h, "ok", False):
+        return problems + [f"health() reports a problem, so the other checks were skipped: {getattr(h, 'message', '')}"]
+    plain = [Message("system", "You are a test. Answer in one word."), Message("user", "Say OK.")]
+    as_json = [Message("system", 'Answer only with a JSON object like {"ok": true}.'),
+               Message("user", 'Reply with {"ok": true}.')]
+    for label, messages, kw in (("a short request", plain, {"max_tokens": 16}),
+                                ("the same request again", plain, {"max_tokens": 16}),
+                                ("a JSON request", as_json, {"max_tokens": 32, "json_mode": True})):
+        try:
+            r = provider.complete(messages, **kw)
+        except AiError as e:
+            problems.append(f"complete() refused {label}: {e}")
+            continue
+        except AddinError as e:
+            problems.append(f"complete() must raise AiError, not {e.__class__.__name__} ({label}): {e}")
+            continue
+        expect(isinstance(r, Completion), f"complete() must return a Completion ({label})")
+        if isinstance(r, Completion):
+            expect(isinstance(r.text, str), f"Completion.text must be text ({label})")
+            expect(r.finish_reason in ("stop", "length", "content_filter", "tool_calls", ""),
+                   f"Completion.finish_reason {r.finish_reason!r} is not one Kosha knows ({label})")
+            expect(isinstance(r.usage, dict), f"Completion.usage must be a dict ({label})")
+    try:
+        vectors = provider.embed(["hex bolt M16x60", "ball bearing 6205"])
+    except AiNotSupported:
+        vectors = None
+    except AiError as e:
+        problems.append(f"embed() failed: {e}")
+        vectors = None
+    if vectors is not None:
+        expect(isinstance(vectors, list) and len(vectors) == 2, "embed() must return one vector per text")
+        expect(all(isinstance(v, list) and v and all(isinstance(x, (int, float)) for x in v) for v in vectors or []),
+               "embed() must return lists of numbers")
     return problems
