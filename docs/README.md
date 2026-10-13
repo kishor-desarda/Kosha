@@ -1,6 +1,9 @@
 # Kosha documentation
 
 - [`../README.md`](../README.md): what Kosha is, how to try and install it.
+- [`user-guide.md`](user-guide.md): the everyday jobs, from adding files to release, for engineers, checkers and approvers.
+- [`admin-guide.md`](admin-guide.md): installing, the first day, connecting other systems, keeping data safe, upgrading and releasing.
+- [`../CHANGELOG.md`](../CHANGELOG.md): what changed in each release.
 - [`../CONTRIBUTING.md`](../CONTRIBUTING.md): how to contribute.
 - [`adr/`](adr/): architecture decision records, one page per decision.
 - [`../sdk/python/README.md`](../sdk/python/README.md): building server add-ins.
@@ -29,6 +32,7 @@
 - [`erp-extended.md`](erp-extended.md): HSN, OEM and status to the ERP, drawings attached to ERP items, orders and customers in, retries and the nightly check.
 - [`programs-and-events.md`](programs-and-events.md): API keys for programs, webhooks, and live updates on open screens.
 - [`ai.md`](ai.md): optional AI assistance (classification, change-log drafts, Ask Kosha): what is sent, privacy, running it fully local.
+- [`file-previews.md`](file-previews.md): previews of text, tables, archives, e-mails, Office files, STEP and video; file-type, storage and importer add-ins.
 
 The full specification and development guide will be published here as the documentation site
 (MkDocs) is set up.

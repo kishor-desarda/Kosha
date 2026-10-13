@@ -10,7 +10,7 @@
   <a href="https://github.com/kishor-desarda/Kosha/actions/workflows/ci.yml"><img src="https://github.com/kishor-desarda/Kosha/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-AGPL--3.0--or--later-262522" alt="Licence: AGPL-3.0-or-later"></a>
   <img src="https://img.shields.io/badge/python-3.10%2B-262522" alt="Python 3.10 or newer">
-  <img src="https://img.shields.io/badge/status-0.5%20preview-EF5A28" alt="Status: 0.5 preview">
+  <img src="https://img.shields.io/badge/status-1.0%20release%20candidate-EF5A28" alt="Status: 1.0 release candidate">
 </p>
 
 # Kosha: open-source PLM
@@ -25,8 +25,8 @@ a browser client, CAD and Office add-ins, and no per-user fees.
 
 ![Explorer in Guided mode](docs/screenshots/02-explorer-guided.png)
 
-> **Status: early preview (0.5.0.dev).** The core works end to end and is tested, but expect
-> changes before 1.0. Try it with the demo data, and tell us what you think.
+> **Status: 1.0 release candidate (1.0.0rc1).** Every area of the specification works end to end and is tested;
+> expect small changes from pilot feedback before 1.0. Try it with the demo data, and tell us what you think.
 
 ## Why Kosha
 
@@ -289,10 +289,9 @@ The same suites run on every pull request in GitHub Actions.
 
 The full specification and the development guide are maintained alongside the project. In short:
 
-- **0.5 preview (now):** everything in the table above. PostgreSQL, directory sign-in, the inputs library,
-  measured change logs, deviations, copy design, the standard-parts library, themes with dark mode, optional
-  AI assistance, the Office add-in, industry packs and the ERPNext, Odoo, Dolibarr and file-exchange
-  connectors are all in the code and tested.
+- **1.0 release candidate (now):** everything in the table above and every area of the specification, each
+  covered by tests, with an acceptance suite that walks through the specification's acceptance scenarios. See the
+  [changelog](CHANGELOG.md), the [user guide](docs/user-guide.md) and the [admin guide](docs/admin-guide.md).
 - **1.0:** pilots at real design offices, then hardening: the newer features proven on PostgreSQL in daily
   use, the Dolibarr connector checked against live Dolibarr versions, the AI prompts tuned on real models,
   and the AutoCAD and GStarCAD add-ins out of preview.
