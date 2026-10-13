@@ -58,7 +58,8 @@ export async function renderDoc(container, [id], params, { setTitle }) {
         h('a', { class: 'btn ghost', href: `#/files/${d.folder_id}?select=${d.id}` }, icon('kosha', 16), 'Show in folder')));
 
     const tabItems = [['overview', 'Overview'], ['versions', `Versions (${d.versions.length})`], ['history', 'History'],
-      ['where', `Where used (${d.where_used.length})`], ['related', `Related files (${d.related.length})`], ['changes', `Changes (${d.changes.length})`]];
+      ['where', `Where used (${d.where_used.length})`], ['related', `Related files (${d.related.length})`], ['changes', `Changes (${d.changes.length})`],
+      ['changelog', 'Change log']];
     if (d.item) tabItems.push(['erp', 'ERP']);
     const body = h('div', { class: 'panel', style: { marginTop: '6px' } });
     const setTab = t => { tab = t; drawTab(); };
@@ -73,6 +74,7 @@ export async function renderDoc(container, [id], params, { setTitle }) {
       if (tab === 'where') whereTab(c, d);
       if (tab === 'related') c.appendChild(d.related.length ? docTable(d.related) : h('div', { class: 'empty' }, 'No other files share this part number.'));
       if (tab === 'changes') changesTab(c, d);
+      if (tab === 'changelog') import('./diffview.js').then(m => m.changeLogTab(c, d)).catch(fail);
       if (tab === 'erp') erpTab(c, d.item, load);
     };
     drawTab();
@@ -199,6 +201,7 @@ export async function renderItem(container, [id], _p, { setTitle }) {
       h('div', { class: 'page-head' }, h('div', { style: { flex: 1 } }, h('div', { class: 'small muted' }, 'Part'),
         h('h1', { class: 'mono' }, it.part_number), h('div', { class: 'sub' }, it.description),
         h('div', { class: 'row', style: { marginTop: '8px' } }, stateChip(it.state), h('span', { class: 'muted' }, `Revision ${it.revision} · ${it.item_type} · ${it.make_buy}`))),
+      can('engineer') ? h('button', { class: 'btn', title: 'Start a new design from this one, with new part numbers', onclick: () => import('./copydesign.js').then(m => m.copyDesignDialog({ item_id: it.id })).catch(fail) }, icon('copy', 16), 'Copy design…') : null,
       can('approver') ? h('div', { class: 'row' },
         h('button', { class: 'btn primary', onclick: () => erpPush('item', it.id, load) }, icon('erp', 16), `Send to ${S.erp}`),
         h('button', { class: 'btn', onclick: () => erpPush('refresh', it.id, load) }, icon('refresh', 16), 'Stock & cost')) : null),

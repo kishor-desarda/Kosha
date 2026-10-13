@@ -403,6 +403,8 @@ def set_state(user: dict, doc_id: int, to: str, comment: str = "", co_id: int | 
         if to == "released":
             released_doc = d
             _sync_item_on_release(d)
+            from .diff import snapshots
+            snapshots.on_release(d)   # item properties as released, for the measured change list
         if to == "obsolete" and d["item_id"]:
             others = db.scalar("SELECT COUNT(*) FROM documents WHERE item_id = ? AND deleted = 0 AND state != 'obsolete' "
                                "AND id != ?", (d["item_id"], doc_id))
