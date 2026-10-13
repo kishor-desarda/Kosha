@@ -194,6 +194,29 @@ def test_writers_take_turns_like_sqlite(pg):
     assert db.scalar("SELECT COUNT(*) FROM users WHERE username IN ('lock-a', 'lock-b')") == 2
 
 
+def test_a_read_snapshot_does_not_hold_up_writers(pg):
+    conn = db.connect()
+    before = db.scalar("SELECT COUNT(*) FROM users")
+    conn.execute("BEGIN")                             # SQLite's deferred transaction: a consistent snapshot
+    assert db.scalar("SELECT COUNT(*) FROM users") == before
+    done = []
+
+    def writer():
+        with db.tx():
+            _user("while-reading")
+        done.append(True)
+        db.close_thread_connection()
+
+    t = threading.Thread(target=writer)
+    t.start()
+    t.join(10)
+    assert done                                        # the writer did not wait for the reader
+    assert db.scalar("SELECT COUNT(*) FROM users") == before     # the snapshot stays the same
+    _user("reader-writes")                             # the first write takes the write lock
+    conn.execute("COMMIT")
+    assert db.scalar("SELECT COUNT(*) FROM users") == before + 2
+
+
 def _end_session(url: str) -> None:
     """End this thread's PostgreSQL session from outside, as a server restart would."""
     pid = db.scalar("SELECT pg_backend_pid()")

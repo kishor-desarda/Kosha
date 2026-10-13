@@ -305,8 +305,10 @@ def test_sqlite_master_is_a_catalogue_view():
 # --------------------------------------------------------------------------------- statement classes --
 
 def test_transaction_control():
-    assert translate("BEGIN IMMEDIATE").action == "begin"
+    assert translate("BEGIN IMMEDIATE").action == "begin_immediate"
+    assert translate("BEGIN EXCLUSIVE TRANSACTION").action == "begin_immediate"
     assert translate("BEGIN").action == "begin"
+    assert translate("BEGIN DEFERRED").action == "begin"
     assert translate("COMMIT").action == "commit"
     assert translate("END TRANSACTION").action == "commit"
     assert translate("ROLLBACK").action == "rollback"

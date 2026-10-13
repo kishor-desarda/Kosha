@@ -46,7 +46,8 @@ other ``PRAGMA``\\s, ``VACUUM``            nothing (PostgreSQL manages these its
 Transactions behave like SQLite's ``BEGIN IMMEDIATE``: a write transaction first takes one
 database-wide advisory lock, so writers run one at a time (and wait up to 30 seconds, like SQLite's
 busy time-out) while readers carry on. Single writing statements outside a transaction take the
-same lock. Inside a transaction every writing statement runs under a savepoint, so a failed
+same lock. A plain ``BEGIN`` (SQLite's DEFERRED) is a consistent read snapshot that takes the lock
+only at its first write, so a long read such as an export never holds up writers. Inside a transaction every writing statement runs under a savepoint, so a failed
 statement is undone on its own and the transaction can carry on, as in SQLite. A transaction
 that PostgreSQL has already aborted is never reported as committed. A session lost outside a
 transaction (PostgreSQL restarted) is replaced and the statement runs again; inside a transaction
@@ -236,7 +237,7 @@ def _str(value: str) -> Tok:
 @dataclass(frozen=True)
 class Translated:
     sql: str                         # for psycopg: %s place holders, literal % doubled
-    action: str = ""                 # "begin" | "commit" | "rollback" | "noop" | ""
+    action: str = ""                 # "begin" | "begin_immediate" | "commit" | "rollback" | "noop" | ""
     write: bool = False              # changes data or schema (takes the write lock)
     ddl: bool = False                # changes the schema
     insert_table: str = ""           # INSERT target (for RETURNING id and upserts)
@@ -270,7 +271,10 @@ def translate(sql: str) -> Translated:
         raise ValueError("numbered place holders (?1, ?2) are not supported; use ?")
     first = tokens[0].up
     if first in ("BEGIN", "COMMIT", "END", "ROLLBACK") and not (first == "ROLLBACK" and any(_is(t, "TO") for t in tokens)):
-        return Translated("", action={"BEGIN": "begin", "COMMIT": "commit", "END": "commit"}.get(first, "rollback"))
+        if first == "BEGIN":
+            return Translated("", action="begin_immediate" if any(_is(t, "IMMEDIATE", "EXCLUSIVE") for t in tokens)
+                              else "begin")
+        return Translated("", action="commit" if first in ("COMMIT", "END") else "rollback")
     if first == "PRAGMA":
         return _pragma(tokens)
     if first in ("VACUUM", "ANALYZE"):
@@ -913,6 +917,7 @@ class Connection:
         self._psycopg = _import_psycopg()
         self._url, self._application_name = url, application_name
         self._last_id: int | None = None
+        self._locked = False                   # this transaction holds the write lock
         self.raw = self._open()
 
     def _open(self):
@@ -956,17 +961,21 @@ class Connection:
         return self.raw.info.transaction_status == self._psycopg.pq.TransactionStatus.INERROR
 
     # -- transactions
-    def _begin(self, retry: bool = True) -> None:
+    def _begin(self, lock: bool = True, retry: bool = True) -> None:
+        """BEGIN IMMEDIATE (lock): the write lock now. BEGIN (DEFERRED): a consistent read snapshot that takes
+        the write lock at its first write, as SQLite does, so long reads never hold up writers."""
         if self.in_transaction:
             raise sqlite3.OperationalError("cannot start a transaction within a transaction")
         try:
             if self.broken:
                 self._reopen()
-            self.raw.execute(f"BEGIN; SELECT pg_advisory_xact_lock({WRITE_LOCK_KEY})")
+            self._locked = lock
+            self.raw.execute(f"BEGIN; SELECT pg_advisory_xact_lock({WRITE_LOCK_KEY})" if lock
+                             else "BEGIN ISOLATION LEVEL REPEATABLE READ")
         except self._psycopg.Error as e:
             if retry and self.broken:          # nothing had started: safe to try once more on a new session
                 self._reopen()
-                return self._begin(retry=False)
+                return self._begin(lock, retry=False)
             self._rollback_quietly()
             if getattr(e, "sqlstate", "") == "55P03":
                 raise sqlite3.OperationalError("database is locked: another change took longer than "
@@ -1016,8 +1025,8 @@ class Connection:
             t = translate(sql)
         except ValueError as e:
             raise sqlite3.OperationalError(f"{e}: {sql.strip()[:200]}") from None
-        if t.action == "begin":
-            self._begin()
+        if t.action in ("begin", "begin_immediate"):
+            self._begin(lock=t.action == "begin_immediate")
             return Cursor()
         if t.action == "commit":
             self._commit()
@@ -1073,6 +1082,9 @@ class Connection:
             raise _as_sqlite_error(e) from e
         started = False
         try:
+            if not self._locked:               # first write of a deferred transaction: now the write lock
+                self.raw.execute(f"SELECT pg_advisory_xact_lock({WRITE_LOCK_KEY})")
+                self._locked = True
             if savepoint:
                 self.raw.execute("SAVEPOINT kosha_statement")
                 started = True
