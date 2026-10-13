@@ -1,5 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""SQLite data layer (WAL mode, one connection per thread)."""
+"""Data layer: SQLite (WAL mode) by default, PostgreSQL when ``KOSHA_DATABASE_URL`` is set.
+
+One connection per thread. Modules write SQL the SQLite way (``?`` place holders, ``COLLATE NOCASE``,
+``INSERT OR IGNORE`` ...); on PostgreSQL the connection from :func:`connect` translates every statement
+(see ``pgsql.py``) and behaves like a sqlite3 connection: rows by column name, ``lastrowid``,
+``BEGIN IMMEDIATE`` (one writer at a time), and database errors raised as ``sqlite3`` exceptions.
+"""
 from __future__ import annotations
 
 import json
@@ -12,6 +18,19 @@ from typing import Any, Iterable
 from . import config
 
 _local = threading.local()
+
+IntegrityError = sqlite3.IntegrityError     # raised on both engines (unique keys, foreign keys, NOT NULL)
+OperationalError = sqlite3.OperationalError
+
+
+def engine() -> str:
+    """"sqlite" or "postgresql"."""
+    return "postgresql" if config.DATABASE_URL else "sqlite"
+
+
+def dialect(conn=None) -> str:
+    """The SQL dialect of a connection (default: this thread's)."""
+    return getattr(conn if conn is not None else connect(), "dialect", "sqlite")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -310,16 +329,24 @@ def now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
-def connect() -> sqlite3.Connection:
+def connect():
+    """This thread's connection: a sqlite3.Connection, or a pgsql.Connection that behaves like one."""
     conn = getattr(_local, "conn", None)
+    if conn is not None and getattr(conn, "broken", False):
+        close_thread_connection()              # PostgreSQL restarted or the network dropped: start afresh
+        conn = None
     if conn is None:
-        config.ensure_dirs()
-        conn = sqlite3.connect(str(config.DB_PATH), timeout=30, isolation_level=None)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA foreign_keys=ON")
-        conn.execute("PRAGMA busy_timeout=30000")
-        conn.execute("PRAGMA synchronous=FULL")   # a confirmed write survives a power cut
+        if config.DATABASE_URL:
+            from . import pgsql
+            conn = pgsql.connect(config.DATABASE_URL)
+        else:
+            config.ensure_dirs()
+            conn = sqlite3.connect(str(config.DB_PATH), timeout=30, isolation_level=None)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA foreign_keys=ON")
+            conn.execute("PRAGMA busy_timeout=30000")
+            conn.execute("PRAGMA synchronous=FULL")   # a confirmed write survives a power cut
         _local.conn = conn
     return conn
 
@@ -327,18 +354,28 @@ def connect() -> sqlite3.Connection:
 def close_thread_connection() -> None:
     conn = getattr(_local, "conn", None)
     if conn is not None:
-        conn.close()
         _local.conn = None
+        try:
+            if conn.in_transaction:
+                conn.execute("ROLLBACK")
+        except Exception:
+            pass
+        finally:
+            conn.close()
 
 
-def init() -> None:
-    conn = connect()
+def create_schema(conn, *, defaults: bool = True, only_migrations: Iterable[str] | None = None) -> None:
+    """Tables, indexes, default settings and database changes on `conn` (either engine)."""
+    if dialect(conn) == "postgresql":
+        from . import pgsql
+        pgsql.prepare_database(conn)
     conn.executescript(SCHEMA)
-    for key, value in DEFAULT_SETTINGS.items():
-        conn.execute(
-            "INSERT OR IGNORE INTO settings(key, value_json) VALUES (?, ?)",
-            (key, json.dumps(value)),
-        )
+    if defaults:
+        for key, value in DEFAULT_SETTINGS.items():
+            conn.execute(
+                "INSERT OR IGNORE INTO settings(key, value_json) VALUES (?, ?)",
+                (key, json.dumps(value)),
+            )
     # columns added in later versions
     cols = {r[1] for r in conn.execute("PRAGMA table_info(cp_groups)").fetchall()}
     if "kind" not in cols:
@@ -347,7 +384,11 @@ def init() -> None:
         conn.execute("ALTER TABLE cp_groups ADD COLUMN standard_item_id INTEGER")
     conn.execute("CREATE INDEX IF NOT EXISTS ix_versions_sha ON versions(blob_sha)")
     from . import migrations
-    migrations.apply(conn)
+    migrations.apply(conn, only=only_migrations)
+
+
+def init() -> None:
+    create_schema(connect())
     # merge in new ERP keys added in later versions
     erp = get_setting("erp")
     merged = {**DEFAULT_SETTINGS["erp"], **(erp or {})}
@@ -355,9 +396,22 @@ def init() -> None:
         set_setting("erp", merged)
 
 
+def _rollback(conn) -> None:
+    """Roll back; a connection that cannot is closed, so no transaction is ever left open."""
+    try:
+        if conn.in_transaction:
+            conn.execute("ROLLBACK")
+    except Exception:
+        close_thread_connection()
+
+
 @contextmanager
 def tx():
-    """Write transaction. Nested use joins the outer transaction."""
+    """Write transaction. Nested use joins the outer transaction.
+
+    Starts like SQLite's BEGIN IMMEDIATE on both engines: one writer at a time, waiting up to 30 s.
+    Any error rolls the whole transaction back, including an error while committing.
+    """
     conn = connect()
     if conn.in_transaction:
         yield conn
@@ -366,10 +420,14 @@ def tx():
     try:
         yield conn
     except BaseException:
-        conn.execute("ROLLBACK")
+        _rollback(conn)
         raise
     else:
-        conn.execute("COMMIT")
+        try:
+            conn.execute("COMMIT")
+        except BaseException:
+            _rollback(conn)
+            raise
 
 
 def rows(sql: str, params: Iterable[Any] = ()) -> list[dict]:

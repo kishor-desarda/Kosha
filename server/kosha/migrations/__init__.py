@@ -8,6 +8,10 @@ fails is rolled back completely and the server refuses to start, so a database i
 
 Rules: never edit a change that has been released; add a new one. Only add tables, columns and indexes;
 business records are never deleted by a change.
+
+Write SQL the SQLite way; on PostgreSQL every statement (also those run by ``up(conn)``) is translated
+(``kosha/pgsql.py``). For what has no translation, give ``SQL_POSTGRESQL`` (run as it is instead of ``SQL``
+there) or check ``getattr(conn, "dialect", "sqlite")`` in ``up``.
 """
 from __future__ import annotations
 
@@ -16,6 +20,7 @@ import logging
 import pkgutil
 import sqlite3
 from datetime import datetime, timezone
+from typing import Iterable
 
 log = logging.getLogger("kosha.migrations")
 
@@ -40,14 +45,23 @@ def pending(conn) -> list[str]:
     return [n for n in names if n not in done]
 
 
-def apply(conn) -> list[str]:
+def apply(conn, only: Iterable[str] | None = None) -> list[str]:
+    """Apply the pending changes (or only those named in `only`, for copying a database)."""
     applied = []
+    dialect = getattr(conn, "dialect", "sqlite")
+    wanted = None if only is None else set(only)
     for name in pending(conn):
+        if wanted is not None and name not in wanted:
+            continue
         mod = importlib.import_module(f"{__name__}.{name}")
+        native = getattr(mod, f"SQL_{dialect.upper()}", None) if dialect != "sqlite" else None
         conn.execute("BEGIN IMMEDIATE")
         try:
-            for stmt in _statements(getattr(mod, "SQL", "") or ""):
-                conn.execute(stmt)
+            if native is not None:
+                conn.execute_native(native)          # written for this engine: run as it is
+            else:
+                for stmt in _statements(getattr(mod, "SQL", "") or ""):
+                    conn.execute(stmt)
             if hasattr(mod, "up"):
                 mod.up(conn)
             conn.execute("INSERT INTO schema_migrations(id, applied_at) VALUES (?, ?)",

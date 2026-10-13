@@ -35,6 +35,9 @@ CI (`.github/workflows/ci.yml`) runs all of these plus `dotnet test sdk/dotnet/K
   `server/tests/conftest.py`; each test module gets its own server process, data folder and port
   (`tests/harness.py`: `kosha.client()` signs in as admin, `kosha.add_user(name, role)` adds and signs in a user,
   `client.call(method, path, body=..., files=..., expect=...)`).
+- Databases: SQLite by default, PostgreSQL with `KOSHA_DATABASE_URL`. Write SQL the SQLite way through `db.*`;
+  `kosha/pgsql.py` translates it (rules and limits in its docstring). With `KOSHA_TEST_DATABASE_URL` set, every
+  e2e server gets its own PostgreSQL database (CI job `postgres`).
 - In this development container run pytest through the wrapper that exposes the system packages:
   `/tmp/claude-0/-home-claude/820060bb-82fe-5378-951b-69c74aabfd08/scratchpad/tools/pytest.sh` (CI uses plain `pytest`).
 
