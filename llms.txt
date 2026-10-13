@@ -1,6 +1,6 @@
 # Kosha
 
-> Kosha is a free, open-source, self-hosted product lifecycle management (PLM) and product data management (PDM) system for engineering companies. It keeps CAD files (SolidWorks, AutoCAD/GStarCAD DWG and DXF, STEP, STL), drawings, PDFs and Office files under revision control, manages engineering bills of materials (BOMs) and engineering change orders (ECOs), and sends released items and BOMs to an ERP (ERPNext and Odoo connectors). Python server (Starlette, SQLite or PostgreSQL), plain-JavaScript browser client, add-in SDK in Python and C#. Licences: AGPL-3.0-or-later (server and web client), Apache-2.0 (SDKs and add-ins), CC BY 4.0 (packs and documentation). Status: 0.5 preview.
+> Kosha is a free, open-source, self-hosted product lifecycle management (PLM) and product data management (PDM) system for engineering companies. It keeps CAD files (SolidWorks, AutoCAD/GStarCAD DWG and DXF, STEP, STL), drawings, PDFs and Office files under revision control, manages engineering bills of materials (BOMs) and engineering change orders (ECOs), and sends released items and BOMs to an ERP (ERPNext, Odoo and Dolibarr connectors, plus CSV/JSON file exchange for any ERP); people sign in with local accounts or through LDAP / Active Directory and OpenID Connect. Python server (Starlette, SQLite or PostgreSQL), plain-JavaScript browser client, add-in SDK in Python and C#. Licences: AGPL-3.0-or-later (server and web client), Apache-2.0 (SDKs and add-ins), CC BY 4.0 (packs and documentation). Status: 0.5 preview.
 
 Key facts:
 
@@ -9,6 +9,7 @@ Key facts:
 - Roles: viewer, engineer, approver, admin.
 - Every server describes its REST API at /api/docs and /api/openapi.json.
 - Add-ins (ERP connectors, notifiers, CAD add-ins, file types, industry packs) run behind a guard with time-outs and permissions an admin approves.
+- Themes: Light, Dark, High contrast and "Same as my computer", chosen per user.
 - Demo data belongs to the invented company Demo Engineering (mixers, conveyors, pumps).
 
 ## Docs
@@ -17,6 +18,8 @@ Key facts:
 - [Documentation index](https://github.com/kishor-desarda/Kosha/blob/main/docs/README.md): all documentation pages
 - [Export format](https://github.com/kishor-desarda/Kosha/blob/main/docs/export-format.md): how to take every record and file out of Kosha
 - [Kosha Desktop](https://github.com/kishor-desarda/Kosha/blob/main/docs/desktop.md): Windows tray program and Explorer commands for Office files, PDFs and images
+- [Directory sign-in](https://github.com/kishor-desarda/Kosha/blob/main/docs/directory-sign-in.md): LDAP / Active Directory and OpenID Connect
+- [Themes](https://github.com/kishor-desarda/Kosha/blob/main/docs/themes.md): Light, Dark, High contrast
 - [Office add-in](https://github.com/kishor-desarda/Kosha/blob/main/docs/office-addin.md): task pane for Word, Excel and PowerPoint
 - [Architecture decisions](https://github.com/kishor-desarda/Kosha/blob/main/docs/adr): one record per decision
 
@@ -24,6 +27,8 @@ Key facts:
 
 - [Python add-in SDK](https://github.com/kishor-desarda/Kosha/blob/main/sdk/python/README.md): manifest, base classes, safe HTTP, conformance tests
 - [Odoo connector](https://github.com/kishor-desarda/Kosha/blob/main/addins/odoo/README.md): example ERP connector add-in
+- [Dolibarr connector](https://github.com/kishor-desarda/Kosha/blob/main/addins/dolibarr/README.md) and [file-exchange connector](https://github.com/kishor-desarda/Kosha/blob/main/addins/file-exchange/README.md): file layout for any ERP
+- [LDAP add-in](https://github.com/kishor-desarda/Kosha/blob/main/addins/ldap/README.md) and [OpenID Connect add-in](https://github.com/kishor-desarda/Kosha/blob/main/addins/oidc/README.md): sign-in providers
 
 ## Project
 
