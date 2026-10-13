@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: CC-BY-4.0
 id: spur-gear
-category: GR
+category: GER
 label: Spur gear
 hint: Straight-toothed gear. The same module, teeth, face width and material always give the same code.
 code: "GR-{module}-{teeth}-{face_width_mm}-{material}"

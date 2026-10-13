@@ -48,7 +48,7 @@ class Provider(FakeAiProvider):
                 return json.dumps({"description": desc, "category": "ZZ", "material": None,
                                    "standard_part": "FST-MADE-UP-1", "reasons": {}})
             out = {"description": desc.replace("BLT HEX", "HEX BOLT").replace("M16 X 60", "M16X60"),
-                   "category": "FST" if "BLT" in desc or "BOLT" in desc else ("SH" if "SHAFT" in desc else None),
+                   "category": "FST" if "BLT" in desc or "BOLT" in desc else ("SHF" if "SHAFT" in desc else None),
                    "material": "8.8 steel" if "BLT" in desc else "C45",
                    "standard_part": cands[0] if cands else None,
                    "reasons": {"description": "Abbreviation spelled out", "category": "It is a bolt"}}

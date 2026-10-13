@@ -89,7 +89,7 @@ def test_ai_screens(browser, server):
     assert "category" not in asha_api.call("GET", f"/api/items/{key['id']}")["item"]["props"]   # nothing written yet
     pg.get_by_role("button", name="Accept ticked").click()
     pg.wait_for_selector("text=Accepted. The change is in the audit log.")
-    assert asha_api.call("GET", f"/api/items/{key['id']}")["item"]["props"].get("category") == "SH"
+    assert asha_api.call("GET", f"/api/items/{key['id']}")["item"]["props"].get("category") == "SHF"
 
     # --- a draft change log from the AI, edited and saved
     co = next(c for c in asha_api.call("GET", "/api/changes")["changes"] if c["number"].endswith("-0001"))

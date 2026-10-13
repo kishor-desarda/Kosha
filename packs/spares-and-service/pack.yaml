@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: CC-BY-4.0
 id: spares-and-service
 name: Spares and service
-version: 1.0.0
+version: 1.1.0
 licence: CC-BY-4.0
 description: >-
   Categories, item types and spec codes for spare parts, wear parts, service kits and
@@ -10,7 +10,7 @@ description: >-
 categories:
   - {code: SPK, name: Spare-part kits, make_buy: make}
   - {code: WP, name: Wear parts}
-  - {code: FE, name: Filter elements, make_buy: buy}
+  - {code: FLT, name: "Filter element, strainer basket", make_buy: buy}
   - {code: CON, name: Consumables, make_buy: buy}
 
 item_types:

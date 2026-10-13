@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: CC-BY-4.0
 id: shaft
-category: SH
+category: SHF
 label: Plain shaft
 hint: A plain round shaft by finished diameter, overall length and material.
 code: "SH-{diameter_mm}X{length_mm}-{material}"

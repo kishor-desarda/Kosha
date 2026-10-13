@@ -73,9 +73,10 @@ def test_packs_numbering_and_library_through_the_api(kosha):
     assert len(numbers) == 20 and len(set(numbers)) == 20 and all(n.startswith("RT-7-") for n in numbers)
     again = eng.call("POST", "/api/numbering/allocate", {"scheme": "spec:spur-gear", "values": gear})
     assert again["existing"] and again["item"]["id"] == results[0][0]
-    ga = eng.call("POST", "/api/numbering/allocate", {"scheme": "general-arrangement", "values": {"product": "rt"},
+    ga = eng.call("POST", "/api/numbering/allocate", {"scheme": "general-arrangement",
+                                                       "values": {"kind": "GAD", "project": "26014"},
                                                        "description": "ROTARY TABLE GA"})
-    assert ga["part_number"] == "RT-GA-001" and ga["item"]["item_type"] == "assembly"
+    assert ga["part_number"] == "GAD-26014-001" and ga["item"]["item_type"] == "assembly"
     allocations = eng.call("GET", "/api/numbering/allocations")["allocations"]
     assert any(a["part_number"] == "GR-2-40-30-C45" and a["scheme"] == "spec:spur-gear" for a in allocations)
 

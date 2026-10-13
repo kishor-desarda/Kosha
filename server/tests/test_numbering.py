@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Numbering service: template checks, code building, find-before-create and allocation under concurrency."""
+import re
 import threading
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -146,12 +147,12 @@ def test_series_numbers_skip_taken_ones_and_share_the_cad_counter(kdb):
     assert a["part_number"] == "MX-5-002" and a["item"]["description"] == "ROTOR"
     assert svc.next_in_series("MX-5-", 3, None) == "MX-5-003"          # the CAD add-ins' series
     assert svc.allocate("prefix", {"prefix": "MX-5-"}, None)["part_number"] == "MX-5-004"
-    assert svc.allocate("category", {"category": "GR"}, None)["part_number"] == "GR-000001"
+    assert svc.allocate("category", {"category": "GER"}, None)["part_number"] == "GER-000001"
     proj = svc.allocate("project", {}, None, "Customer job")
-    assert proj["item"] is None and proj["part_number"].startswith("P-20") and proj["part_number"].endswith("-001")
+    assert proj["item"] is None and re.fullmatch(r"PRJ-\d\d-001", proj["part_number"])
     assert not db.scalar("SELECT 1 FROM items WHERE part_number = ?", (proj["part_number"],))
-    ga = svc.allocate("general-arrangement", {"product": "mx"}, None)
-    assert ga["part_number"] == "MX-GA-001" and ga["item"]["item_type"] == "assembly"
+    ga = svc.allocate("general-arrangement", {"kind": "GAD", "project": "26014"}, None)
+    assert ga["part_number"] == "GAD-26014-001" and ga["item"]["item_type"] == "assembly"
     with pytest.raises(NumberingError, match="no number scheme 'nope'"):
         svc.allocate("nope", {}, None)
 
@@ -202,10 +203,10 @@ def test_concurrent_allocation_never_duplicates(kdb):
 def test_spec_number_formats(kdb):
     _install("general-machinery")
     svc = NumberingService()
-    assert svc.allocate("category", {"category": "SH"}, None)["part_number"] == "SH-000001"
+    assert svc.allocate("category", {"category": "SHF"}, None)["part_number"] == "SHF-000001"
     with db.tx():                                  # a series started before 6 digits keeps its width
-        db.execute("INSERT INTO numbering(prefix, next_value, width) VALUES ('FL-', 13, 5)")
-    assert svc.allocate("category", {"category": "FL"}, None)["part_number"] == "FL-00013"
+        db.execute("INSERT INTO numbering(prefix, next_value, width) VALUES ('FLG-', 13, 5)")
+    assert svc.allocate("category", {"category": "FLG"}, None)["part_number"] == "FLG-00013"
     assert svc.allocate("document", {}, None, "Pump test procedure")["part_number"] == "DOC-000001"
     assert svc.allocate("kit", {}, None, "Shutdown kit")["part_number"] == "KIT-000001"
     yy = f"{datetime.now(timezone.utc).year % 100:02d}"

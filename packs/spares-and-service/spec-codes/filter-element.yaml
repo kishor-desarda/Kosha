@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: CC-BY-4.0
 id: filter-element
-category: FE
+category: FLT
 label: Filter element
 hint: A replaceable cartridge by filter medium, rating and size. Use it for spares lists and service kits.
 code: "FE-{media}-{micron}-{od_mm}X{length_mm}"

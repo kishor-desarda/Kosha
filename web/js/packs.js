@@ -3,7 +3,7 @@
 import { h, mount, icon, get, post, put, toast, fail, dialog, confirmDlg, tabs, ago } from './core.js';
 
 const changed = () => window.dispatchEvent(new Event('kosha:changed'));
-const KEY_FIELD = { category: 'code', item_type: 'code', unit: 'code', field: 'key', dictionary: 'code', spec_template: 'id',
+const KEY_FIELD = { family: 'code', category: 'code', item_type: 'code', unit: 'code', field: 'key', dictionary: 'code', spec_template: 'id',
   numbering_scheme: 'id', title_block: 'id', library_table: 'id', library_row: 'key' };
 const STATUS = {
   pack: ['From the pack', 'st-draft', 'As the pack installed it.'],
@@ -14,13 +14,14 @@ const STATUS = {
   not_installed: ['Not installed', 'st-cancelled', 'Install the pack to use this.'],
   local: ['Added here', 'st-submitted', 'Your company added this. Packs never change it.'],
 };
-const ONE = { category: 'category', item_type: 'item type', unit: 'unit', field: 'item field', dictionary: 'dictionary entry',
+const ONE = { family: 'product family', category: 'category', item_type: 'item type', unit: 'unit', field: 'item field', dictionary: 'dictionary entry',
   spec_template: 'spec-code template', numbering_scheme: 'number scheme', title_block: 'title-block map', library_table: 'library table',
   library_row: 'library row' };
 const LABELS = { name: 'Name', label: 'Label', hint: 'Help text', code: 'Code template', pattern: 'Number pattern', description: 'Description',
   standard: 'Standard', edition: 'Edition of the standard', make_buy: 'New parts are', base: 'Kosha treats it as', uom: 'Unit',
   category: 'Category', file: 'File', key: 'Row key', designation: 'Designation', part_number: 'Part number', size: 'Size column',
-  type: 'Type', unit: 'Unit', uqc: 'GST unit code (UQC)', item_type: 'Item type', creates_item: 'Creates a part' };
+  type: 'Type', unit: 'Unit', uqc: 'GST unit code (UQC)', item_type: 'Item type', creates_item: 'Creates a part',
+  examples: 'Examples', erp_item_group: 'ERP item group', hsn: 'HSN code (GST)', erp: 'Sent to the ERP' };
 const PACK_STATUS = { installed: ['Installed', 'st-released'], not_installed: ['Not installed', 'st-draft'], removed: ['Removed', 'st-cancelled'] };
 
 function chip([label, cls, title]) {
@@ -70,7 +71,7 @@ function changesPanel(changes, kinds, draw) {
   const add = (kind, label) => h('button', { class: 'btn sm', onclick: () => addDlg(kind, draw) }, icon('plus', 14), label);
   return h('section', { style: { marginTop: '22px' } },
     h('div', { class: 'row wrap', style: { marginBottom: '8px' } }, h('h2', null, 'Your changes and additions'), h('span', { class: 'spacer' }),
-      add('category', 'Category'), add('dictionary', 'Dictionary entry'), add('unit', 'Unit'), add('item_type', 'Item type')),
+      add('family', 'Product family'), add('category', 'Category'), add('dictionary', 'Dictionary entry'), add('unit', 'Unit'), add('item_type', 'Item type')),
     changes.length ? h('table', { class: 'tbl' },
       h('thead', null, h('tr', null, ['What', 'Record', 'Status', 'Changed', ''].map(t => h('th', null, t)))),
       h('tbody', null, changes.map(c => {
@@ -235,7 +236,7 @@ function compareDlg(rec, after) {
 }
 
 async function addDlg(kind, draw) {
-  const titles = { category: 'Add a category', dictionary: 'Add a dictionary entry', unit: 'Add a unit', item_type: 'Add an item type' };
+  const titles = { family: 'Add a product family', category: 'Add a category', dictionary: 'Add a dictionary entry', unit: 'Add a unit', item_type: 'Add an item type' };
   const inputs = {};
   const field = (name, label, el, hint) => { inputs[name] = el; el.id = `pa-${name}`; return h('div', { class: 'field' }, h('label', { for: el.id }, label), el, hint ? h('span', { class: 'hint' }, hint) : null); };
   const parts = [];
@@ -245,7 +246,7 @@ async function addDlg(kind, draw) {
     const dl = h('datalist', { id: 'pa-dicts' }, names.map(n => h('option', { value: n })));
     parts.push(field('dictionary', 'Dictionary', h('input', { class: 'input mono', list: 'pa-dicts', value: names.includes('materials') ? 'materials' : '' }), 'For example materials. Small letters and _.'), dl);
   }
-  parts.push(field('code', 'Code', h('input', { class: 'input mono' }), kind === 'category' ? '1 to 6 capital letters or digits, for example GR.' : kind === 'item_type' ? 'Small letters and dashes, for example weldment.' : 'Used in part numbers and lists.'));
+  parts.push(field('code', 'Code', h('input', { class: 'input mono' }), kind === 'family' ? 'Two capital letters, used in machine model and serial numbers, for example PU.' : kind === 'category' ? '1 to 6 capital letters or digits, for example GER.' : kind === 'item_type' ? 'Small letters and dashes, for example weldment.' : 'Used in part numbers and lists.'));
   parts.push(field('name', 'Name', h('input', { class: 'input' })));
   if (kind === 'category') parts.push(field('make_buy', 'New parts are', h('select', { class: 'input' }, [['', 'Decided per part'], ['make', 'Made in house'], ['buy', 'Bought out']].map(([v, l]) => h('option', { value: v }, l)))));
   if (kind === 'item_type') parts.push(field('base', 'Kosha treats it as', h('select', { class: 'input' }, [['part', 'A part'], ['assembly', 'An assembly with a BOM']].map(([v, l]) => h('option', { value: v }, l)))));

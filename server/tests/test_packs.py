@@ -10,6 +10,11 @@ from kosha import db
 from kosha.numbering import NumberingService
 from kosha.packs import DataError, PackConfig, PackLoader, PackManager
 
+GER_LINE = '  - {code: GER, name: "Gear, pinion, sprocket", item_type: configured, make_buy: make, required: [description, material]}'
+SHF_LINE = '  - {code: SHF, name: "Shaft, spindle, axle", item_type: part, make_buy: make, required: [description, material]}'
+FRM_LINE = '  - {code: FRM, name: "Frame, base, stand, structure", item_type: part, make_buy: make}'
+
+
 
 def test_every_shipped_pack_loads_cleanly():
     packs, problems = PackLoader(REPO_PACKS).load_all()
@@ -51,13 +56,13 @@ def _edit(path, old, new):
      r"row 9: a verified row must name the edition"),
     ("standard-parts/bearings/deep-groove-ball-bearings.csv", "bearing,series,bore", "bearing,series,bore_d",
      r"deep-groove-ball-bearings.csv: the first line is missing the column bore"),
-    ("general-machinery/pack.yaml", "  - {code: GR, name: Gears}", "  - {code: GR, name: Gears",
+    ("general-machinery/pack.yaml", GER_LINE, GER_LINE[:-1],
      r"packs/general-machinery/pack.yaml line \d+: this is not valid YAML"),
-    ("general-machinery/pack.yaml", "  - {code: SH, name: Shafts}", "  - {code: GR, name: Shafts}",
-     r"pack.yaml, categories entry 2: 'GR' appears twice"),
+    ("general-machinery/pack.yaml", SHF_LINE, SHF_LINE.replace("SHF", "GER"),
+     r"pack.yaml, categories entry 13: 'GER' appears twice"),
     ("general-machinery/spec-codes/shaft.yaml", "min: 10, max: 12000", "min: 12000, max: 10",
      r"packs/general-machinery/spec-codes/shaft.yaml \(template 'shaft'\), field 'length_mm': min \(12000\) is greater"),
-    ("general-machinery/pack.yaml", "version: 1.0.0", "version: one",
+    ("general-machinery/pack.yaml", "version: 2.0.0", "version: one",
      r"version must look like 1.0.0"),
 ])
 def test_errors_name_the_file_and_row(packs_copy, file, old, new, message):
@@ -75,56 +80,55 @@ def test_install_update_remove_keep_company_changes_and_items(kdb, packs_copy):
     m = PackManager(PackLoader(packs_copy))
     r = m.install("general-machinery", 7)
     assert r["action"] == "install" and r["counts"]["added"] > 20
-    assert _names()["GR"] == "Gears"
+    assert _names()["GER"] == "Gear, pinion, sprocket"
     assert m.install("general-machinery", 7)["action"] == "none"
 
     # the company renames a category, adds a material and switches off a unit
-    m.set_local("category", "GR", {"code": "GR", "name": "Gears and pinions"}, 7)
+    m.set_local("category", "GER", {"code": "GER", "name": "Gears and pinions"}, 7)
     m.set_local("dictionary", "materials/EN8", {"code": "EN8", "name": "EN8 (080M40)"}, 7)
     m.hide("unit", "Set", 7)
     with pytest.raises(DataError, match="does not match"):
-        m.set_local("category", "GR", {"code": "GX", "name": "x"}, 7)
+        m.set_local("category", "GER", {"code": "GX", "name": "x"}, 7)
     with pytest.raises(DataError, match="category code 'gear'"):
         m.set_local("category", "gear", {"code": "gear", "name": "x"}, 7)
-    assert _names()["GR"] == "Gears and pinions"
+    assert _names()["GER"] == "Gears and pinions"
     assert "EN8" in {c.code for c in PackConfig.current().dictionary("materials")}
     assert "Set" not in _names("unit")
     gear = NumberingService().allocate("spec:spur-gear", {"module": 2, "teeth": 30, "face_width_mm": 20,
                                                           "material": "EN8"}, 7)["item"]
     assert gear["part_number"] == "GR-2-30-20-EN8"
 
-    # version 1.1.0 renames GR as well, drops SH, adds a category and changes a material
+    # version 2.1.0 renames GER as well, drops SHF, adds a category and changes a material
     gm = packs_copy / "general-machinery"
-    _edit(gm / "pack.yaml", "version: 1.0.0", "version: 1.1.0")
-    _edit(gm / "pack.yaml", "{code: GR, name: Gears}", "{code: GR, name: Gear wheels}")
-    _edit(gm / "pack.yaml", "  - {code: SH, name: Shafts}\n", "")
-    _edit(gm / "pack.yaml", "  - {code: FR, name: Frames and weldments}", "  - {code: FR, name: Frames and weldments}\n"
-                                                                           "  - {code: SP, name: Springs}")
+    _edit(gm / "pack.yaml", "version: 2.0.0", "version: 2.1.0")
+    _edit(gm / "pack.yaml", GER_LINE, GER_LINE.replace('"Gear, pinion, sprocket"', "Gear wheels"))
+    _edit(gm / "pack.yaml", SHF_LINE + "\n", "")
+    _edit(gm / "pack.yaml", FRM_LINE, FRM_LINE + "\n  - {code: SP, name: Springs}")
     _edit(gm / "pack.yaml", 'name: "C45 (1.0503)"', 'name: "C45 unalloyed steel (1.0503)"')
-    _edit(gm / "spec-codes/shaft.yaml", "category: SH", "category: FR")
+    _edit(gm / "spec-codes/shaft.yaml", "category: SHF", "category: FRM")
     plan = m.plan("general-machinery")
-    assert plan["action"] == "update" and plan["from_version"] == "1.0.0" and plan["to_version"] == "1.1.0"
+    assert plan["action"] == "update" and plan["from_version"] == "2.0.0" and plan["to_version"] == "2.1.0"
     assert {x["key"] for x in plan["added"]} == {"SP"}
-    assert {x["key"] for x in plan["removed"]} == {"SH"}
-    assert {x["key"] for x in plan["kept_local"]} == {"GR"}
+    assert {x["key"] for x in plan["removed"]} == {"SHF"}
+    assert {x["key"] for x in plan["kept_local"]} == {"GER"}
     r = m.install("general-machinery", 7)
     assert "1 of your own changes were kept" in r["message"]
     cats = _names()
-    assert cats["GR"] == "Gears and pinions" and cats["SP"] == "Springs" and "SH" not in cats
-    gr = PackConfig.current().get("category", "GR")
+    assert cats["GER"] == "Gears and pinions" and cats["SP"] == "Springs" and "SHF" not in cats
+    gr = PackConfig.current().get("category", "GER")
     assert gr.origin == "changed" and gr.conflict and gr.pack_value["name"] == "Gear wheels"
     assert "C45 unalloyed steel (1.0503)" in {c.name for c in PackConfig.current().dictionary("materials")}
     assert "EN8" in {c.code for c in PackConfig.current().dictionary("materials")}
     assert "Set" not in _names("unit")
-    m.keep_mine("category", "GR", 7)
-    assert not PackConfig.current().get("category", "GR").conflict
-    assert any(c["key"] == "GR" and c["origin"] == "changed" for c in m.local_changes())
+    m.keep_mine("category", "GER", 7)
+    assert not PackConfig.current().get("category", "GER").conflict
+    assert any(c["key"] == "GER" and c["origin"] == "changed" for c in m.local_changes())
 
     # an older pack is refused
-    _edit(gm / "pack.yaml", "version: 1.1.0", "version: 0.9.0")
-    with pytest.raises(DataError, match=r"older than the installed one \(1.1.0\). Nothing was changed"):
+    _edit(gm / "pack.yaml", "version: 2.1.0", "version: 1.9.0")
+    with pytest.raises(DataError, match=r"older than the installed one \(2.1.0\). Nothing was changed"):
         m.install("general-machinery", 7)
-    _edit(gm / "pack.yaml", "version: 0.9.0", "version: 1.1.0")
+    _edit(gm / "pack.yaml", "version: 1.9.0", "version: 2.1.0")
 
     # removal switches the pack's data off, but items, numbers and the company's own records stay
     r = m.remove("general-machinery", 7)
@@ -132,7 +136,7 @@ def test_install_update_remove_keep_company_changes_and_items(kdb, packs_copy):
     assert db.one("SELECT * FROM items WHERE id = ?", (gear["id"],))["part_number"] == "GR-2-30-20-EN8"
     assert db.scalar("SELECT COUNT(*) FROM number_allocations WHERE item_id = ?", (gear["id"],)) == 1
     cfg = PackConfig.current()
-    assert set(_names()) == {"GR"}                          # only the company's renamed category
+    assert set(_names()) == {"GER"}                          # only the company's renamed category
     assert {c.code for c in cfg.dictionary("materials")} == {"EN8"}
     assert not cfg.records("spec_template")
     with pytest.raises(DataError, match="not installed"):
@@ -141,9 +145,9 @@ def test_install_update_remove_keep_company_changes_and_items(kdb, packs_copy):
     # installing again brings everything back, with the company's changes still on top
     r = m.install("general-machinery", 7)
     assert r["action"] == "reinstall"
-    assert _names()["GR"] == "Gears and pinions" and "SP" in _names()
-    m.revert("category", "GR", 7)
-    assert _names()["GR"] == "Gear wheels"
+    assert _names()["GER"] == "Gears and pinions" and "SP" in _names()
+    m.revert("category", "GER", 7)
+    assert _names()["GER"] == "Gear wheels"
     m.revert("unit", "Set", 7)
     assert "Set" in _names("unit")
     history = [h["action"] for h in db.rows("SELECT action FROM pack_history ORDER BY id")]
@@ -159,7 +163,7 @@ def test_records_shared_by_two_packs(kdb):
     m.remove("general-machinery", None)
     fst = PackConfig.current().get("category", "FST")
     assert fst and fst.pack_id == "standard-parts"            # still there: the other pack provides it
-    assert "GR" not in {c["code"] for c in PackConfig.current().categories()}
+    assert "GER" not in {c["code"] for c in PackConfig.current().categories()}
     detail = m.detail("general-machinery")
     assert detail["status"] == "removed"
     assert {r["status"] for r in detail["records"]} == {"not_installed"}

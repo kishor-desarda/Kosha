@@ -7,7 +7,7 @@ import io
 import json
 import re
 
-from . import db, lifecycle
+from . import db, itemmaster, lifecycle
 from .web import bad, conflict, not_found
 
 BUY_HINT = re.compile(r"\b(BOLT|NUT|WASHER|SCREW|BEARING|SEAL|GASKET|O-RING|ORING|MOTOR|GEARBOX|COUPLING|"
@@ -137,6 +137,8 @@ def _check_editable(bom: dict) -> None:
 def set_lines(user_id: int, bom_id: int, new_lines: list[dict], source: str | None = None) -> None:
     bom = bom_or_404(bom_id)
     _check_editable(bom)
+    before = {r["child_item_id"] for r in db.rows("SELECT child_item_id FROM bom_lines WHERE bom_id = ?", (bom_id,))}
+    children: list[int] = []
     with db.tx():
         db.execute("DELETE FROM bom_lines WHERE bom_id = ?", (bom_id,))
         for k, ln in enumerate(new_lines, start=1):
@@ -153,6 +155,11 @@ def set_lines(user_id: int, bom_id: int, new_lines: list[dict], source: str | No
             db.insert("bom_lines", {"bom_id": bom_id, "line_no": k, "child_item_id": item_id, "qty": qty,
                                     "uom": ln.get("uom") or "", "find_number": str(ln.get("find_number") or k),
                                     "note": ln.get("note") or ""})
+            children.append(item_id)
+        # a customer's part locked against reuse does not slip into someone else's machine (nothing is saved)
+        problems = itemmaster.reuse_problems(bom["item_id"], children, keep=before)
+        if problems:
+            raise conflict(" ".join(problems))
         upd = {"updated_at": db.now()}
         if source:
             upd["source"] = source

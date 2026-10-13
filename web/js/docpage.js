@@ -7,6 +7,7 @@ import {
 import { openViewer } from './viewer.js';
 import { mountRecordPanels } from './deviations.js';
 import { classifyBox } from './ai.js';
+import { itemBadges, masterPanel, oemPanel } from './itemmaster.js';
 
 const changed = () => window.dispatchEvent(new Event('kosha:changed'));
 
@@ -209,7 +210,7 @@ export async function renderItem(container, [id], _p, { setTitle }) {
     mount(container, h('div', { class: 'page-pad' },
       h('div', { class: 'page-head' }, h('div', { style: { flex: 1 } }, h('div', { class: 'small muted' }, 'Part'),
         h('h1', { class: 'mono' }, it.part_number), h('div', { class: 'sub' }, it.description),
-        h('div', { class: 'row', style: { marginTop: '8px' } }, stateChip(it.state), h('span', { class: 'muted' }, `Revision ${it.revision} · ${it.item_type} · ${it.make_buy}`))),
+        h('div', { class: 'row', style: { marginTop: '8px' } }, stateChip(it.state), h('span', { class: 'muted' }, `Revision ${it.revision} · ${it.item_type} · ${it.make_buy}`), ...itemBadges(r))),
       can('engineer') ? h('button', { class: 'btn', title: 'Start a new design from this one, with new part numbers', onclick: () => import('./copydesign.js').then(m => m.copyDesignDialog({ item_id: it.id })).catch(fail) }, icon('copy', 16), 'Copy design…') : null,
       can('approver') ? h('div', { class: 'row' },
         h('button', { class: 'btn primary', onclick: () => erpPush('item', it.id, load) }, icon('erp', 16), `Send to ${S.erp}`),
@@ -231,6 +232,8 @@ export async function renderItem(container, [id], _p, { setTitle }) {
             try { await patch(`/api/items/${it.id}`, body); toast('Saved', 'ok'); load(); } catch (e) { fail(e); }
           } }, 'Save')) : null,
           classifyBox('item', it.id, { onApplied: load, locked: lockedFor(it) }))),     // AI suggestions, only when switched on
+        masterPanel(r, load),
+        oemPanel(r, load),
         h('section', { class: 'panel' }, h('div', { class: 'panel-h' }, h('h2', null, `Files (${r.documents.length})`)),
           r.documents.length ? docTable(r.documents) : h('div', { class: 'empty' }, 'No files yet (purchased parts often have none).')),
         h('section', { class: 'panel' }, h('div', { class: 'panel-h' }, h('h2', null, 'BOMs'), h('span', { class: 'spacer' }),

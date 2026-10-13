@@ -12,7 +12,7 @@ The server reads packs from this folder, or from the folder in `KOSHA_PACKS_DIR`
 
 | Pack | Holds |
 | --- | --- |
-| `general-machinery` | Categories, materials, project and general-arrangement number schemes, spec codes for spur gears, shafts and flanges, a title-block map |
+| `general-machinery` | Product families, the specification's categories and item types, materials, project and project-drawing number schemes, spec codes for spur gears, shafts and flanges, a title-block map |
 | `engineered-components` | Categories for bought-to-spec components and a spec code for electric motors |
 | `spares-and-service` | Categories and item types for spares, service kits and consumables; spec code for filter elements |
 | `india-localisation` | Item fields for HSN code and GST rate; units with their GST unit quantity codes |
@@ -23,8 +23,9 @@ The server reads packs from this folder, or from the folder in `KOSHA_PACKS_DIR`
 `<pack>/pack.yaml` has `id` (same as the folder name), `name`, `version` (`1.0.0`), `licence`,
 `description` and any of these lists:
 
-- `categories`: `{code: GR, name: Gears, make_buy: buy}` (code: 1 to 6 capitals or digits).
-- `item_types`: `{code: weldment, name: Weldment, base: assembly}` (`base` is part or assembly).
+- `families`: `{code: PU, name: Pumps, examples: "Centrifugal pumps"}` (two capital letters, used in machine model and serial numbers).
+- `categories`: `{code: GER, name: Gears, item_type: configured, make_buy: make, required: [material], erp_item_group: Gears, hsn: "8483"}` (code: 1 to 6 capitals or digits; `required` lists the fields a part needs before review).
+- `item_types`: `{code: weldment, name: Weldment, base: assembly}` (`base` is part or assembly; `erp: false` keeps items of the type out of the ERP).
 - `units`: `{code: Nos, name: Numbers, uqc: NOS}`; `fields`: extra item fields (`key`, `label`, `type` ...).
 - `dictionaries`: named lists of `{code, name}` entries, for example `materials`. Write codes in quotes
   when they look like numbers (`"1.4401"`).
@@ -32,7 +33,7 @@ The server reads packs from this folder, or from the folder in `KOSHA_PACKS_DIR`
   values never give the same code. Field types: `int` (`min`, `max`, `choices`), `decimal` (`unit`,
   `min`, `max`, `places`, `choices`), `choice` (`dictionary` or `choices`) and `text` (`pattern`).
   `{field.name}` uses a dictionary entry's name in the description.
-- `numbering`: number series such as `pattern: "P-{yyyy}-{seq:3}"`; `creates_item: false` for
+- `numbering`: number series such as `pattern: "PRJ-{yy}-{seq:3}"`; `creates_item: false` for
   numbers that are not parts (projects).
 - `title_blocks`: drawing attribute names and the Kosha field each fills.
 - `tables`: standard-parts tables, each a CSV file with one row per size, its `columns`, the
