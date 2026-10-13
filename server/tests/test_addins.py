@@ -69,6 +69,19 @@ def test_official_erpnext_addin_is_found_and_enabled(registry):
     assert a.to_dict()["official"]
 
 
+def test_every_official_erp_connector_is_enabled_and_erpnext_stays_the_default(registry, monkeypatch):
+    from kosha import erp
+    monkeypatch.setattr(erp, "registry", registry)
+    found = [a.id for a in registry.by_kind("erp-connector")]
+    assert {"org.kosha.erpnext", "org.kosha.odoo", "org.kosha.dolibarr", "org.kosha.file-exchange"} <= set(found)
+    assert found[0] != "org.kosha.erpnext"                   # folders are found in alphabetical order ...
+    assert erp.connector_id() == "org.kosha.erpnext"         # ... but an installation that never chose keeps ERPNext
+    registry.disable("org.kosha.erpnext", None)
+    assert erp.connector_id() == found[0]
+    erp.save_settings({"connector": "org.kosha.file-exchange"})
+    assert erp.connector_id() == "org.kosha.file-exchange"
+
+
 def test_third_party_addin_waits_for_approval(registry):
     a = registry.get("com.example.flaky")
     assert a.status == "awaiting_approval"

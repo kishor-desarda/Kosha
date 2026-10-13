@@ -19,7 +19,7 @@ export async function renderErp(container, _m, params, { setTitle }) {
     const head = h('div', { class: 'page-head' }, h('div', { style: { flex: 1 } }, h('h1', null, 'ERP sync'),
       h('div', { class: 'sub' }, `Released items and BOMs are sent to ${S.erp}. Stock and valuation come back.`)),
     h('div', { class: 'row' },
-      cfg ? h('span', { class: `chip ${live ? 'st-sent' : 'st-dry_run'}` }, live ? `Live: ${cfg.base_url}` : cfg.enabled ? 'Dry run (nothing is sent)' : 'Switched off — dry run') : null,
+      cfg ? h('span', { class: `chip ${live ? 'st-sent' : 'st-dry_run'}` }, live ? `Live: ${cfg.base_url || cfg.connector_name || 'connected'}` : cfg.enabled ? 'Dry run (nothing is sent)' : 'Switched off — dry run') : null,
       can('approver') ? h('button', { class: 'btn', onclick: async e => { e.target.disabled = true; try { const r = await post('/api/erp/process'); toast(`Processed ${r.processed} waiting job(s)`, 'ok'); changed(); draw(); } catch (x) { fail(x); } } }, icon('play', 16), 'Send waiting now') : null));
     const kpis = h('div', { class: 'kpis', style: { marginBottom: '16px' } },
       [['pending', 'Waiting'], ['sent', 'Sent'], ['failed', 'Failed'], ['dry_run', 'Dry run']].map(([k, l]) =>

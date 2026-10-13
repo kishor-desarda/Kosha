@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: Apache-2.0
+id: org.kosha.file-exchange
+name: File exchange connector
+version: 0.5.0
+publisher: Kosha project
+licence: Apache-2.0
+kosha: ">=0.5,<2.0"
+kind: [erp-connector]
+description: >
+  For any ERP without a supported API: writes each released item and BOM as CSV and JSON files into an
+  exchange folder (atomically, never the same content twice), reads stock, cost and acknowledgements from
+  files the ERP writes back, and reads the ERP's export files for reconciliation.
+help: >
+  Choose a folder that both Kosha and the ERP's import can reach (on the Kosha server, or a network share
+  mounted there). Kosha writes its files into the to-erp subfolder; set up the ERP's import to read them
+  and to ignore files that start with a dot or end in .tmp. Optional: let the ERP write a stock file, an
+  acknowledgement file and item and BOM exports, and name them below (relative to the exchange folder).
+  The file layout is described in the add-in's README.
+entry_points:
+  server: kosha_file_exchange.connector:FileExchangeConnector
+permissions: [items:read, boms:read, erp:sync]
+events: []
+settings:
+  folder:            {type: string, required: true, label: Exchange folder, hint: "A full path on the Kosha server, e.g. /srv/erp-exchange or D:\\erp-exchange"}
+  formats:           {type: choice, default: "CSV and JSON", choices: ["CSV and JSON", "CSV only", "JSON only"], label: Files to write for each transfer}
+  csv_delimiter:     {type: choice, default: "Comma (,)", choices: ["Comma (,)", "Semicolon (;)", "Tab"], label: CSV separator}
+  stock_file:        {type: string, label: Stock file from the ERP, hint: "Optional, e.g. from-erp/stock.csv (columns code, stock, cost, warehouse)"}
+  ack_file:          {type: string, label: Acknowledgement file from the ERP, hint: "Optional, e.g. from-erp/ack.csv (columns file, status, message)"}
+  items_export_file: {type: string, label: Item export from the ERP, hint: "Optional, for reconciliation, e.g. from-erp/items.csv"}
+  boms_export_file:  {type: string, label: BOM export from the ERP, hint: "Optional, for reconciliation, e.g. from-erp/boms.csv"}

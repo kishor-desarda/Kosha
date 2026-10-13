@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: Apache-2.0
+id: org.kosha.dolibarr
+name: Dolibarr connector
+version: 0.5.0
+publisher: Kosha project
+licence: Apache-2.0
+kosha: ">=0.5,<2.0"
+kind: [erp-connector]
+description: >
+  Sends released items and BOMs to Dolibarr ERP/CRM through its REST API (products by reference, BOMs of
+  the Bills of Materials module, validated and made the default), reads stock and cost back, and reads
+  products and BOMs for reconciliation.
+help: >
+  In Dolibarr, switch on the API REST, Products, Stocks and Bills of Materials modules (Home › Setup ›
+  Modules). Open the integration user's card, generate an API key and paste it here. The user needs the
+  rights to read, create and change products and BOMs, and to read stock. Dolibarr has no revision or
+  material field on products: add complementary attributes (Products › Setup › Complementary attributes,
+  for example kosha_revision and kosha_material, type String) and name them below, so Kosha can fill and
+  compare them and recognise the products it created.
+entry_points:
+  server: kosha_dolibarr.connector:DolibarrConnector
+permissions: [items:read, boms:read, erp:sync]
+events: []
+settings:
+  base_url:        {type: url, required: true, label: Dolibarr address, hint: "The address you sign in at, e.g. https://erp.example.com/dolibarr"}
+  api_key:         {type: secret, required: true, label: API key, hint: "From the integration user's card in Dolibarr"}
+  revision_field:  {type: string, label: Revision extra field, hint: "Optional, the code of a product complementary attribute, e.g. kosha_revision"}
+  material_field:  {type: string, label: Material extra field, hint: "Optional, e.g. kosha_material"}
+  use_units:       {type: bool, default: false, label: "Send units (only when Dolibarr's 'Use units' option is on in Products › Setup)"}
+  validate_boms:   {type: bool, default: true, label: Validate new BOMs so they can be used at once}
+  set_default_bom: {type: bool, default: true, label: Make each new BOM the product's default BOM}
+  cost_source:     {type: choice, default: "Weighted average price (WAP)", choices: ["Weighted average price (WAP)", "Cost price"], label: Cost read back into Kosha}
+  verify_tls:      {type: bool, default: true, label: Verify the HTTPS certificate}
+  timeout_s:       {type: int, default: 30, label: Time-out per call (seconds)}
