@@ -20,6 +20,7 @@ dependencies = [
 
 [project.optional-dependencies]
 full = ["openpyxl>=3.1", "pypdfium2>=4.0", "numpy>=1.24"]
+postgres = ["psycopg[binary]>=3.1"]   # KOSHA_DATABASE_URL=postgresql://...
 dev = ["openpyxl>=3.1", "pytest>=8", "ruff>=0.5"]
 
 [project.scripts]

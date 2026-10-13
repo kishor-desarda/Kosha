@@ -13,6 +13,11 @@ ETC=/etc/kosha
 
 apt-get update -qq
 apt-get install -y -qq python3 python3-venv python3-pip rsync >/dev/null
+POSTGRES=""
+if grep -qs '^KOSHA_DATABASE_URL=postgres' "$ETC/kosha.env"; then
+  POSTGRES=1                                            # Kosha on PostgreSQL: pg_dump for the backups
+  apt-get install -y -qq postgresql-client >/dev/null
+fi
 
 id kosha >/dev/null 2>&1 || useradd --system --home "$DATA" --shell /usr/sbin/nologin kosha
 install -d -o kosha -g kosha -m 0750 "$DATA"
@@ -29,6 +34,7 @@ rsync -a --delete --exclude venv --exclude '.git' --exclude 'server/data' --excl
 "$APP/venv/bin/pip" install -q --upgrade pip
 "$APP/venv/bin/pip" install -q -r "$APP/server/requirements.txt"
 "$APP/venv/bin/pip" install -q "$APP/sdk/python"
+[[ -z "$POSTGRES" ]] || "$APP/venv/bin/pip" install -q "psycopg[binary]>=3.1"
 
 if [[ ! -f "$ETC/kosha.env" ]]; then
   sed "s#^KOSHA_DATA_DIR=.*#KOSHA_DATA_DIR=$DATA#" "$APP/server/kosha.env.example" > "$ETC/kosha.env"
