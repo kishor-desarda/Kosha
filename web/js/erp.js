@@ -2,6 +2,7 @@
 // ERP integration: the transfer queue and the connection settings of the ERP connector add-in.
 import { S, h, mount, icon, get, post, put, toast, fail, ago, fmtDate, can, tabs } from './core.js';
 import { schemaForm } from './addins.js';
+import { reconcileTab } from './erp_reconcile.js';
 
 const changed = () => window.dispatchEvent(new Event('kosha:changed'));
 
@@ -9,8 +10,11 @@ export async function renderErp(container, _m, params, { setTitle }) {
   setTitle('ERP sync');
   let tab = params.tab || 'queue';
   let status = '';
+  let stopTab = null;
   const draw = async () => {
+    if (stopTab) { stopTab(); stopTab = null; }
     const [jobs, cfg] = await Promise.all([get(`/api/erp/jobs${status ? `?status=${status}` : ''}`), can('approver') ? get('/api/erp/settings') : Promise.resolve(null)]);
+    if (!cfg) tab = 'queue';
     const live = cfg && cfg.enabled && !cfg.dry_run;
     const head = h('div', { class: 'page-head' }, h('div', { style: { flex: 1 } }, h('h1', null, 'ERP sync'),
       h('div', { class: 'sub' }, `Released items and BOMs are sent to ${S.erp}. Stock and valuation come back.`)),
@@ -22,13 +26,21 @@ export async function renderErp(container, _m, params, { setTitle }) {
         h('button', { class: 'kpi', style: { textAlign: 'left', cursor: 'pointer', outline: status === k ? '2px solid var(--blue)' : '' }, onclick: () => { status = status === k ? '' : k; draw(); } },
           h('b', null, jobs.counts[k] || 0), h('span', null, l))));
     const body = h('div', { class: 'panel' });
-    const t = tabs([['queue', 'Queue'], ...(can('approver') ? [['settings', 'Connection settings']] : [])], tab, k => { tab = k; draw(); });
+    const t = tabs([['queue', 'Queue'], ...(can('approver') ? [['reconcile', 'Reconciliation'], ['settings', 'Connection settings']] : [])], tab, k => { tab = k; draw(); });
     body.appendChild(t);
-    if (tab === 'queue') body.appendChild(queue(jobs.jobs, draw));
-    else body.appendChild(settings(cfg, draw));
+    if (tab === 'reconcile' && cfg) {
+      const box = h('div', { class: 'panel-b' });
+      body.appendChild(box);
+      mount(container, h('div', { class: 'page-pad' }, head, kpis, body));
+      stopTab = await reconcileTab(box, cfg, changed);
+      return;
+    }
+    if (tab === 'settings' && cfg) body.appendChild(settings(cfg, draw));
+    else body.appendChild(queue(jobs.jobs, draw));
     mount(container, h('div', { class: 'page-pad' }, head, kpis, body));
   };
   await draw();
+  return () => { if (stopTab) stopTab(); };
 }
 
 function queue(jobs, draw) {
@@ -64,8 +76,24 @@ function settings(cfg, draw) {
   const conn = schemaForm(cfg.connector_fields || [], cfg, admin);
   const result = h('div');
   const name = cfg.connector_name || 'the ERP';
+  const choices = cfg.connectors || [];
+  const chooser = choices.length > 1 ? h('div', { class: 'field', style: { maxWidth: '420px' } },
+    h('label', { for: 'erp-connector' }, 'ERP system'),
+    h('select', { class: 'input', id: 'erp-connector', disabled: !admin, title: admin ? '' : 'Only administrators can change this.',
+      onchange: async e => {
+        const pick = choices.find(c => c.id === e.target.value);
+        try {
+          await put('/api/erp/settings', { connector: e.target.value });
+          toast(`Kosha now talks to ${pick ? pick.name.replace(' connector', '') : 'the chosen ERP'}. Check its connection settings below.`, 'ok');
+          S.erp = pick ? pick.name.replace(' connector', '') : S.erp;
+          draw();
+        } catch (x) { fail(x); }
+      } },
+    choices.map(c => h('option', { value: c.id, selected: c.id === cfg.connector }, `${c.name.replace(' connector', '')}${c.status === 'enabled' ? '' : ' (switched off)'}`))),
+    h('span', { class: 'hint' }, 'Each ERP has its own connector add-in and its own connection settings. Queued transfers go to the ERP chosen here.')) : null;
   return h('div', { class: 'panel-b col', style: { gap: '18px', maxWidth: '980px' } },
     !admin ? h('div', { class: 'banner info small' }, icon('info'), h('div', null, 'Only administrators can change these settings.')) : null,
+    chooser,
     !cfg.connector ? h('div', { class: 'banner err small' }, icon('warn'), h('div', null, cfg.connector_help || 'No ERP connector add-in is installed.')) : null,
     cfg.connector && cfg.connector_status !== 'enabled' ? h('div', { class: 'banner small' }, icon('warn'), h('div', null, `The ${name} add-in is switched off. Switch it on under Admin › Add-ins.`)) : null,
     h('div', { class: 'col' }, box('enabled', `Connect to ${name}`), box('dry_run', 'Dry run: prepare the data but do not send it (safe for testing)'),

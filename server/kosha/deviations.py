@@ -330,6 +330,12 @@ def submit(user: dict, dev_id: int) -> None:
                                   f"{d['number']} is waiting for your approval: {d['title']}",
                                   f"#/deviation/{d['id']}", user["id"], skip=[user["id"]])
         db.audit(user["id"], "deviation_submit", "deviation", d["id"], d["number"])
+    from . import notify_outbox   # e-mail and chat, for the approvers who chose them (the bell is written above)
+    notify_outbox.enqueue([a for a in approvers if a != user["id"]], f"{d['number']} needs your approval: {d['title']}",
+                          f"{user['full_name']} asks you to approve the deviation {d['number']}: {d['title']}.\n"
+                          f"Departure from the released design: {d['departure']}", f"#/deviation/{d['id']}",
+                          "approvals", key=f"deviation.submitted:{d['id']}:{now}", source=f"deviation:{d['id']}",
+                          in_app=False)
 
 
 def can_decide(d: dict, user: dict) -> dict:

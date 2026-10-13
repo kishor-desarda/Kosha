@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: Apache-2.0
+id: org.kosha.teams
+name: Teams notifier
+version: 0.5.0
+publisher: Kosha project
+licence: Apache-2.0
+kosha: ">=0.5,<2.0"
+kind: [notifier]
+description: >
+  Posts Kosha notices (change orders waiting for approval, failed ERP transfers, releases) to a
+  Teams channel as adaptive cards with an "Open in Kosha" button.
+help: >
+  In Teams, open the channel's Workflows and choose "Post to a channel when a webhook request is
+  received" (or add an incoming webhook where your organisation still allows them). Copy the address
+  it gives you and paste it here. Treat the address like a password: anyone who has it can post to
+  the channel. Set Kosha's own address under Admin › Notifications so the button links to the page.
+entry_points:
+  server: kosha_teams.notifier:TeamsNotifier
+permissions: [notify:send]
+events: []
+settings:
+  webhook_url: {type: secret, required: true, label: Webhook address, hint: "Starts with https://"}
+  verify_tls:  {type: bool, default: true, label: Verify the HTTPS certificate}
+  timeout_s:   {type: int, default: 15, label: Time-out (seconds)}

@@ -33,7 +33,8 @@ BASE = f"http://127.0.0.1:{PORT}"
 SCREENS = ["#/home", "#/files", "#/boms", "#/changes", "#/erp", "#/common", "#/admin", "#/admin?tab=backups",
            "#/admin?tab=security", "#/search?q=MX-100", "#/library", "#/library?q=M16x60",
            "#/admin?tab=packs", "#/deviations", "#/deviation/1", "#/inputs", "#/inputs?q=bearing",
-           "#/input/1", "#/projects", "#/project/1", "#/item/1"]
+           "#/input/1", "#/projects", "#/project/1", "#/item/1", "#/erp?tab=reconcile", "#/erp?tab=settings",
+           "#/admin?tab=notify", "#/erp?tab="]
 
 
 def main() -> int:
@@ -66,7 +67,7 @@ def main() -> int:
                 page.keyboard.press("Enter")
                 page.wait_for_selector("nav.rail", timeout=15000)
                 for hash_ in SCREENS:
-                    if hash_.startswith("#/admin") and user != "admin":
+SCREENS = ["#/admin"]
                         continue
                     page.goto(BASE + "/" + hash_)
                     try:   # each screen shows its title in the top bar once it has loaded
@@ -75,7 +76,14 @@ def main() -> int:
                     except Exception:
                         errors.append(f"{user} {hash_}: the screen stayed empty")
                     page.wait_for_load_state("networkidle")
-                print(f"ok: {user} opened {len(SCREENS)} screens")
+                page.click("button.avatar")                       # the account menu opens "My notifications"
+                page.click(".ctxmenu >> text=My notifications")
+                try:
+                    page.wait_for_selector("dialog[open] table", timeout=10000)
+                except Exception:
+                    errors.append(f"{user}: My notifications did not open")
+                page.keyboard.press("Escape")
+                print(f"ok: {user} opened {len(SCREENS)} screens and My notifications")
             browser.close()
     finally:
         proc.terminate()

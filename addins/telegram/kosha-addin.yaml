@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: Apache-2.0
+id: org.kosha.telegram
+name: Telegram notifier
+version: 0.5.0
+publisher: Kosha project
+licence: Apache-2.0
+kosha: ">=0.5,<2.0"
+kind: [notifier]
+description: >
+  A Telegram bot posts Kosha notices (change orders waiting for approval, failed ERP transfers,
+  releases) to a group chat, with a link to the page in Kosha.
+help: >
+  Create a bot in Telegram (the BotFather chat gives you its token), add the bot to your team's
+  group, and paste the token and the group's chat id here (group ids start with -100). For a group
+  with topics, also give the topic number. Treat the token like a password. Set Kosha's own address
+  under Admin › Notifications so messages link to the page.
+entry_points:
+  server: kosha_telegram.notifier:TelegramNotifier
+permissions: [notify:send]
+events: []
+settings:
+  bot_token:  {type: secret, required: true, label: Bot token}
+  chat_id:    {type: string, required: true, label: Chat id, hint: "e.g. -1001234567890 for a group"}
+  topic_id:   {type: string, label: Topic number, hint: "Optional, for a group with topics"}
+  api_base:   {type: url, default: "https://api.telegram.org", label: Telegram API address, hint: "Change only for your own Bot API server"}
+  verify_tls: {type: bool, default: true, label: Verify the HTTPS certificate}
+  timeout_s:  {type: int, default: 15, label: Time-out (seconds)}

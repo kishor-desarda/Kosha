@@ -134,6 +134,17 @@ def _record_mentions(user: dict, comment_id: int, thread: dict, text: str, info:
     return notified
 
 
+def _mentions_elsewhere(user: dict, ids: set[int], comment_id: int, thread: dict, text: str, info: dict) -> None:
+    """After the comment is saved: the people mentioned also hear on the channels they chose (e-mail, chat).
+    The bell was already written with the comment, so the outbox leaves it out."""
+    if not ids:
+        return
+    from . import notify_outbox   # late import: the outbox loads the add-in registry
+    notify_outbox.enqueue(sorted(ids), f"{user['full_name']} mentioned you on {info['label']}",
+                          f"{user['full_name']} wrote:\n{text[:2000]}", f"{info['link']}?thread={thread['id']}",
+                          "mentions", key=f"mention:{comment_id}", source=f"discussion:{thread['id']}", in_app=False)
+
+
 # ------------------------------------------------------------------ actions --
 
 def start(user: dict, entity_type: str, entity_id: int, body: str, title: str = "", revision: str | None = None) -> int:
@@ -156,9 +167,10 @@ def start(user: dict, entity_type: str, entity_id: int, body: str, title: str = 
         })
         cid = db.insert("discussion_comments", {"thread_id": tid, "user_id": user["id"], "body": text, "created_at": now})
         thread = thread_or_404(tid)
-        _record_mentions(user, cid, thread, text, info)
+        mentioned = _record_mentions(user, cid, thread, text, info)
         db.audit(user["id"], "discussion_start", "discussion", tid,
                  f"{entity_type} {entity_id}{' rev ' + rev if rev else ''}: {title or text[:60]}")
+    _mentions_elsewhere(user, mentioned, cid, thread, text, info)
     return tid
 
 
@@ -181,6 +193,7 @@ def reply(user: dict, thread_id: int, body: str) -> int:
                                   f"{info['label']}{': ' + t['title'] if t['title'] else ''}",
                                   f"{info['link']}?thread={t['id']}", user["id"], skip=[user["id"], *mentioned])
         db.audit(user["id"], "discussion_reply", "discussion", t["id"], f"comment {cid}")
+    _mentions_elsewhere(user, mentioned, cid, t, text, info)
     return cid
 
 

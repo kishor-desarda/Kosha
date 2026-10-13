@@ -276,6 +276,7 @@ def revise_change_items(req: Req):
 @api("POST", "/api/changes/{id:int}/submit", role="engineer")
 def submit_change(req: Req):
     changes.submit(req.user, req.int_param("id"))
+    addins.registry.emit("change.submitted", {"change_id": req.int_param("id"), "user_id": req.uid})
     return changes.detail(req.int_param("id"))
 
 
@@ -354,9 +355,11 @@ def put_erp_settings(req: Req):
             v = as_bool(v)
         if k == "uom_map" and not isinstance(v, dict):
             raise bad("uom_map must be an object")
+        if k == "connector" and v and v not in {a.id for a in addins.registry.by_kind("erp-connector", enabled_only=False)}:
+            raise bad("Choose one of the ERP connector add-ins that are installed.")
         generic[k] = v
+    cid = _connector_info()["connector"]     # the connection fields on the form belong to the connector shown
     erp.save_settings(generic)
-    cid = _connector_info()["connector"]
     rest = {k: v for k, v in body.items() if k not in erp.GENERIC_KEYS}
     if cid and rest:
         try:

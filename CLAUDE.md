@@ -20,7 +20,7 @@ Read `README.md` first; the development rules below are the short form of the de
 cd server && pytest -q                    # unit tests
 cd server && python tests/test_api.py     # end-to-end API workflows (simulated ERPNext)
 cd server && python tests/test_import.py  # legacy import and duplicate checks
-pytest -q sdk/python/tests addins/erpnext/tests
+pytest -q sdk/python/tests addins/erpnext/tests addins/odoo/tests addins/teams/tests addins/slack/tests addins/telegram/tests
 python scripts/smoke_ui.py                # browser smoke test (Playwright)
 ruff check server sdk addins scripts
 python scripts/spdx_headers.py            # every source file needs an SPDX header (--fix adds it)

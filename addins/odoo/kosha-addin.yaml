@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: Apache-2.0
+id: org.kosha.odoo
+name: Odoo connector
+version: 0.5.0
+publisher: Kosha project
+licence: Apache-2.0
+kosha: ">=0.5,<2.0"
+kind: [erp-connector]
+description: >
+  Sends released items and BOMs to Odoo through its external JSON-RPC API (products by internal
+  reference, manufacturing BOMs), reads stock and cost back, and reads items and BOMs for reconciliation.
+help: >
+  In Odoo, sign in as the integration user, open Preferences › Account Security › New API Key and paste
+  the key here, with the user's login and the database name. The user needs the Inventory and
+  Manufacturing user rights. Odoo has no revision or material field on products: add custom fields
+  (for example x_kosha_revision and x_kosha_material, type Text) and name them below, so Kosha can fill
+  and compare them and recognise the products it created.
+entry_points:
+  server: kosha_odoo.connector:OdooConnector
+permissions: [items:read, boms:read, erp:sync]
+events: []
+settings:
+  base_url:       {type: url, required: true, label: Odoo address, hint: "e.g. https://erp.example.com"}
+  database:       {type: string, required: true, label: Database, hint: "As shown on Odoo's sign-in page"}
+  username:       {type: string, required: true, label: User (login), hint: "The integration user's login, often an e-mail address"}
+  api_key:        {type: secret, required: true, label: API key}
+  company_id:     {type: int, label: Company number, hint: "Optional. Only for databases with more than one company"}
+  product_setup:  {type: choice, default: "Odoo 15 to 17", choices: ["Odoo 15 to 17", "Odoo 18 or later", "Consumable (no stock)"], label: How new products are set up, hint: "Stock-tracked products are set up differently from Odoo 18 on"}
+  revision_field: {type: string, label: Revision custom field, hint: "Optional, e.g. x_kosha_revision on Product"}
+  material_field: {type: string, label: Material custom field, hint: "Optional, e.g. x_kosha_material on Product"}
+  verify_tls:     {type: bool, default: true, label: Verify the HTTPS certificate}
+  timeout_s:      {type: int, default: 30, label: Time-out per call (seconds)}

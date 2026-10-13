@@ -28,16 +28,22 @@ def _safe_link(link: str | None) -> str:
     return ""
 
 
-def notify(user_id: int | None, kind: str, title: str, link: str = "", actor_id: int | None = None) -> int | None:
-    """Create one notification for one user. Returns its id, or None when the user is unknown or inactive."""
+def notify(user_id: int | None, kind: str, title: str, link: str = "", actor_id: int | None = None,
+           key: str = "") -> int | None:
+    """Create one notification for one user. Returns its id, or None when the user is unknown or inactive, or
+    when a notification with the same ``key`` was already given to this user (a notice queued twice shows once)."""
     if not user_id or not (kind or "").strip() or not (title or "").strip():
         return None
     u = db.one("SELECT id, active FROM users WHERE id = ?", (int(user_id),))
     if not u or not u["active"]:
         return None
+    key = (key or "").strip()[:200]
+    if key and db.one("SELECT id FROM notifications WHERE user_id = ? AND notice_key = ?", (u["id"], key)):
+        return None
     return db.insert("notifications", {
         "user_id": u["id"], "kind": kind.strip()[:60], "title": " ".join(title.split())[:MAX_TITLE],
         "link": _safe_link(link), "actor_id": actor_id, "created_at": db.now(), "read_at": None,
+        "notice_key": key or None,
     })
 
 

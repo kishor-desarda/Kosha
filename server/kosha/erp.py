@@ -193,10 +193,18 @@ def run_job(job_id: int) -> dict:
                                        "response_text": (getattr(e, "detail", "") or "")[:4000], "updated_at": db.now()})
         if attempts >= MAX_ATTEMPTS:
             log.warning("ERP job %s failed %s times: %s", job_id, attempts, e)
+        _failed_event(job, attempts, str(e))
     except Exception as e:  # pragma: no cover - a bug in Kosha itself; logged and kept for retry
         log.exception("ERP job %s crashed", job_id)
         db.update("erp_jobs", job_id, {"status": "failed", "error": f"{e.__class__.__name__}: {e}", "updated_at": db.now()})
+        _failed_event(job, job["attempts"] + 1, f"{e.__class__.__name__}: {e}")
     return db.one("SELECT * FROM erp_jobs WHERE id = ?", (job_id,))
+
+
+def _failed_event(job: dict, attempts: int, error: str) -> None:
+    """Tell listeners (notices to approvers and admins) and add-ins; runs in the background, never fails the job."""
+    registry.emit("erp.job_failed", {"job_id": job["id"], "kind": job["kind"], "entity_id": job["entity_id"],
+                                     "attempts": attempts, "error": error[:1000]})
 
 
 def _item_preview(item: ErpItem) -> dict:

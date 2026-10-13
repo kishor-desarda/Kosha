@@ -14,7 +14,7 @@ from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from . import addins, config, db, erp, security, sessions, web
+from . import addins, config, db, erp, notify_outbox, security, sessions, web
 from .headers import SecurityHeadersMiddleware
 from .api import load_all as _load_api
 
@@ -68,6 +68,7 @@ async def lifespan(app):
         raise
     if os.environ.get("KOSHA_DISABLE_WORKER") != "1":
         erp.start_worker()
+        notify_outbox.start_worker()
     from .inputs import start_worker as start_text_reader   # inputs library: reads file text in the background
     start_text_reader()
     yield

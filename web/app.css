@@ -384,3 +384,7 @@ dialog.dlg::backdrop { background: rgba(17, 20, 23, .45); }
 .notif .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex: none; }
 .notif.unread .dot { background: var(--unread); }
 .notif.unread .notif-t { font-weight: 600; }
+/* filter chips (ERP reconciliation, delivery log) */
+.filter-chips button.chip { border: 1px solid var(--line); background: var(--panel); color: var(--muted); cursor: pointer; padding: 3px 9px; }
+.filter-chips button.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--ink); }
+.st-sending { background: var(--rev-bg); color: var(--rev); }

@@ -3,6 +3,7 @@
 """`kosha-sdk`: start and check add-ins.
 
     kosha-sdk new erp-connector my-erp --publisher com.example
+    kosha-sdk new notifier my-chat --publisher com.example
     kosha-sdk check addins/my-erp
 """
 from __future__ import annotations
@@ -99,6 +100,77 @@ dependencies = ["kosha-sdk>=0.5"]
 {slug} = "{pkg}"
 """,
         "README.md": "# {title}\n\nA Kosha add-in. Run `kosha-sdk check .` and `pytest` before publishing.\n",
+    },
+    "notifier": {
+        "kosha-addin.yaml": """\
+id: {publisher}.{slug}
+name: {title}
+version: 0.1.0
+publisher: {publisher}
+licence: Apache-2.0
+kosha: ">=0.5,<2.0"
+kind: [notifier]
+description: Posts Kosha notices (approvals, ERP failures, releases) to {title}.
+entry_points:
+  server: {pkg}.notifier:Notifier
+permissions: [notify:send]
+settings:
+  webhook_url: {{type: secret, required: true, label: Webhook address, hint: "Treat it like a password"}}
+""",
+        "{pkg}/__init__.py": "# SPDX-License-Identifier: Apache-2.0\n",
+        "{pkg}/notifier.py": """\
+# SPDX-License-Identifier: Apache-2.0
+\"\"\"{title} notifier for Kosha.\"\"\"
+import urllib.parse
+
+from kosha_sdk import Health
+from kosha_sdk import notify
+from kosha_sdk.http import HttpError
+
+
+class Notifier(notify.Notifier):
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        url = urllib.parse.urlsplit(ctx.settings.get("webhook_url") or "")
+        self.path = url.path + (f"?{{url.query}}" if url.query else "")
+        self.http = ctx.http(f"{{url.scheme}}://{{url.netloc}}") if url.netloc else None
+
+    def health(self) -> Health:
+        return Health.up("Webhook address is set") if self.http else Health.down("Set the webhook address first")
+
+    def send(self, notice: notify.Notice) -> None:
+        if self.http is None:
+            raise notify.NotifyError("The webhook address is not set.")
+        try:
+            self.http.post(self.path, {{"text": notice.text()}}, idempotency_key=notice.key or None)
+        except HttpError as e:
+            raise notify.NotifyError(f"{title} refused the message ({{e}}).") from None
+""",
+        "tests/test_manifest.py": """\
+# SPDX-License-Identifier: Apache-2.0
+from pathlib import Path
+
+from kosha_sdk.testing import check_manifest
+
+
+def test_manifest_is_valid():
+    assert check_manifest(Path(__file__).parent.parent) == []
+""",
+        "pyproject.toml": """\
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "{slug}"
+version = "0.1.0"
+license = {{ text = "Apache-2.0" }}
+dependencies = ["kosha-sdk>=0.5"]
+
+[project.entry-points."kosha.addins"]
+{slug} = "{pkg}"
+""",
+        "README.md": "# {title}\n\nA Kosha notifier add-in. Run `kosha-sdk check .` and `pytest` before publishing.\n",
     },
 }
 
