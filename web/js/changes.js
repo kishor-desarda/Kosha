@@ -155,7 +155,7 @@ export async function renderChange(container, [id], _p, { setTitle }) {
           const d = it.document;
           return h('tr', null,
             h('td', null, h('a', { href: `#/doc/${d.id}` }, d.filename)),
-            h('td', null, it.action === 'release' ? 'Release new revision' : 'Make obsolete'),
+            h('td', null, it.action === 'release' ? 'Release new revision' : it.action === 'spares_only' ? `Spares only, replaced by ${it.replacement}` : 'Make obsolete'),
             h('td', null, it.from_revision || '—'), h('td', null, h('b', null, it.to_revision || d.revision)),
             h('td', null, `rev ${d.revision} `, stateChip(d.state)),
             h('td', null, d.checked_out_by ? h('span', { class: 'chip out' }, d.checked_out_name) : ''),
@@ -179,9 +179,13 @@ function approverAdder(c, users, draw) {
 }
 
 function addFiles(c, draw) {
-  const action = h('select', { class: 'input', id: 'af-a', style: { maxWidth: '260px' } }, h('option', { value: 'release' }, 'Release a new revision'), h('option', { value: 'obsolete' }, 'Make obsolete'));
-  const dlg = dialog({ title: 'Add files to the change', body: [h('div', { class: 'field' }, h('label', { for: 'af-a' }, 'What should happen to it'), action),
-    docPicker(async d => { try { draw(await post(`/api/changes/${c.id}/items`, { document_id: d.id, action: action.value })); toast(`Added ${d.filename}`, 'ok'); } catch (e) { fail(e); } })],
+  const action = h('select', { class: 'input', id: 'af-a', style: { maxWidth: '260px' } }, h('option', { value: 'release' }, 'Release a new revision'),
+    h('option', { value: 'spares_only', title: 'Still supplied as a spare for installed machines, not used in new ones' }, 'Make spares only'), h('option', { value: 'obsolete' }, 'Make obsolete'));
+  const repl = h('input', { class: 'input mono', id: 'af-r', placeholder: 'Part number used in new machines', style: { maxWidth: '260px' } });
+  const replField = h('div', { class: 'field', hidden: true }, h('label', { for: 'af-r' }, 'Replaced in new machines by'), repl);
+  action.addEventListener('change', () => { replField.hidden = action.value !== 'spares_only'; });
+  const dlg = dialog({ title: 'Add files to the change', body: [h('div', { class: 'field' }, h('label', { for: 'af-a' }, 'What should happen to it'), action), replField,
+    docPicker(async d => { try { draw(await post(`/api/changes/${c.id}/items`, { document_id: d.id, action: action.value, replacement: repl.value })); toast(`Added ${d.filename}`, 'ok'); } catch (e) { fail(e); } })],
   actions: [{ label: 'Done' }] });
   return dlg;
 }

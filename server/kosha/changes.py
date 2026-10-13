@@ -50,12 +50,19 @@ def _editable(co: dict, user: dict) -> None:
         raise forbidden("Only the requester or an approver can edit this change order.")
 
 
-def add_item(user: dict, co_id: int, doc_id: int, action: str = "release") -> None:
+ACTIONS = {"release": "release", "spares_only": "make spares only", "obsolete": "make obsolete"}
+
+
+def add_item(user: dict, co_id: int, doc_id: int, action: str = "release", replacement: str = "") -> None:
     co = co_or_404(co_id)
     _editable(co, user)
     d = lifecycle.doc_or_404(doc_id)
-    if action not in ("release", "obsolete"):
-        raise bad("Action must be release or obsolete")
+    if action not in ACTIONS:
+        raise bad("Action must be release, spares only or obsolete.")
+    replacement = (replacement or "").strip().upper()
+    if action == "spares_only":
+        from .release_rules import refuse, spares_only_problems
+        refuse(spares_only_problems(d, replacement)[0], "Can't add it")
     other = db.one("SELECT c.number FROM co_items ci JOIN change_orders c ON c.id = ci.co_id WHERE ci.document_id = ? "
                    "AND c.state IN ('draft','submitted','approved') AND c.id != ?", (doc_id, co_id))
     if other:
@@ -64,10 +71,10 @@ def add_item(user: dict, co_id: int, doc_id: int, action: str = "release") -> No
     if action == "release" and d["state"] == "released":
         to_rev = lifecycle.next_revision(d["revision"])
     with db.tx():
-        db.execute("INSERT OR REPLACE INTO co_items (co_id, document_id, action, from_revision, to_revision) "
-                   "VALUES (?, ?, ?, ?, ?)", (co_id, doc_id, action,
-                                              d["revision"] if d["state"] == "released" else
-                                              _last_released(doc_id), to_rev))
+        db.execute("INSERT OR REPLACE INTO co_items (co_id, document_id, action, from_revision, to_revision, replacement) "
+                   "VALUES (?, ?, ?, ?, ?, ?)", (co_id, doc_id, action,
+                                                 d["revision"] if d["state"] == "released" else
+                                                 _last_released(doc_id), to_rev, replacement))
 
 
 def _last_released(doc_id: int) -> str | None:
@@ -127,8 +134,13 @@ def submit(user: dict, co_id: int) -> None:
             problems.append(f"{d['filename']} is still checked out")
         if ci["action"] == "release" and d["state"] == "released":
             problems.append(f"{d['filename']} is released; press 'Start new revisions' and make your changes first")
-        if ci["action"] == "obsolete" and d["state"] != "released":
+        if ci["action"] == "obsolete" and d["state"] not in lifecycle.LIVE_STATES:
             problems.append(f"{d['filename']} must be released to be made obsolete")
+        if ci["action"] == "spares_only" and d["state"] != "released":
+            problems.append(f"{d['filename']} must be released to be made spares only")
+        if ci["action"] == "release" and d["state"] == "in_work":
+            from .release_rules import review_problems
+            problems += [f"{d['filename']}: {p.rstrip('.')}" for p in review_problems(d, co_id)]
     if problems:
         raise conflict("Can't submit yet: " + "; ".join(problems) + ".", "not_ready")
     with db.tx():
@@ -195,9 +207,13 @@ def implement(user: dict, co_id: int) -> dict:
         if ci["action"] == "release" and d["state"] in ("in_work", "in_review"):
             lifecycle.set_state(user, d["id"], "released", f"Released by {co['number']}", co_id, via_change=True)
             done.append(f"{d['filename']} released at {d['revision']}")
-        elif ci["action"] == "obsolete" and d["state"] == "released":
+        elif ci["action"] == "obsolete" and d["state"] in lifecycle.LIVE_STATES:
             lifecycle.set_state(user, d["id"], "obsolete", f"Made obsolete by {co['number']}", co_id, via_change=True)
             done.append(f"{d['filename']} obsolete")
+        elif ci["action"] == "spares_only" and d["state"] == "released":
+            lifecycle.set_state(user, d["id"], "spares_only", f"Spares only by {co['number']}", co_id, via_change=True,
+                                replacement=ci["replacement"])
+            done.append(f"{d['filename']} spares only, replaced by {ci['replacement']}")
     db.update("change_orders", co_id, {"state": "implemented", "implemented_at": db.now()})
     db.audit(user["id"], "eco_implement", "change_order", co_id, co["number"])
     return {"done": done}

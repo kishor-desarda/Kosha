@@ -204,6 +204,11 @@ async function rules(body) {
   const skip = h('input', { class: 'input mono', id: 'st-skip', value: s.revision_skip_letters });
   const first = h('input', { class: 'input mono', id: 'st-first', value: s.first_revision, style: { maxWidth: '120px' } });
   const eco = h('input', { type: 'checkbox', checked: !!s.require_eco_for_release });
+  const scheme = h('select', { class: 'input', id: 'st-scheme', style: { maxWidth: '260px' } },
+    [['letters', 'Letters: A, B, C …'], ['numeric', 'Numbers: R0, R1, R2 …']].map(([v, l]) => h('option', { value: v, selected: s.revision_scheme === v }, l)));
+  const fourEyes = h('input', { class: 'input mono', id: 'st-4eyes', value: (s.four_eyes_categories || []).join(', '), placeholder: 'Every category' });
+  const selfOk = h('input', { type: 'checkbox', checked: !!s.allow_self_approval_with_reason });
+  const obsEco = h('input', { type: 'checkbox', checked: !!s.obsolete_needs_change_order });
   const sample = h('input', { class: 'input', id: 'st-sample', value: 'MX-100-020 Main Shaft.SLDPRT' });
   const out = h('div', { class: 'small' });
   const test = () => {
@@ -220,14 +225,24 @@ async function rules(body) {
     h('div', { class: 'form-grid' },
       h('div', { class: 'field' }, h('label', { for: 'st-first' }, 'First revision'), first),
       h('div', { class: 'field' }, h('label', { for: 'st-skip' }, 'Letters never used for revisions'), skip, h('span', { class: 'hint' }, 'ASME Y14.35 skips I, O, Q, S, X, Z'))),
+    h('div', { class: 'field' }, h('label', { for: 'st-scheme' }, 'Revision scheme'), scheme,
+      h('span', { class: 'hint' }, 'Chosen once, before go-live; Kosha refuses a change after the first release. Legacy revisions (Rev 3, R-2) keep their own sequence.')),
     h('label', { class: 'check' }, eco, 'Files can only be released through an approved change order'),
+    h('label', { class: 'check' }, obsEco, 'Spares only and obsolete are decided through a change order'),
+    h('div', { class: 'field' }, h('label', { for: 'st-4eyes' }, 'Four-eyes rule (someone else approves) for these categories'), fourEyes,
+      h('span', { class: 'hint' }, 'Empty means every part. A small company can list only rotating and pressure parts, for example ROT, PRV.')),
+    h('label', { class: 'check' }, selfOk, 'Allow approving one\'s own work with a written reason (kept in the audit log)'),
     h('div', { class: 'field' }, h('label', null, 'How full the number series are'),
       full.length ? h('table', { class: 'tbl' }, h('tbody', null, full.map(c => h('tr', null,
         h('td', { class: 'mono' }, c.series), h('td', null, `${c.used.toLocaleString()} of ${c.of.toLocaleString()} used`),
         h('td', null, c.warning ? h('span', { class: 'chip out' }, icon('warn', 12), `${c.percent}%: plan a new series`) : `${c.percent}%`)))))
         : h('span', { class: 'hint' }, `All ${cap.series.length} series are less than half used. Kosha warns the admins when one reaches 80%.`)),
     h('div', null, h('button', { class: 'btn primary', onclick: async () => {
-      try { await put('/api/settings', { part_number_regex: rx.value, revision_skip_letters: skip.value, first_revision: first.value, require_eco_for_release: eco.checked }); toast('Saved', 'ok'); } catch (e) { fail(e); }
+      try {
+        await put('/api/settings', { part_number_regex: rx.value, revision_skip_letters: skip.value, first_revision: first.value, require_eco_for_release: eco.checked,
+          revision_scheme: scheme.value, four_eyes_categories: fourEyes.value, allow_self_approval_with_reason: selfOk.checked, obsolete_needs_change_order: obsEco.checked });
+        toast('Saved', 'ok');
+      } catch (e) { fail(e); }
     } }, 'Save'))));
 }
 

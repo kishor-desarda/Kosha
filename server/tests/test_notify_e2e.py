@@ -158,4 +158,4 @@ def test_notices(kosha, smtp, slack):
 
 def _dxf(pn):
     from kosha.cad import dxfwriter as W
-    return W.flange(values={"PART_NO": pn, "DESCRIPTION": "PART"})
+    return W.flange(values={"PART_NO": pn, "DESCRIPTION": "PART", "MATERIAL": "S355"})

@@ -140,6 +140,12 @@ def actions_for(d: dict, user: dict) -> dict:
 
     need_eng = "You have view-only access." if lvl < 1 else ""
     eco_req = db.get_setting("require_eco_for_release")
+    from .. import release_rules
+    not_ready = release_rules.review_problems(d) if st == "in_work" and lvl >= 1 else []
+    own = release_rules.release_problems(user, d) if st in ("in_work", "in_review") and lvl >= ROLE_LEVEL["approver"] else []
+    # a reason can accept what release_problems found when the settings allow it (self-approval, open duplicates)
+    reason_helps = bool(own) and (db.get_setting("allow_self_approval_with_reason") or "duplicates" in " ".join(own)) \
+        and not any("someone else must approve" in p for p in own)
     return {
         "checkout": a(lvl >= 1 and not d["checked_out_by"] and st == "in_work",
                       need_eng or ("Checked out by someone else." if other else
@@ -149,15 +155,23 @@ def actions_for(d: dict, user: dict) -> dict:
                                    "Obsolete files can't be changed.")),
         "checkin": a(mine, "Check the file out first." if not other else "Checked out by someone else."),
         "undo_checkout": a(mine or (d["checked_out_by"] and lvl >= ROLE_LEVEL["admin"]), "It isn't checked out to you."),
-        "submit": a(lvl >= 1 and st == "in_work" and not d["checked_out_by"],
-                    need_eng or ("Check it in first." if d["checked_out_by"] else "Only files in work can be submitted.")),
+        "submit": a(lvl >= 1 and st == "in_work" and not d["checked_out_by"] and not not_ready,
+                    need_eng or ("Check it in first." if d["checked_out_by"] else
+                                 " ".join(not_ready) if not_ready else "Only files in work can be submitted.")),
         "send_back": a(st == "in_review" and lvl >= 1, "Only files in review can be sent back."),
-        "release": a(lvl >= ROLE_LEVEL["approver"] and st in ("in_work", "in_review") and not d["checked_out_by"] and not eco_req,
+        "release": a(lvl >= ROLE_LEVEL["approver"] and st in ("in_work", "in_review") and not d["checked_out_by"]
+                     and not eco_req and (not own or reason_helps) and not (st == "in_work" and not_ready),
                      "Releasing needs the approver role." if lvl < ROLE_LEVEL["approver"] else
                      "Check it in first." if d["checked_out_by"] else
-                     "Release through a change order." if eco_req else "Already released or obsolete."),
+                     "Release through a change order." if eco_req else
+                     " ".join(not_ready) if st == "in_work" and not_ready else
+                     " ".join(own) if own else "Already released or obsolete."),
+        "release_needs_reason": reason_helps, "release_why": " ".join(own),
         "revise": a(lvl >= 1 and st == "released", need_eng or "Only released files are revised; this one can be edited directly."),
-        "obsolete": a(lvl >= ROLE_LEVEL["approver"] and st == "released", "Needs the approver role and a released file."),
+        "obsolete": a(lvl >= ROLE_LEVEL["approver"] and st in lifecycle.LIVE_STATES
+                      and not db.get_setting("obsolete_needs_change_order"),
+                      "Needs the approver role and a released file." if lvl < ROLE_LEVEL["approver"] or
+                      st not in lifecycle.LIVE_STATES else "Make it obsolete through a change order."),
         "delete": a(lvl >= 1 and not other and not db.scalar(
             "SELECT 1 FROM lifecycle_events WHERE document_id = ? AND to_state = 'released'", (d["id"],)),
             "Released files can't be deleted; make them obsolete." if lvl >= 1 else need_eng),
@@ -175,7 +189,12 @@ def document(req: Req):
     out = lifecycle.doc_summary(d, names)
     versions = db.rows("SELECT id, version, revision, size, comment, created_by, created_at, preview_kind, viewer_kind, "
                        "meta_json, blob_sha FROM versions WHERE document_id = ? ORDER BY version DESC", (did,))
+    # which released revisions are superseded: everything released before the last released revision
+    released = [r["revision"] for r in db.rows("SELECT revision FROM lifecycle_events WHERE document_id = ? AND "
+                                               "to_state = 'released' ORDER BY id", (did,))]
+    current = d["revision"] if d["state"] in lifecycle.LIVE_STATES else (released[-1] if released else None)
     for v in versions:
+        v["superseded_by"] = current if current and v["revision"] != current and v["revision"] in released else None
         v["meta"] = json.loads(v.pop("meta_json") or "{}")
         v["by"] = names.get(v["created_by"], "?")
         v["sha"] = v.pop("blob_sha")[:12]
@@ -202,6 +221,17 @@ def document(req: Req):
         if b:
             bom = db.one("SELECT id, revision, state, source, updated_at, (SELECT COUNT(*) FROM bom_lines WHERE bom_id = "
                          "boms.id) AS lines FROM boms WHERE id = ?", (b["id"],))
+    # sent back from review by someone else: their comment is shown on top of the file
+    returned = None
+    last = events[0] if events else None
+    if last and d["state"] == "in_work" and last["from_state"] == "in_review" and last["to_state"] == "in_work":
+        submitter = next((e["user_id"] for e in events if e["to_state"] == "in_review"), None)
+        if last["user_id"] != submitter:
+            returned = {"by": last["by"], "at": last["at"], "comment": last["comment"]}
+    replaced_by = None
+    if d["item_id"]:
+        replaced_by = db.one("SELECT r.id, r.part_number, r.description FROM items i JOIN items r ON "
+                             "r.id = i.replaced_by_item_id WHERE i.id = ?", (d["item_id"],))
     cos = db.rows("SELECT c.id, c.number, c.title, c.state, ci.action FROM co_items ci JOIN change_orders c ON "
                   "c.id = ci.co_id WHERE ci.document_id = ? ORDER BY c.id DESC", (did,))
     latest = versions[0] if versions else None
@@ -210,6 +240,7 @@ def document(req: Req):
         "related": related, "where_used": where_used, "bom": bom, "changes": cos,
         "actions": actions_for(d, req.user), "preview_kind": latest["preview_kind"] if latest else None,
         "viewer_kind": latest["viewer_kind"] if latest else None, "meta": latest["meta"] if latest else {},
+        "returned": returned, "replaced_by": replaced_by,
     })
     return out
 
@@ -295,7 +326,8 @@ def undo(req: Req):
 
 @api("POST", "/api/documents/{id:int}/state", role="engineer")
 def state(req: Req):
-    d = lifecycle.set_state(req.user, req.int_param("id"), req.b("to") or "", req.b("comment") or "")
+    d = lifecycle.set_state(req.user, req.int_param("id"), req.b("to") or "", req.b("comment") or "",
+                            reason=req.b("reason") or "", replacement=req.b("replacement") or "")
     return lifecycle.doc_summary(d, lifecycle.user_names())
 
 

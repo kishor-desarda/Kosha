@@ -312,6 +312,10 @@ textarea.input { min-height: 80px; resize: vertical; }
 .st-in_review { background: var(--rev-bg); color: var(--rev); }
 .st-released { background: var(--ok-bg); color: var(--ok); }
 .st-obsolete { background: var(--obs-bg); color: var(--obs); text-decoration: line-through; }
+.st-spares_only { background: var(--warn-bg); color: var(--warn); }
+.st-superseded { background: var(--err-bg); color: var(--err); }
+/* an old released revision: nobody should manufacture from it (specification 7.3) */
+.superseded-band { background: var(--err); color: var(--err-bg); font-weight: 700; text-align: center; padding: 6px 12px; letter-spacing: .02em; }
 .st-draft { background: var(--obs-bg); color: var(--obs); }
 .st-submitted, .st-pending, .st-running { background: var(--rev-bg); color: var(--rev); }
 .st-approved, .st-sent, .st-implemented, .st-standardized { background: var(--ok-bg); color: var(--ok); }
