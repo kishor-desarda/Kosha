@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: CC-BY-4.0
+id: spares-and-service
+name: Spares and service
+version: 1.0.0
+licence: CC-BY-4.0
+description: >-
+  Categories, item types and spec codes for spare parts, wear parts, service kits and
+  consumables such as filter elements.
+
+categories:
+  - {code: SPK, name: Spare-part kits, make_buy: make}
+  - {code: WP, name: Wear parts}
+  - {code: FE, name: Filter elements, make_buy: buy}
+  - {code: CON, name: Consumables, make_buy: buy}
+
+item_types:
+  - {code: spare, name: Spare part, base: part}
+  - {code: service-kit, name: Service kit, base: assembly}
+  - {code: consumable, name: Consumable, base: part}
+
+units:
+  - {code: Nos, name: Numbers (pieces)}
+  - {code: Set, name: Sets}
+  - {code: Ltr, name: Litres}
+
+dictionaries:
+  filter_media:
+    - {code: CEL, name: Cellulose}
+    - {code: GF, name: Glass fibre}
+    - {code: PE, name: Polyester}
+    - {code: PP, name: Polypropylene}
+    - {code: SS, name: Stainless-steel mesh}
+
+spec_codes:
+  - spec-codes/filter-element.yaml
+
+numbering:
+  - id: service-kit
+    label: Service kit number
+    hint: Kits of spare parts for one product, numbered per product code (for example MX-SK-001).
+    pattern: "{product}-SK-{seq:3}"
+    item_type: service-kit
+    fields:
+      product: {type: text, label: Product code, pattern: "^[A-Z0-9]{1,8}$", hint: "Letters and digits, for example MX"}

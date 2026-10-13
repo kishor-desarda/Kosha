@@ -1,11 +1,175 @@
 # SPDX-License-Identifier: CC-BY-4.0
 id: standard-parts
 name: Standard parts
-version: 0.1.0
+version: 1.0.0
 licence: CC-BY-4.0
-description: Market components described by their standards. Sizes and designations only.
+description: >-
+  Market components described by their standards: hex screws and bolts, nuts, washers, socket
+  head cap screws, deep-groove ball bearings and parallel keys. Sizes and designations only.
+  Rows marked "verified: no" have not yet been checked against the standard.
+
+categories:
+  - {code: FST, name: Fasteners (bought out), make_buy: buy}
+  - {code: BRG, name: Bearings (bought out), make_buy: buy}
+  - {code: KEY, name: Keys and pins, make_buy: buy}
+
+# Each table is one CSV file: one row per size. "options" are chosen when a part is used
+# (length, property class ...). The templates build the designation, the part number and the
+# description; the same choices always give the same part number.
 tables:
-  - file: fasteners/hex-bolts-iso4017.csv
+  - id: hex-screws-iso4017
+    file: fasteners/hex-screws-iso4017.csv
     category: FST
+    label: Hex head screws, fully threaded
+    standard: ISO 4017
+    aliases: [DIN 933]
+    key: "M{d}"
+    size: d
+    columns:
+      d: {label: Thread, unit: mm}
+      pitch: {label: Pitch, unit: mm}
+      s: {label: Across flats, unit: mm}
+      k: {label: Head height, unit: mm}
+    options:
+      l: {type: int, label: Length, unit: mm, choices: [6, 8, 10, 12, 16, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 180, 200]}
+      grade: {type: choice, label: Property class, choices: ["8.8", "10.9"]}
+    designation: "ISO 4017 M{d}x{l} {grade}"
     part_number: "FST-ISO4017-M{d}X{l}-{grade}"
     description: "HEX SCREW ISO 4017 M{d} X {l} {grade}"
+
+  - id: hex-bolts-iso4014
+    file: fasteners/hex-bolts-iso4014.csv
+    category: FST
+    label: Hex head bolts, partly threaded
+    standard: ISO 4014
+    aliases: [DIN 931]
+    key: "M{d}"
+    size: d
+    columns:
+      d: {label: Thread, unit: mm}
+      pitch: {label: Pitch, unit: mm}
+      s: {label: Across flats, unit: mm}
+      k: {label: Head height, unit: mm}
+      b: {label: "Thread length (l ≤ 125)", unit: mm}
+    options:
+      l:
+        type: int
+        label: Length
+        unit: mm
+        choices: [20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 180, 200, 220, 240, 260, 280, 300]
+        more_than: b
+        message: "A partly threaded bolt must be longer than its thread length b ({b} mm). For shorter lengths use a fully threaded screw (ISO 4017)."
+      grade: {type: choice, label: Property class, choices: ["8.8", "10.9"]}
+    designation: "ISO 4014 M{d}x{l} {grade}"
+    part_number: "FST-ISO4014-M{d}X{l}-{grade}"
+    description: "HEX BOLT ISO 4014 M{d} X {l} {grade}"
+
+  - id: socket-head-cap-screws-iso4762
+    file: fasteners/socket-head-cap-screws-iso4762.csv
+    category: FST
+    label: Socket head cap screws
+    standard: ISO 4762
+    aliases: [DIN 912]
+    key: "M{d}"
+    size: d
+    columns:
+      d: {label: Thread, unit: mm}
+      pitch: {label: Pitch, unit: mm}
+      dk: {label: Head diameter, unit: mm}
+      k: {label: Head height, unit: mm}
+      s: {label: Hex socket, unit: mm}
+    options:
+      l: {type: int, label: Length, unit: mm, choices: [6, 8, 10, 12, 16, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 180, 200]}
+      grade: {type: choice, label: Property class, choices: ["8.8", "10.9", "12.9"]}
+    designation: "ISO 4762 M{d}x{l} {grade}"
+    part_number: "FST-ISO4762-M{d}X{l}-{grade}"
+    description: "SOCKET HEAD CAP SCREW ISO 4762 M{d} X {l} {grade}"
+
+  - id: hex-nuts-iso4032
+    file: fasteners/hex-nuts-iso4032.csv
+    category: FST
+    label: Hex nuts, style 1
+    standard: ISO 4032
+    aliases: [DIN 934]
+    key: "M{d}"
+    size: d
+    columns:
+      d: {label: Thread, unit: mm}
+      pitch: {label: Pitch, unit: mm}
+      s: {label: Across flats, unit: mm}
+      m: {label: Height, unit: mm}
+    options:
+      grade: {type: choice, label: Property class, choices: ["6", "8", "10"]}
+    designation: "ISO 4032 M{d} {grade}"
+    part_number: "FST-ISO4032-M{d}-{grade}"
+    description: "HEX NUT ISO 4032 M{d} CLASS {grade}"
+
+  - id: washers-iso7089
+    file: fasteners/washers-iso7089.csv
+    category: FST
+    label: Plain washers, normal series
+    standard: ISO 7089
+    aliases: [DIN 125]
+    key: "{size}"
+    size: size
+    columns:
+      size: {label: For thread, unit: mm}
+      d1: {label: Hole, unit: mm}
+      d2: {label: Outside diameter, unit: mm}
+      h: {label: Thickness, unit: mm}
+    options:
+      hardness: {type: choice, label: Hardness class, choices: ["200HV", "300HV"]}
+    designation: "ISO 7089 {size} {hardness}"
+    part_number: "FST-ISO7089-{size}-{hardness}"
+    description: "PLAIN WASHER ISO 7089 {size} {hardness} FOR M{size}"
+
+  - id: deep-groove-ball-bearings
+    file: bearings/deep-groove-ball-bearings.csv
+    category: BRG
+    label: Deep-groove ball bearings, series 60, 62 and 63
+    standard: ISO 15
+    aliases: [DIN 625-1]
+    key: "{bearing}"
+    size: bore
+    columns:
+      bearing: {label: Bearing, type: text}
+      series: {label: Series, type: text}
+      bore: {label: Bore d, unit: mm}
+      od: {label: Outside D, unit: mm}
+      width: {label: Width B, unit: mm}
+    options:
+      seal:
+        type: choice
+        label: Seals or shields
+        choices:
+          - {code: OPEN, name: Open, suffix: ""}
+          - {code: ZZ, name: Two metal shields, suffix: "-ZZ"}
+          - {code: 2RS, name: Two rubber seals, suffix: "-2RS"}
+    designation: "{bearing}{seal.suffix}"
+    part_number: "BRG-{bearing}{seal.suffix}"
+    description: "DEEP GROOVE BALL BEARING {bearing}{seal.suffix} {bore}X{od}X{width}"
+
+  - id: parallel-keys-iso773
+    file: keys/parallel-keys-iso773.csv
+    category: KEY
+    label: Parallel keys
+    standard: ISO 773
+    aliases: [DIN 6885-1]
+    key: "{b}x{h}"
+    size: b
+    columns:
+      b: {label: Width b, unit: mm}
+      h: {label: Height h, unit: mm}
+      shaft_over: {label: Shaft over, unit: mm}
+      shaft_upto: {label: Shaft up to, unit: mm}
+    options:
+      form:
+        type: choice
+        label: Form
+        choices:
+          - {code: A, name: Round ends}
+          - {code: B, name: Square ends}
+      l: {type: int, label: Length, unit: mm, choices: [6, 8, 10, 12, 14, 16, 18, 20, 22, 25, 28, 32, 36, 40, 45, 50, 56, 63, 70, 80, 90, 100, 110, 125, 140, 160, 180, 200, 220, 250, 280, 320, 360, 400]}
+    designation: "ISO 773 {form} {b}x{h}x{l}"
+    part_number: "KEY-ISO773-{form}-{b}X{h}X{l}"
+    description: "PARALLEL KEY ISO 773 FORM {form} {b} X {h} X {l}"

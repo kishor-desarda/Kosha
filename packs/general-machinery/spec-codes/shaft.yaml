@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: CC-BY-4.0
+id: shaft
+category: SH
+label: Plain shaft
+hint: A plain round shaft by finished diameter, overall length and material.
+code: "SH-{diameter_mm}X{length_mm}-{material}"
+fields:
+  diameter_mm: {type: decimal, label: Diameter, unit: mm, min: 3, max: 1000, places: 1}
+  length_mm:   {type: int, label: Length, unit: mm, min: 10, max: 12000}
+  material:    {type: choice, dictionary: materials}
+description: "Shaft Ø{diameter_mm} x {length_mm} {material.name}"
+item:
+  material: "{material.name}"

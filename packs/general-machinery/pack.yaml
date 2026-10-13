@@ -1,21 +1,85 @@
 # SPDX-License-Identifier: CC-BY-4.0
 id: general-machinery
 name: General machinery
-version: 0.1.0
+version: 1.0.0
 licence: CC-BY-4.0
-description: Categories and spec-code templates for common machine parts.
+description: >-
+  Categories, materials, number schemes and spec-code templates for common machine parts
+  (gears, shafts, flanges, bearing housings, frames).
+
+# Categories group items. "make_buy" and "uom" are the defaults for new items in the category.
 categories:
   - {code: GR, name: Gears}
   - {code: SH, name: Shafts}
   - {code: FL, name: Flanges}
   - {code: BH, name: Bearing housings}
-  - {code: FST, name: Fasteners (bought out)}
-  - {code: BRG, name: Bearings (bought out)}
+  - {code: FR, name: Frames and weldments}
+  - {code: FST, name: Fasteners (bought out), make_buy: buy}
+  - {code: BRG, name: Bearings (bought out), make_buy: buy}
+
+# Item types are stored on the item; "base" is how Kosha treats it (a part or an assembly with a BOM).
+item_types:
+  - {code: part, name: Part, base: part}
+  - {code: assembly, name: Assembly, base: assembly}
+  - {code: weldment, name: Weldment, base: assembly}
+  - {code: casting, name: Casting, base: part}
+
+units:
+  - {code: Nos, name: Numbers (pieces)}
+  - {code: Kg, name: Kilograms}
+  - {code: Meter, name: Metres}
+  - {code: Set, name: Sets}
+
 dictionaries:
   materials:
     - {code: C45, name: "C45 (1.0503)"}
     - {code: 42CrMo4, name: "42CrMo4 (1.7225)"}
+    - {code: 16MnCr5, name: "16MnCr5 (1.7131)"}
+    - {code: S235JR, name: "S235JR (1.0038)"}
     - {code: S275JR, name: "S275JR (1.0044)"}
-    - {code: EN-GJL-250, name: "EN-GJL-250 grey cast iron"}
+    - {code: S355J2, name: "S355J2 (1.0577)"}
+    - {code: P250GH, name: "P250GH (1.0460)"}
+    - {code: GJL250, name: "EN-GJL-250 grey cast iron"}
+    - {code: GJS400, name: "EN-GJS-400-15 ductile iron"}
+    - {code: "1.4301", name: "1.4301 stainless (304)"}
     - {code: "1.4401", name: "1.4401 stainless (316)"}
-spec_codes: [spec-codes/spur-gear.yaml]
+    - {code: "1.4404", name: "1.4404 stainless (316L)"}
+  flange_types:
+    - {code: EN01, name: "EN 1092-1 type 01, plate flange for welding"}
+    - {code: EN05, name: "EN 1092-1 type 05, blind flange"}
+    - {code: EN11, name: "EN 1092-1 type 11, weld-neck flange"}
+
+spec_codes:
+  - spec-codes/spur-gear.yaml
+  - spec-codes/shaft.yaml
+  - spec-codes/flange.yaml
+
+# Number series. {seq:3} is a running number with 3 digits; {yyyy} is the current year.
+numbering:
+  - id: project
+    label: Project number
+    hint: One number per customer project or job. Not a part, so no item is created.
+    pattern: "P-{yyyy}-{seq:3}"
+    creates_item: false
+  - id: general-arrangement
+    label: General-arrangement drawing number
+    hint: The overall drawing of a machine, numbered per product code (for example MX-GA-001).
+    pattern: "{product}-GA-{seq:3}"
+    item_type: assembly
+    fields:
+      product: {type: text, label: Product code, pattern: "^[A-Z0-9]{1,8}$", hint: "Letters and digits, for example MX"}
+
+# Title-block attribute names found on drawings, and the Kosha field each one fills.
+title_blocks:
+  - id: common
+    label: Common title-block attribute names
+    map:
+      PART_NO: part_number
+      DRG_NO: part_number
+      DWG_NO: part_number
+      DESCRIPTION: description
+      TITLE: description
+      MATERIAL: material
+      MOC: material
+      REV: revision
+      WEIGHT: weight_kg

@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: CC-BY-4.0
+id: engineered-components
+name: Engineered components
+version: 1.0.0
+licence: CC-BY-4.0
+description: >-
+  Categories and spec codes for components bought to a specification: electric motors,
+  gearboxes, couplings, valves, hydraulic and pneumatic parts.
+
+categories:
+  - {code: MTR, name: Electric motors, make_buy: buy}
+  - {code: GBX, name: Gearboxes, make_buy: buy}
+  - {code: CPL, name: Couplings, make_buy: buy}
+  - {code: VLV, name: Valves, make_buy: buy}
+  - {code: HYD, name: Hydraulic components, make_buy: buy}
+  - {code: PNE, name: Pneumatic components, make_buy: buy}
+
+item_types:
+  - {code: bought-out, name: Bought-out component, base: part}
+
+dictionaries:
+  motor_mountings:
+    - {code: B3, name: "IM B3 foot mounted"}
+    - {code: B5, name: "IM B5 flange mounted"}
+    - {code: B14, name: "IM B14 face mounted"}
+    - {code: B35, name: "IM B35 foot and flange mounted"}
+    - {code: V1, name: "IM V1 flange mounted, shaft down"}
+  efficiency_classes:
+    - {code: IE2, name: "IE2 high efficiency"}
+    - {code: IE3, name: "IE3 premium efficiency"}
+    - {code: IE4, name: "IE4 super premium efficiency"}
+
+spec_codes:
+  - spec-codes/electric-motor.yaml

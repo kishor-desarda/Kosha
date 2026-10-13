@@ -1,4 +1,7 @@
-d_mm,pitch_mm,s_mm,k_mm,standard,edition,verified
+d,pitch,s,k,standard,edition,verified
+3,0.5,5.5,2,ISO 4017,,no
+4,0.7,7,2.8,ISO 4017,,no
+5,0.8,8,3.5,ISO 4017,,no
 6,1,10,4,ISO 4017,,no
 8,1.25,13,5.3,ISO 4017,,no
 10,1.5,16,6.4,ISO 4017,,no
@@ -6,3 +9,5 @@ d_mm,pitch_mm,s_mm,k_mm,standard,edition,verified
 16,2,24,10,ISO 4017,,no
 20,2.5,30,12.5,ISO 4017,,no
 24,3,36,15,ISO 4017,,no
+30,3.5,46,18.7,ISO 4017,,no
+36,4,55,22.5,ISO 4017,,no

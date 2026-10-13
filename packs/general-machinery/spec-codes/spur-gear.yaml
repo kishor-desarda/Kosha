@@ -2,10 +2,13 @@
 id: spur-gear
 category: GR
 label: Spur gear
+hint: Straight-toothed gear. The same module, teeth, face width and material always give the same code.
 code: "GR-{module}-{teeth}-{face_width_mm}-{material}"
 fields:
   module:        {type: decimal, unit: mm, choices: [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8]}
   teeth:         {type: int, min: 8, max: 300}
-  face_width_mm: {type: int, min: 5, max: 400}
+  face_width_mm: {type: int, label: Face width, unit: mm, min: 5, max: 400}
   material:      {type: choice, dictionary: materials}
 description: "Spur gear m{module} z{teeth} b{face_width_mm} {material.name}"
+item:
+  material: "{material.name}"

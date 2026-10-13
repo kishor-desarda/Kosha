@@ -3,6 +3,7 @@
 import { S, h, mount, icon, get, post, put, patch, toast, fail, dialog, fmtDate, ago, tabs, stateChip, typeChip, thumb, can, upload, newPassword, confirmDlg } from './core.js';
 import { addinsTab } from './addins.js';
 import { backupsTab, securityTab } from './admin_ops.js';
+import { packsTab } from './packs.js';
 
 export async function renderAdmin(container, _m, params, { setTitle }) {
   setTitle('Administration');
@@ -10,8 +11,7 @@ export async function renderAdmin(container, _m, params, { setTitle }) {
   const cleanups = [];
   const draw = async () => {
     while (cleanups.length) { try { cleanups.pop()(); } catch (e) { /* ignore */ } }
-    const items = S.user.role === 'admin' ? [['users', 'Users'], ['import', 'Import legacy data'], ['rules', 'Numbering & revisions'], ['cad', 'CAD conversion'], ['addins', 'Add-ins'],
-      ['security', 'Sign-in & sessions'], ['backups', 'Backups'], ['audit', 'Audit log']] : [['audit', 'Audit log']];
+    const items = S.user.role === 'admin' ? [['users', 'Users'], ['import', 'Import legacy data'], ['rules', 'Numbering & revisions'], ['cad', 'CAD conversion'], ['addins', 'Add-ins'], ['security', 'Sign-in & sessions'], ['backups', 'Backups'], ['packs', 'Packs'], ['audit', 'Audit log']] : [['audit', 'Audit log']];
     const body = h('div', { class: 'panel-b' });
     mount(container, h('div', { class: 'page-pad' }, h('div', { class: 'page-head' }, h('h1', null, 'Administration')),
       h('div', { class: 'panel' }, tabs(items, tab, k => { tab = k; draw(); }), body)));
@@ -22,6 +22,7 @@ export async function renderAdmin(container, _m, params, { setTitle }) {
     if (tab === 'addins') await addinsTab(body);
     if (tab === 'security') await securityTab(body);
     if (tab === 'backups') await backupsTab(body);
+    if (tab === 'packs') await packsTab(body);
     if (tab === 'audit') await audit(body);
   };
   await draw();
