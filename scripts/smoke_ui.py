@@ -40,7 +40,7 @@ SCREENS = ["#/home", "#/files", "#/boms", "#/changes", "#/erp", "#/common", "#/a
            "#/input/1", "#/projects", "#/project/1", "#/item/1", "#/erp?tab=reconcile", "#/erp?tab=settings",
            "#/admin?tab=notify", "#/ask", "#/admin?tab=ai", "#/admin?tab=access",
            "#/ecrs", "#/ecr/1", "#/change/1", "#/admin?tab=approvals",
-           "#/admin?tab=webhooks", "#/bin"]
+           "#/admin?tab=webhooks", "#/bin", "#/shares"]
 ADMIN_ONLY = ("#/admin", "#/erp?tab=")
 
 
@@ -115,6 +115,25 @@ RESUMABLE = """async () => {
 }"""
 
 
+MAKE_SHARE = """async () => {
+  const core = await import('/static/js/core.js');
+  const doc = (await core.get('/api/documents?state=released&limit=1')).documents[0];
+  const r = await core.post('/api/shares', { document_ids: [doc.id], recipient: 'Smoke test, Example Castings', days: 3 });
+  return { token: r.token, filename: doc.filename };
+}"""
+
+
+def check_share_page(browser, page, errors: list[str]) -> None:
+    """A share link opens in a browser that never signed in, and lists the shared file."""
+    made = page.evaluate(MAKE_SHARE)
+    outside = browser.new_page()
+    outside.on("pageerror", lambda e: errors.append(f"share page script error: {e}"))
+    outside.goto(f"{BASE}/#/share/{made['token']}")
+    if not wait_until(outside, f"document.body.innerText.includes({made['filename']!r})"):
+        errors.append("the share link page did not list the shared file for someone who is not signed in")
+    outside.close()
+
+
 def check_resumable_upload(page, errors: list[str]) -> None:
     """A file larger than one piece goes up in pieces, with the browser's SHA-256, and comes back byte for byte."""
     r = page.evaluate(RESUMABLE)
@@ -181,8 +200,16 @@ def main() -> int:
                 except Exception:
                     errors.append(f"{user}: My notifications did not open")
                 page.keyboard.press("Escape")
+                page.click("button.avatar")                       # the account menu sets up two-step sign-in
+                page.click(".ctxmenu >> text=Two-step sign-in")
+                try:
+                    page.wait_for_selector("dialog[open] input[autocomplete=one-time-code]", timeout=10000)
+                except Exception:
+                    errors.append(f"{user}: the two-step sign-in set-up did not open")
+                page.keyboard.press("Escape")
                 if user == "admin":
                     check_resumable_upload(page, errors)
+                    check_share_page(browser, page, errors)
                 if user == "asha":
                     choose_theme(page, "system", errors)
                 page.emulate_media(color_scheme="light")

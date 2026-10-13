@@ -9,6 +9,7 @@ import { renderChanges, renderChange } from './changes.js';
 import { renderRequests, renderRequest, delegateDialog } from './ecr.js';
 import { renderErp } from './erp.js';
 import { renderBin } from './recyclebin.js';
+import { renderShares, renderShareOutside } from './share.js';
 import { renderCommon } from './common.js';
 import { renderAdmin, renderSearch } from './admin.js';
 import { renderLibrary } from './library.js';
@@ -42,6 +43,7 @@ const ROUTES = [
   [/^#\/files(?:\/(\d+))?$/, 'kosha', () => renderExplorer],
   [/^#\/doc\/(\d+)$/, 'kosha', () => renderDoc],
   [/^#\/bin$/, 'kosha', () => renderBin],
+  [/^#\/shares$/, 'kosha', () => renderShares],
   [/^#\/item\/(\d+)$/, 'boms', () => renderItem],
   [/^#\/boms$/, 'boms', () => renderBoms],
   [/^#\/bom\/(\d+)$/, 'boms', () => renderBom],
@@ -111,6 +113,8 @@ function buildShell() {
       ...(can('approver') || can('quality') ? [{ label: 'Stand-in while I am away', icon: 'users', run: delegateDialog }] : []),
       { label: `Theme: ${themeLabel(currentTheme())}`, icon: 'theme', run: themeDialog },
       { label: 'Change password', icon: 'checkout', run: changePassword },
+      ...(can('engineer') && S.user.kind !== 'vendor' ? [{ label: 'My share links', icon: 'link', run: () => { location.hash = '#/shares'; } }] : []),
+      { label: 'Two-step sign-in', icon: 'checkin', run: () => import('./twostep.js').then(m => m.twoStepDialog()).catch(fail) },
       { label: 'Sign out', icon: 'logout', run: () => logout() },
     ]);
   });
@@ -242,7 +246,13 @@ function renderLogin(message = '') {
     e.preventDefault();
     btn.disabled = true;
     try {
-      signedIn(await api('POST', '/api/auth/login', { username: user.value.trim(), password: pw.value }));
+      const r = await api('POST', '/api/auth/login', { username: user.value.trim(), password: pw.value });
+      if (r.two_step) {          // the password was right; now the code from the phone
+        const m = await import('./twostep.js');
+        m.secondStep(form.parentElement, r, ans => { signedIn(ans); if (ans.recovery_codes) m.recoveryDialog(ans.recovery_codes); });
+        return;
+      }
+      signedIn(r);
     } catch (ex) {
       let msg = ex.message;
       if (ex.code === 'sign_in_paused' && ex.data && ex.data.retry_at) {
@@ -289,6 +299,11 @@ async function route() {
   document.querySelectorAll('dialog[open]').forEach(d => { d.close(); d.remove(); });
   const hash = location.hash || '#/home';
   if (await returnFromSso(hash)) return;
+  if (hash.startsWith('#/share/')) {          // a share link opened by someone outside the company: no sign-in
+    shell = null;
+    await renderShareOutside(root, hash.slice(8).split('?')[0]);
+    return;
+  }
   // changing the hash routes again and draws the sign-in form then; drawing it here as well made it appear twice,
   // and what someone typed into the first one was lost
   if (!S.token) { if (hash !== '#/login') location.hash = '#/login'; else renderLogin(); return; }

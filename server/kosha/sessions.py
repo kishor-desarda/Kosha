@@ -24,6 +24,14 @@ DEFAULTS = {
     "sign_in_max_failures": 5,
     "sign_in_lock_minutes": 15,
     "sign_in_ip_max_failures": 20,
+    # more downloads than this in an hour pause the person's downloads and tell the admins (0: off)
+    "bulk_download_per_hour": 200,
+    # two-step sign-in (authenticator app) for these roles, and for everyone outside the office networks
+    "two_step_roles": [],
+    "two_step_outside_office": False,
+    "office_networks": "",
+    # tell admins when someone signs in from a network they never used before
+    "new_place_alerts": True,
 }
 LIMITS = {
     "session_idle_minutes": (5, 7 * 24 * 60),
@@ -31,7 +39,9 @@ LIMITS = {
     "sign_in_max_failures": (3, 100),
     "sign_in_lock_minutes": (1, 24 * 60),
     "sign_in_ip_max_failures": (5, 100000),
+    "bulk_download_per_hour": (0, 100000),
 }
+TWO_STEP_ROLES = ("admin", "approver", "checker", "engineer", "viewer", "data_steward", "spares", "quality")
 TOUCH_SECONDS = 60          # last activity is written at most once a minute per session
 
 _cache: tuple[float, dict] | None = None
@@ -51,6 +61,11 @@ def settings() -> dict:
             out[k] = min(max(int(stored.get(k, out[k])), lo), hi)
         except (TypeError, ValueError):
             pass
+    roles = stored.get("two_step_roles", out["two_step_roles"])
+    out["two_step_roles"] = [r for r in roles if r in TWO_STEP_ROLES] if isinstance(roles, list) else []
+    for k in ("two_step_outside_office", "new_place_alerts"):
+        out[k] = bool(stored.get(k, out[k]))
+    out["office_networks"] = str(stored.get("office_networks", "") or "")
     with _cache_lock:
         _cache = (time.monotonic(), out)
     return dict(out)
@@ -62,8 +77,27 @@ def save_settings(values: dict) -> dict:
     current = settings()
     labels = {"session_idle_minutes": "Idle limit (minutes)", "session_absolute_hours": "Sign in again after (hours)",
               "sign_in_max_failures": "Failed sign-ins per account", "sign_in_lock_minutes": "Pause (minutes)",
-              "sign_in_ip_max_failures": "Failed sign-ins per network address"}
+              "sign_in_ip_max_failures": "Failed sign-ins per network address",
+              "bulk_download_per_hour": "Downloads per hour before the alarm"}
     for k, v in (values or {}).items():
+        if k == "two_step_roles":
+            if not isinstance(v, list) or any(r not in TWO_STEP_ROLES for r in v):
+                raise ValueError("Choose roles from: " + ", ".join(TWO_STEP_ROLES) + ".")
+            current[k] = sorted(set(v))
+            continue
+        if k in ("two_step_outside_office", "new_place_alerts"):
+            current[k] = bool(v)
+            continue
+        if k == "office_networks":
+            import ipaddress
+            nets = " ".join(str(v or "").replace(",", " ").split())
+            for part in nets.split():
+                try:
+                    ipaddress.ip_network(part, strict=False)
+                except ValueError:
+                    raise ValueError(f"{part} is not a network such as 192.168.1.0/24.") from None
+            current[k] = nets
+            continue
         if k not in LIMITS:
             continue
         lo, hi = LIMITS[k]
@@ -74,6 +108,9 @@ def save_settings(values: dict) -> dict:
         if not lo <= n <= hi:
             raise ValueError(f"{labels[k]} must be between {lo} and {hi}.")
         current[k] = n
+    if current["two_step_outside_office"] and not current["office_networks"]:
+        raise ValueError("List the office networks first (for example 192.168.1.0/24), or everyone would count as "
+                         "outside the office.")
     db.set_setting(SETTING_KEY, current)
     with _cache_lock:
         _cache = None

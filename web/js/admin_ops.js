@@ -2,6 +2,7 @@
 // Administration: Backups (with server health) and Sign-in & sessions settings (directory sign-in: directory.js).
 import { h, mount, icon, get, put, toast, fail, fmtDate, ago, fmtSize } from './core.js';
 import { directorySection } from './directory.js';
+import { twoStepSettings } from './twostep.js';
 
 const when = x => (x && x.at ? `${fmtDate(x.at)} (${ago(x.at)})` : 'Never');
 
@@ -83,6 +84,7 @@ const FIELDS = [
   ['sign_in_max_failures', 'Failed sign-ins for one user name before sign-in pauses', 'The same message is shown whether or not the user name exists.'],
   ['sign_in_lock_minutes', 'Pause after too many failed sign-ins (minutes)', 'Failed sign-ins older than this are forgotten.'],
   ['sign_in_ip_max_failures', 'Failed sign-ins from one network address before sign-in pauses', 'Keep it higher than the per-user limit: many people can share one address.'],
+  ['bulk_download_per_hour', 'Downloads per person per hour before the bulk-download alarm', 'Past it, the person\'s downloads pause and admins are told; viewing still works. 0 switches the alarm off.'],
 ];
 
 export async function securityTab(body) {
@@ -100,8 +102,25 @@ export async function securityTab(body) {
         toast('Saved. The new limits apply to open sessions at once.', 'ok');
       } catch (ex) { fail(ex); } finally { e.target.disabled = false; }
     } }, 'Save'))));
+  twoStepSettings(body, r.settings);
+  await watermarkSection(body);
   await apiLimitSection(body);
   await directorySection(body);
+}
+
+// Released PDFs leave Kosha with a line naming the person, the date and the company's wording.
+async function watermarkSection(body) {
+  const s = await get('/api/settings');
+  const on = h('input', { type: 'checkbox', checked: s.watermark_downloads });
+  const text = h('input', { class: 'input', id: 'wm-text', value: s.watermark_text, maxlength: 80 });
+  body.appendChild(h('section', { class: 'col', style: { gap: '10px', maxWidth: '820px', marginTop: '24px' } },
+    h('h2', null, 'Watermarks'),
+    h('label', { class: 'check' }, on, 'Released PDFs carry the name of the person who downloads them, the date and this wording'),
+    h('div', { class: 'field' }, h('label', { for: 'wm-text' }, 'Wording'), text,
+      h('span', { class: 'hint' }, 'Files in work are downloaded unchanged so they can be edited. PDFs opened through share links always carry the recipient\'s name.')),
+    h('div', null, h('button', { class: 'btn', onclick: async () => {
+      try { await put('/api/settings', { watermark_downloads: on.checked, watermark_text: text.value }); toast('Saved', 'ok'); } catch (e) { fail(e); }
+    } }, 'Save watermark'))));
 }
 
 // How many calls a minute each account may make through the API (protects the server from a runaway script).

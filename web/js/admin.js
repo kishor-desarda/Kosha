@@ -163,6 +163,7 @@ async function users(body, draw) {
         h('td', { class: 'nowrap' }, h('div', { class: 'row' },
           h('button', { class: 'btn sm', title: 'Extra roles, vendor projects, view only and end date', onclick: () => userAccessDialog(u, draw).catch(fail) }, 'Access'),
           u.kind === 'service' ? h('button', { class: 'btn sm', title: 'Keys with which programs use this service account', onclick: () => import('./programs.js').then(m => m.apiKeysDialog(u)).catch(fail) }, 'API keys') : null,
+          h('button', { class: `btn sm ${u.downloads_paused_at ? 'danger' : ''}`, title: u.downloads_paused_at ? 'Downloads paused by the bulk-download alarm' : 'Two-step sign-in, paused downloads, personal data', onclick: () => import('./twostep.js').then(m => m.userSecurityDialog(u, draw)).catch(fail) }, u.downloads_paused_at ? 'Security (paused)' : 'Security'),
           h('button', { class: 'btn sm', onclick: () => resetPw(u) }, 'Reset password'),
           h('button', { class: 'btn sm', title: 'End all sessions of this user, in browsers and CAD add-ins. They can sign in again at once.', onclick: () => signOutEverywhere(u) }, 'Sign out everywhere'),
           h('button', { class: 'btn sm', title: 'Link this user to an account in Active Directory, LDAP or an OpenID Connect provider', onclick: () => userDirectoryDialog(u) }, 'Directory'),
@@ -264,7 +265,8 @@ async function cad(body) {
 
 async function audit(body) {
   const r = await get('/api/audit?limit=300');
-  mount(body, h('div', { style: { maxHeight: '70vh', overflow: 'auto' } }, h('table', { class: 'tbl' },
+  const check = S.user.role === 'admin' ? (await import('./twostep.js')).chainCheck() : null;
+  mount(body, check, h('div', { style: { maxHeight: '70vh', overflow: 'auto' } }, h('table', { class: 'tbl' },
     h('thead', null, h('tr', null, ['When', 'Who', 'Action', 'What', 'Details'].map(t => h('th', null, t)))),
     h('tbody', null, r.entries.map(e => h('tr', null, h('td', { class: 'nowrap', title: fmtDate(e.at) }, ago(e.at)), h('td', null, e.user), h('td', { class: 'mono small' }, e.action),
       h('td', null, e.entity === 'document' && e.entity_id ? h('a', { href: `#/doc/${e.entity_id}` }, `file #${e.entity_id}`) : `${e.entity}${e.entity_id ? ' #' + e.entity_id : ''}`),

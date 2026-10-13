@@ -476,4 +476,6 @@ def redeem(ticket: str, browser: str, ip: str, user_agent: str) -> tuple[dict, s
     a = registry.get(row["provider"])
     token = sessions.create(u["id"], ip, user_agent)
     db.audit(u["id"], "login", "user", u["id"], f"from {ip} through {a.manifest.name if a and a.manifest else row['provider']}")
+    from .twostep import note_place      # the provider asks for its own second step
+    note_place(u, ip, user_agent)
     return u, token

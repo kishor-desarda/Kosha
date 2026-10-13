@@ -394,6 +394,8 @@ def check_download() -> None:
     if scope().view_only:
         raise forbidden("You have view-only access: you can look at the preview but not download the file. "
                         "Ask your admin if you need the file itself.")
+    from .twostep import count_download
+    count_download(current.get())       # the bulk-download alarm (specification 15.3)
 
 
 # ------------------------------------------------------------ access review --

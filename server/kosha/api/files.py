@@ -414,6 +414,13 @@ def download(req: Req):
     if not store.exists(v["blob_sha"]):
         raise not_found("The stored file is missing on the server.")
     path = store.path_for(v["blob_sha"])
+    from .. import watermark
+    if v["doc"]["ext"] == "pdf" and v["doc"]["state"] in watermark.STATES and watermark.enabled():
+        stamped = watermark.stamp_pdf(path.read_bytes(), watermark.line_for(req.user["full_name"]))
+        db.audit(req.uid, "download", "document", v["document_id"],
+                 f"v{v['version']}" + (", watermarked" if stamped else ", not watermarked (the PDF could not be stamped)"))
+        return Response(stamped or path.read_bytes(), media_type="application/pdf", headers={
+            "Content-Disposition": _disposition("attachment", v["filename"]), **SAFE_HEADERS})
     size = path.stat().st_size
     start, end = _byte_range(req.request.headers.get("range", ""), size)
     if start is None:
