@@ -160,6 +160,7 @@ export async function renderChange(container, [id], _p, { setTitle }) {
             h('td', null, d.checked_out_by ? h('span', { class: 'chip out' }, d.checked_out_name) : ''),
             h('td', null, editable ? h('button', { class: 'btn ghost sm', 'aria-label': `Remove ${d.filename}`, onclick: async () => { try { draw(await del(`/api/changes/${id}/items/${d.id}`)); } catch (e) { fail(e); } } }, icon('x', 14)) : null));
         }) : h('tr', null, h('td', { colspan: 7 }, h('div', { class: 'empty' }, 'No files yet.'))))))),
+      (sec => { import('./diffview.js').then(m => m.changeLogSection(sec, c)).catch(fail); return sec; })(h('section', { class: 'panel', style: { marginTop: '16px' } })),
       h('section', { class: 'panel', style: { marginTop: '16px' } }, h('div', { class: 'panel-h' }, h('h2', null, 'Discussion')),
         h('div', { class: 'panel-b col' }, c.comments.map(m => h('div', { style: { borderBottom: '1px solid var(--line-2)', paddingBottom: '8px' } },
           h('div', { class: 'small muted' }, `${m.name} · ${ago(m.at)}`), h('div', { style: { whiteSpace: 'pre-wrap' } }, m.text))),

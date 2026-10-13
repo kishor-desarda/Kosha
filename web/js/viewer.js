@@ -67,6 +67,7 @@ function svgViewer(stage, tools, det, v, versions) {
   const hud = h('div', { class: 'hud' }, 'Loading drawing…');
   stage.append(wrap, hud);
   let vb = null, base = null, layers = [], measuring = false, pts = [], mGroup = null, compareWith = null;
+  let changes = null, zoneLayer = null;   // measured change list while two versions are overlaid
   const units = { mm: 'mm', in: 'in', cm: 'cm', m: 'm' };
   let unit = 'mm';
 
@@ -127,6 +128,12 @@ function svgViewer(stage, tools, det, v, versions) {
       } else stage.querySelector('.legend')?.remove();
       fit();
       hud.textContent = hudText();
+      zoneLayer = null;
+      if (changes) { changes.remove(); changes = null; }
+      if (compareWith) {
+        const want = compareWith;
+        import('./diffview.js').then(m => { if (compareWith === want && !changes) changes = m.changesPanel(stage, det.id, want, v.version, zoomToZone); });
+      }
     } catch (e) { hud.textContent = e.message; }
   }
   const hudText = () => `${det.filename} · v${v.version} · units ${unit} · scroll to zoom, drag to pan`;
@@ -141,6 +148,28 @@ function svgViewer(stage, tools, det, v, versions) {
     vb = { ...base };
     if (vb.w / vb.hgt < aspect) { const nw = vb.hgt * aspect; vb.x -= (nw - vb.w) / 2; vb.w = nw; }
     else { const nh = vb.w / aspect; vb.y -= (nh - vb.hgt) / 2; vb.hgt = nh; }
+    apply();
+  }
+  function zoomToZone(z) {   // z = [min x, min y, max x, max y] in drawing units; the SVG has y pointing down
+    if (!z || !base) return;
+    const NS = 'http://www.w3.org/2000/svg';
+    const r = wrap.getBoundingClientRect(), aspect = r.width / Math.max(r.height, 1);
+    const w = Math.max(z[2] - z[0], base.w / 400), hgt = Math.max(z[3] - z[1], base.hgt / 400);
+    vb = { x: z[0] - w, y: -z[3] - hgt, w: w * 3, hgt: hgt * 3 };
+    if (vb.w / vb.hgt < aspect) { const nw = vb.hgt * aspect; vb.x -= (nw - vb.w) / 2; vb.w = nw; }
+    else { const nh = vb.w / aspect; vb.y -= (nh - vb.hgt) / 2; vb.hgt = nh; }
+    if (!zoneLayer) {   // drawn behind the overlaid drawings so their lines stay visible
+      zoneLayer = document.createElementNS(NS, 'svg');
+      zoneLayer.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+      wrap.insertBefore(zoneLayer, wrap.firstChild);
+      layers.unshift(zoneLayer);
+    }
+    zoneLayer.replaceChildren();
+    const rect = document.createElementNS(NS, 'rect');
+    for (const [k, val] of Object.entries({ x: z[0], y: -z[3], width: z[2] - z[0], height: z[3] - z[1] })) rect.setAttribute(k, val);
+    rect.setAttribute('vector-effect', 'non-scaling-stroke');
+    Object.assign(rect.style, { fill: 'var(--warn-bg)', stroke: 'var(--warn)', strokeWidth: '2' });
+    zoneLayer.appendChild(rect);
     apply();
   }
   function toUser(cx, cy) {

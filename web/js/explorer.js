@@ -538,6 +538,7 @@ function rowMenu(e, r) {
     '-',
     it('Where used', 'link', !!one?.item_id, 'No part number', () => whereUsed(one), 'Ctrl+U'),
     one?.doc_type === 'assembly' ? it('Open / build BOM', 'bom', true, '', () => openBom(one)) : null,
+    ['assembly', 'part', 'model'].includes(one?.doc_type) ? it('Copy design…', 'copy', !!one.item_id && can('engineer'), can('engineer') ? 'This file has no part number yet' : 'View-only access', () => import('./copydesign.js').then(m => m.copyDesignDialog({ document_id: one.id }))) : null,
     it('Send item to ERP', 'erp', !!one?.item_id && can('approver'), 'Needs approver role and a part number', () => pushErp(one)),
     it('Copy part number', 'copy', !!one?.part_number, 'No part number', () => navigator.clipboard.writeText(one.part_number).then(() => toast('Copied'))),
     '-',
