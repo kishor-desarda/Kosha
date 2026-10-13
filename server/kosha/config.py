@@ -40,6 +40,10 @@ _load_env_file(BASE_DIR / "kosha.env")
 
 DATA_DIR = Path(os.environ.get("KOSHA_DATA_DIR", BASE_DIR / "data")).resolve()
 DB_PATH = Path(os.environ.get("KOSHA_DB_PATH", DATA_DIR / "kosha.db"))
+# Empty: SQLite in DB_PATH (no database server needed). postgresql://user:password@host:5432/kosha: PostgreSQL.
+DATABASE_URL = os.environ.get("KOSHA_DATABASE_URL", "").strip()
+if DATABASE_URL and not DATABASE_URL.startswith(("postgresql://", "postgres://")):
+    raise SystemExit("KOSHA_DATABASE_URL must start with postgresql:// (leave it empty to use SQLite).")
 BLOB_DIR = DATA_DIR / "blobs"
 WORK_DIR = DATA_DIR / "work"
 

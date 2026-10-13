@@ -9,3 +9,5 @@ PyYAML>=6.0          # add-in manifests and industry packs
 openpyxl>=3.1        # Excel BOM import/export (CSV works without it)
 pypdfium2>=4.0       # thumbnails for PDF files
 numpy>=1.24          # faster common-part analysis on large installations
+# only for PostgreSQL (KOSHA_DATABASE_URL); SQLite needs nothing extra
+# psycopg[binary]>=3.1

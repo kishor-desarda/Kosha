@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Kosha with PostgreSQL 16, for company-wide use (the plain docker-compose.yml uses SQLite).
+#
+#   cd deploy
+#   printf 'KOSHA_DB_PASSWORD=%s\nKOSHA_ADMIN_PASSWORD=%s\n' "$(openssl rand -hex 16)" "ChangeMe-123" > .env
+#   docker compose -f docker-compose.postgres.yml up -d --build        → http://localhost:8080
+#
+# Use letters and digits for KOSHA_DB_PASSWORD (it is part of a URL). The database lives in the
+# kosha-pgdata volume and the stored file versions in kosha-data: back up both, for example
+#   docker compose -f docker-compose.postgres.yml exec -T db pg_dump -U kosha -Fc kosha > kosha-$(date +%F).dump
+# and a copy of the kosha-data volume. To bring an existing SQLite installation over, see
+# "Moving to PostgreSQL" in README.md (python -m kosha.dbcopy).
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: kosha
+      POSTGRES_PASSWORD: ${KOSHA_DB_PASSWORD:?Set KOSHA_DB_PASSWORD in deploy/.env}
+      POSTGRES_DB: kosha
+      # code-point sort order, the same as Kosha on SQLite
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+    volumes: ["kosha-pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kosha -d kosha"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  kosha:
+    build:
+      context: ..
+      args:
+        KOSHA_EXTRA_PACKAGES: "psycopg[binary]>=3.1"
+    ports: ["8080:8080"]
+    volumes: ["kosha-data:/data"]
+    environment:
+      KOSHA_DATABASE_URL: postgresql://kosha:${KOSHA_DB_PASSWORD}@db:5432/kosha
+      KOSHA_ADMIN_PASSWORD: ${KOSHA_ADMIN_PASSWORD:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  kosha-pgdata:
+  kosha-data:

@@ -12,6 +12,7 @@ dist/
 # Kosha data and local settings (never commit these)
 server/data/
 server/kosha.env
+deploy/.env
 demo-data/
 *.db
 *.db-wal

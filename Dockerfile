@@ -5,6 +5,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 COPY server/requirements.txt server/requirements.txt
 RUN pip install --no-cache-dir -r server/requirements.txt
+# Extra Python packages, e.g. the PostgreSQL driver (deploy/docker-compose.postgres.yml sets it)
+ARG KOSHA_EXTRA_PACKAGES=""
+RUN if [ -n "$KOSHA_EXTRA_PACKAGES" ]; then pip install --no-cache-dir $KOSHA_EXTRA_PACKAGES; fi
 COPY sdk/python sdk/python
 RUN pip install --no-cache-dir ./sdk/python
 COPY server server

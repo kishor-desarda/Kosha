@@ -93,6 +93,41 @@ part-number pattern under **Admin › Numbering & revisions**.
 **Backups:** `python -m kosha.backup <folder>` copies the database with SQLite's online backup,
 runs an integrity check on the copy, and copies new file versions, checking each against its
 fingerprint. Keep a second copy away from the server (3-2-1 rule) and test a restore every month.
+On PostgreSQL the same command saves the database with `pg_dump` and reads the copy back to check it.
+
+### Moving to PostgreSQL
+
+Kosha keeps its records in **SQLite** by default: nothing to install, right for a small team. For
+company-wide use, run it on **PostgreSQL** 12 or newer (16 recommended). The stored file versions stay
+in the data folder either way; only the records move.
+
+1. Create a database owned by a Kosha user (the `C.UTF-8` locale keeps SQLite's sort order):
+   ```bash
+   sudo -u postgres createuser --pwprompt kosha
+   sudo -u postgres createdb --owner kosha --template template0 --encoding UTF8 --locale C.UTF-8 kosha
+   ```
+2. Stop Kosha and install the PostgreSQL driver, and `pg_dump` for the backups:
+   ```bash
+   sudo systemctl stop kosha
+   sudo apt-get install postgresql-client && sudo /opt/kosha/venv/bin/pip install "psycopg[binary]"
+   ```
+3. Copy the records (the SQLite file is only read):
+   ```bash
+   cd /opt/kosha/server && sudo -u kosha /opt/kosha/venv/bin/python -m kosha.dbcopy \
+       --from /var/lib/kosha/kosha.db --to postgresql://kosha:PASSWORD@localhost:5432/kosha
+   ```
+   `kosha.dbcopy` creates the tables, copies the rows of linked tables in one transaction per group,
+   continues the id counters, and then checks that every table has the same row count and checksum
+   on both sides. It refuses to copy into a database that already holds data, and if anything fails it
+   empties what it filled.
+4. Add `KOSHA_DATABASE_URL=postgresql://kosha:PASSWORD@localhost:5432/kosha` to `/etc/kosha/kosha.env`
+   (letters and digits in the password, or URL-encode it) and `sudo systemctl start kosha`. Keep the
+   SQLite file until you have checked Kosha on PostgreSQL. Later runs of `deploy/linux/install.sh` keep
+   the driver and `pg_dump` installed.
+
+A new installation can start on PostgreSQL directly: do steps 1, 2 and 4.
+
+With Docker, `deploy/docker-compose.postgres.yml` runs Kosha with PostgreSQL 16 in a named volume.
 
 ### DWG previews (AutoCAD and GStarCAD files)
 
@@ -153,7 +188,7 @@ switched off automatically and the admin is told why; Kosha carries on without i
 ## Project layout
 
 ```text
-server/kosha/        Python server (Starlette + SQLite): REST API, lifecycle, BOMs, ERP queue, add-in loader
+server/kosha/        Python server (Starlette; SQLite or PostgreSQL): REST API, lifecycle, BOMs, ERP queue, add-ins
 server/kosha/cad/    DXF reader and SVG renderer, DWG conversion, SolidWorks preview reader, STL tools
 server/tests/        unit tests (pytest) and end-to-end suites with a simulated ERPNext
 web/                 browser client (plain JavaScript modules, no build step)
@@ -176,6 +211,11 @@ cd .. && pytest sdk/python/tests addins/erpnext/tests
 python scripts/smoke_ui.py   # browser smoke test (needs Playwright)
 dotnet test sdk/dotnet/Kosha.CadCore.Tests   # shared CAD core (needs the .NET 8 SDK)
 ```
+
+To run the same tests on PostgreSQL, install `psycopg[binary]` and set `KOSHA_TEST_DATABASE_URL` to a
+server where the user may create databases (for example `postgresql://kosha:secret@localhost:5432/postgres`):
+every test server then gets its own new database. The two script suites run on one with
+`python tests/harness.py run tests/test_api.py`.
 
 The same suites run on every pull request in GitHub Actions.
 
