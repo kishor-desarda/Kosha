@@ -62,7 +62,10 @@ def save_settings(changes: dict) -> dict:
 
 
 def connector_id() -> str:
-    """The connector chosen in settings, else the only enabled ERP connector."""
+    """The connector chosen in settings, else the first enabled ERP connector.
+
+    Installations that never chose one were made when ERPNext was the only connector, so it stays the default
+    then, whatever other connectors are added (folders are found in alphabetical order)."""
     chosen = settings().get("connector")
     if chosen:
         return chosen
@@ -71,7 +74,7 @@ def connector_id() -> str:
         available = registry.by_kind("erp-connector", enabled_only=False)
     if not available:
         raise ErpError("No ERP connector add-in is installed. Install one under Admin › Add-ins.")
-    return available[0].id
+    return min(available, key=lambda a: a.id != ERPNEXT_ID).id
 
 
 def call(method: str, *args):
