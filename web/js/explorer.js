@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // The Explorer: folders, files, ribbon, preview pane, right-click menus, drag & drop.
 import {
-  S, h, mount, clear, icon, get, post, patch, del, upload, toast, fail, busy, dialog, confirmDlg, prompt,
+  S, h, mount, clear, icon, get, post, patch, del, upload, resumableUpload, RESUMABLE_FROM, toast, fail, busy, dialog, confirmDlg, prompt,
   contextMenu, closeMenu, stateChip, typeChip, fmtDate, ago, fmtSize, fileUrl, downloadDoc, store, can, thumb, STATE_PLAIN,
 } from './core.js';
 import { openViewer } from './viewer.js';
@@ -402,7 +402,8 @@ function renderToolbar() {
   const mineOut = docs.length && docs.every(d => d.checked_out_by === S.user.id);
   mount(ui.toolbar,
     g(tbBtn('upload', 'Add files', 'Put new files in this folder', pickFiles, eng, 'View-only access', null, !docs.length && eng),
-      tbBtn('folderPlus', 'New folder', 'Make a folder here', newFolder, eng, 'View-only access')),
+      tbBtn('folderPlus', 'New folder', 'Make a folder here', newFolder, eng, 'View-only access'),
+      tbBtn('trash', 'Recycle bin', 'Put deleted files back', () => { location.hash = '#/bin'; }, eng, 'View-only access')),
     g(tbBtn('checkout', 'Check out', 'Lock it so you can edit', () => doCheckout(docs), allOk('checkout', docs), why('checkout', docs), 'Ctrl+O', !mineOut && allOk('checkout', docs) && S.mode === 'guided'),
       tbBtn('checkin', 'Check in', 'Save your new version', () => doCheckin(docs), docs.length > 0 && mineOut, why('checkin', docs), 'Ctrl+I', mineOut && S.mode === 'guided'),
       tbBtn('unlock', 'Undo check-out', 'Unlock without saving', () => doUndo(docs), allOk('undo_checkout', docs), why('undo_checkout', docs)),
@@ -653,7 +654,10 @@ function checkinDialog(d) {
         fd.append('comment', comment.value);
         fd.append('keep_checked_out', keep.checked ? '1' : '0');
         bar.hidden = false;
-        const r = await upload(`/api/documents/${d.id}/checkin`, fd, p => { bar.firstChild.style.width = `${Math.round(p * 100)}%`; });
+        const show = p => { bar.firstChild.style.width = `${Math.round(p * 100)}%`; };
+        const r = file.files[0].size >= RESUMABLE_FROM
+          ? await resumableUpload(file.files[0], { document_id: d.id, comment: comment.value, keep_checked_out: keep.checked }, show)
+          : await upload(`/api/documents/${d.id}/checkin`, fd, show);
         toast(`Checked in ${r.filename} as version ${r.version}.`, 'ok');
         await refresh();
       } }],
@@ -696,7 +700,7 @@ async function doRevise(docs) {
 }
 
 async function doDelete(docs) {
-  if (!await confirmDlg('Delete', `Delete ${docs.length === 1 ? docs[0].filename : docs.length + ' files'}? Only files that were never released can be deleted.`, 'Delete', true)) return;
+  if (!await confirmDlg('Delete', `Delete ${docs.length === 1 ? docs[0].filename : docs.length + ' files'}? They wait in the recycle bin, where they can be put back. Released files cannot be deleted; make them obsolete instead.`, 'Delete', true)) return;
   for (const d of docs) { try { await del(`/api/documents/${d.id}`); } catch (e) { fail(e); } }
   E.sel.clear();
   refresh();
@@ -728,8 +732,12 @@ async function renameFolder(f) {
   try { await patch(`/api/folders/${f.id}`, { name }); refresh(); } catch (e) { fail(e); }
 }
 async function deleteFolder(f) {
-  if (!await confirmDlg('Delete folder', `Delete the folder "${f.name}"? Only empty folders can be deleted.`, 'Delete', true)) return;
-  try { await del(`/api/folders/${f.id}`); if (f.id === E.cur) goUp(); else refresh(); } catch (e) { fail(e); }
+  if (!await confirmDlg('Delete folder', `Delete the folder "${f.name}" and everything in it? Its files wait in the recycle bin and can be put back with their folders. A folder with released files cannot be deleted.`, 'Delete', true)) return;
+  try {
+    const r = await del(`/api/folders/${f.id}`);
+    toast(r.files_to_bin ? `Folder deleted; ${r.files_to_bin} file${r.files_to_bin > 1 ? 's are' : ' is'} in the recycle bin.` : 'Folder deleted.', 'ok');
+    if (f.id === E.cur) goUp(); else refresh();
+  } catch (e) { fail(e); }
 }
 
 function pickFiles(folderId = E.cur) {
@@ -801,18 +809,27 @@ function uploadDialog(files, folderId) {
       let sent = 0;
       const added = [];
       const errors = [];
-      // send in batches so large drops survive and show progress
-      for (let i = 0; i < entries.length;) {
+      // big files one by one in resumable pieces, the rest in batches so large drops survive and show progress
+      for (const e of entries.filter(x => x.file.size >= RESUMABLE_FROM)) {
+        status.textContent = `Uploading ${e.file.name}…`;
+        try {
+          added.push(await resumableUpload(e.file, { folder_id: folderId, path: e.dir || '', comment: comment.value, keep_checked_out: keep.checked },
+            p => { bar.firstChild.style.width = `${Math.round(100 * (sent + p * e.file.size) / totalBytes)}%`; }));
+        } catch (err) { errors.push({ filename: e.file.name, error: err.message }); }
+        sent += e.file.size;
+      }
+      const small = entries.filter(x => x.file.size < RESUMABLE_FROM);
+      for (let i = 0; i < small.length;) {
         const batch = [];
         let bytes = 0;
-        while (i < entries.length && batch.length < 25 && (bytes < 64e6 || !batch.length)) { batch.push(entries[i]); bytes += entries[i].file.size; i++; }
+        while (i < small.length && batch.length < 25 && (bytes < 64e6 || !batch.length)) { batch.push(small[i]); bytes += small[i].file.size; i++; }
         const fd = new FormData();
         fd.append('folder_id', folderId);
         fd.append('comment', comment.value);
         fd.append('keep_checked_out', keep.checked ? '1' : '0');
         fd.append('paths', JSON.stringify(batch.map(e => e.dir)));
         for (const e of batch) fd.append('file', e.file);
-        status.textContent = `Uploading ${i} of ${entries.length}…`;
+        status.textContent = `Uploading ${i} of ${small.length}…`;
         const r = await upload('/api/documents/upload', fd, p => { bar.firstChild.style.width = `${Math.round(100 * (sent + p * bytes) / totalBytes)}%`; });
         sent += bytes;
         added.push(...r.documents);

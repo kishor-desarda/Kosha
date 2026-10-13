@@ -630,6 +630,8 @@ def add_attachment(user: dict, dev_id: int, filename: str, stream: BinaryIO) -> 
     if not allowed["ok"]:
         raise forbidden(allowed["why"])
     name = lifecycle.clean_filename(filename or "")
+    from .filesafety import refuse_blocked
+    refuse_blocked(name)
     sha, size = store.put_stream(stream)   # safely on disk before the database knows about it
     with db.tx():
         aid = db.insert("deviation_attachments", {"deviation_id": d["id"], "filename": name, "blob_sha": sha, "size": size,

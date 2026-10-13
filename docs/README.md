@@ -16,6 +16,7 @@
 - [`directory-sign-in.md`](directory-sign-in.md): signing in with Active Directory, LDAP or an OpenID Connect provider such as Keycloak.
 - [`changes.md`](changes.md): change requests, change orders, approval routes and stand-ins.
 - [`api-rules.md`](api-rules.md): the rules for programs that use the API (errors, idempotency, versions, paging, limits).
+- [`file-safety.md`](file-safety.md): resumable uploads, blocked program files, the recycle bin, purging and clean-up.
 - [`programs-and-events.md`](programs-and-events.md): API keys for programs, webhooks, and live updates on open screens.
 - [`ai.md`](ai.md): optional AI assistance (classification, change-log drafts, Ask Kosha): what is sent, privacy, running it fully local.
 

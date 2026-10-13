@@ -10,12 +10,15 @@ from __future__ import annotations
 import hashlib
 import os
 import tempfile
+import threading
 from pathlib import Path
 from typing import BinaryIO
 
 from . import config
 
 CHUNK = 1024 * 1024
+# held while a file already in the store is reused, and while the clean-up moves a file nothing refers to
+LOCK = threading.Lock()
 
 
 def path_for(sha: str) -> Path:
@@ -34,10 +37,23 @@ def _fsync_dir(path: Path) -> None:
         os.close(fd)
 
 
+def _reuse(dest: Path) -> bool:
+    """True when the content is already stored. Its time is renewed, so the clean-up of files no record refers to
+    leaves it alone while the new record is being written."""
+    with LOCK:
+        try:
+            os.utime(dest)
+            return True
+        except FileNotFoundError:
+            return False
+        except OSError:             # read-only store (a restore check): an existing file is still good
+            return dest.exists()
+
+
 def _commit(tmp: str, sha: str) -> None:
     """Move a fully written, flushed temporary file into place (atomic on one file system)."""
     dest = path_for(sha)
-    if dest.exists():
+    if _reuse(dest):
         return
     dest.parent.mkdir(parents=True, exist_ok=True)
     os.replace(tmp, dest)
@@ -72,7 +88,7 @@ def put_stream(stream: BinaryIO) -> tuple[str, int]:
 def put_bytes(data: bytes) -> tuple[str, int]:
     config.ensure_dirs()
     sha = hashlib.sha256(data).hexdigest()
-    if path_for(sha).exists():
+    if _reuse(path_for(sha)):
         return sha, len(data)
     fd, tmp = tempfile.mkstemp(dir=config.WORK_DIR, prefix="put_")
     try:

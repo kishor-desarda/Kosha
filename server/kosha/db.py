@@ -321,6 +321,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "allow_self_approval_with_reason": False,
     # spares only and obsolete are decided through a change order
     "obsolete_needs_change_order": True,
+    # days a deleted file can be put back by the person who deleted it (afterwards an admin can)
+    "recycle_bin_days": 30,
     "company_name": "",
     # calls each account (or address, before sign-in) may make per minute through the API; 0 = no limit
     "api_rate_limit_per_minute": int(os.environ.get("KOSHA_API_RATE_LIMIT_PER_MINUTE") or 1200),

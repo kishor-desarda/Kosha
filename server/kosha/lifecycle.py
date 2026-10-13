@@ -223,6 +223,8 @@ def checkin(user: dict, folder_id: int, filename: str, stream: BinaryIO, comment
     """Add a new file or a new version of an existing one. Returns the document row."""
     props = {k: v for k, v in (props or {}).items() if v not in (None, "")}
     filename = clean_filename(filename)
+    from .filesafety import refuse_blocked
+    refuse_blocked(filename)
     folder_or_404(folder_id)
     ext = cadproc.ext_of(filename)
     dtype = cadproc.doc_type(filename)
@@ -520,7 +522,8 @@ def delete(user: dict, doc_id: int, is_approver: bool) -> None:
             raise conflict("Someone else has this file checked out.", "checked_out_by_other")
         if d["created_by"] != user["id"] and not is_approver:
             raise forbidden("Only the creator or an approver can delete this file.")
-        db.update("documents", doc_id, {"deleted": 1, "updated_at": db.now(), "checked_out_by": None})
+        from .filesafety import to_bin
+        to_bin(user["id"], d)
         db.audit(user["id"], "delete", "document", doc_id, d["filename"])
 
 

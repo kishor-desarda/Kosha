@@ -1390,6 +1390,8 @@ class InputLibrary:
     def store_upload(up: Upload) -> dict:
         """Write the bytes to the store first (flushed to disk) - before any database row points at them."""
         name = _clean_filename(up.filename)
+        from .filesafety import refuse_blocked
+        refuse_blocked(name)
         sha, size = store.put_stream(up.stream)
         if size == 0:
             raise bad(f"{name} is empty (0 bytes), so it was not added.")

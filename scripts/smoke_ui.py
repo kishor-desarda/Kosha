@@ -40,7 +40,7 @@ SCREENS = ["#/home", "#/files", "#/boms", "#/changes", "#/erp", "#/common", "#/a
            "#/input/1", "#/projects", "#/project/1", "#/item/1", "#/erp?tab=reconcile", "#/erp?tab=settings",
            "#/admin?tab=notify", "#/ask", "#/admin?tab=ai", "#/admin?tab=access",
            "#/ecrs", "#/ecr/1", "#/change/1", "#/admin?tab=approvals",
-           "#/admin?tab=webhooks"]
+           "#/admin?tab=webhooks", "#/bin"]
 ADMIN_ONLY = ("#/admin", "#/erp?tab=")
 
 
@@ -98,6 +98,28 @@ def visit_screens(page, user: str, errors: list[str], dark: bool) -> None:
                 errors.append(f"{label} {hash_}: the page is not dark (theme {r['theme']!r})")
             if r["white"]:
                 errors.append(f"{label} {hash_}: white background in the dark theme: {', '.join(r['white'])}")
+
+
+RESUMABLE = """async () => {
+  const core = await import('/static/js/core.js');
+  const folders = (await core.get('/api/folders')).folders;
+  const top = folders.find(f => !f.parent_id).id;
+  const bytes = new Uint8Array(9 * 1024 * 1024 + 123);             // two pieces of 8 MB
+  for (let i = 0; i < bytes.length; i++) bytes[i] = (i * 31 + 7) % 251;
+  const file = new File([bytes], 'Smoke resumable.bin');
+  let last = 0;
+  const doc = await core.resumableUpload(file, { folder_id: top }, p => { last = p; });
+  const back = new Uint8Array(await (await fetch(core.fileUrl(doc.id, 'file'))).arrayBuffer());
+  const same = back.length === bytes.length && back.every((b, i) => b === bytes[i]);
+  return { same, version: doc.version, last };
+}"""
+
+
+def check_resumable_upload(page, errors: list[str]) -> None:
+    """A file larger than one piece goes up in pieces, with the browser's SHA-256, and comes back byte for byte."""
+    r = page.evaluate(RESUMABLE)
+    if not (r["same"] and r["version"] == 1 and r["last"] > 0.999):
+        errors.append(f"resumable upload from the browser did not round-trip: {r}")
 
 
 def choose_theme(page, theme: str, errors: list[str]) -> None:
@@ -159,6 +181,8 @@ def main() -> int:
                 except Exception:
                     errors.append(f"{user}: My notifications did not open")
                 page.keyboard.press("Escape")
+                if user == "admin":
+                    check_resumable_upload(page, errors)
                 if user == "asha":
                     choose_theme(page, "system", errors)
                 page.emulate_media(color_scheme="light")
