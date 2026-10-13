@@ -2,6 +2,7 @@
 """End to end: file fingerprints read back and repaired from the backup, the nightly consistency check, and health
 alerts to the admins (specification 16.5 and 16.6)."""
 import json
+import sqlite3
 
 
 def _upload(admin, name, data):
@@ -73,14 +74,19 @@ def test_consistency_check(kosha):
     (kosha.data_dir / "data" / "blobs" / sha[:2] / sha).unlink()
     item = admin.call("POST", "/api/items", {"part_number": "HC-300-001", "description": "MIXER FRAME"})
     item_id = item.get("id") or item["item"]["id"]
+    expected = ["missing_content"]
     with kosha.db() as con:
         con.execute("PRAGMA foreign_keys = OFF")
         now = "2026-10-13T00:00:00+00:00"
         bom = con.execute("INSERT INTO boms(item_id, revision, created_at, updated_at) VALUES (?, 'A', ?, ?)",
                           (item_id, now, now)).lastrowid
-        con.execute("INSERT INTO bom_lines(bom_id, line_no, child_item_id) VALUES (?, 1, 999999)", (bom,))
+        try:
+            con.execute("INSERT INTO bom_lines(bom_id, line_no, child_item_id) VALUES (?, 1, 999999)", (bom,))
+            expected.insert(0, "bom_line_without_item")
+        except sqlite3.IntegrityError:
+            pass        # PostgreSQL always enforces the foreign key, so such a line cannot exist there
     r = admin.call("POST", "/api/admin/health/consistency")
     kinds = sorted(p["kind"] for p in r["problems"])
-    assert not r["ok"] and kinds == ["bom_line_without_item", "missing_content"], r["problems"]
+    assert not r["ok"] and kinds == expected, r["problems"]
     assert any("HC-200-001 Spec.txt" in p["text"] for p in r["problems"])
     assert "consistency" in {p["key"] for p in r["status"]["problems"]}
