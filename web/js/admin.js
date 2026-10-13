@@ -87,6 +87,23 @@ async function legacyImport(body) {
     catch (e) { fail(e); }
   };
 
+  // another system, through an importer add-in (an old PDM or document server); shown only when one is installed
+  const fromAddin = h('div');
+  get('/api/import/addins').then(({ addins }) => {
+    if (!addins.length) return;
+    const pick = h('select', { class: 'input', id: 'im-addin' }, addins.map(a => h('option', { value: a.id, disabled: !a.enabled }, a.enabled ? a.name : `${a.name} (off: ${a.why})`)));
+    const go = h('button', { class: 'btn', onclick: async () => {
+      go.disabled = true;
+      try {
+        await post('/api/import/from-addin', { addin: pick.value, target: dst.value.trim(), state: state.value, keep_revision: keepRev.checked, dry_run: dry.checked });
+        toast(dry.checked ? 'Dry run started: nothing will be changed' : 'Import started', 'ok'); running = await loadJobs();
+      } catch (e) { fail(e); } finally { go.disabled = false; }
+    } }, icon('upload', 16), 'Import from the add-in');
+    mount(fromAddin, h('section', { class: 'col', style: { gap: '8px' } }, h('h2', null, 'From another system'),
+      h('p', { class: 'small muted', style: { margin: 0 } }, 'An importer add-in brings the files and part data from another system. They go to the Kosha folder above, with the options above, and get the same review, sign-off and Undo batch.'),
+      h('div', { class: 'row wrap' }, h('label', { for: 'im-addin', class: 'small' }, 'Add-in'), pick, go)));
+  }).catch(() => {});
+
   const loadJobs = async () => {
     const r = await get('/api/import/jobs');
     mount(jobsBox, r.jobs.length ? h('table', { class: 'tbl' },
@@ -130,6 +147,7 @@ async function legacyImport(body) {
       h('label', { class: 'check' }, unzip, 'Unpack ZIP archives and import what is inside (into a folder named after the archive)'),
       h('label', { class: 'check' }, dry, h('b', null, 'Dry run'), ' — only report what would happen')),
     h('div', null, h('button', { class: 'btn primary', onclick: start }, icon('upload', 16), 'Start import')),
+    fromAddin,
     h('h2', null, 'Imports'), jobsBox));
   let running = await loadJobs();
   const timer = setInterval(async () => { if (running || document.querySelector('.chip.st-running')) running = await loadJobs(); }, 1500);

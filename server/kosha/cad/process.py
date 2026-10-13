@@ -7,6 +7,7 @@ import io
 import logging
 import math
 
+from .. import previews
 from . import dwg, dxf, mesh, solidworks
 
 log = logging.getLogger("kosha.cad")
@@ -18,13 +19,19 @@ DOC_TYPES = {
     "step": "model", "stp": "model", "igs": "model", "iges": "model", "x_t": "model", "stl": "model",
     "png": "image", "jpg": "image", "jpeg": "image", "gif": "image", "bmp": "image", "webp": "image",
     "xlsx": "document", "xls": "document", "docx": "document", "doc": "document", "txt": "document",
-    "csv": "document", "pptx": "document",
+    "csv": "document", "pptx": "document", "tsv": "document", "md": "document", "log": "document",
+    "json": "document", "xml": "document", "xlsm": "document", "nc": "document", "tap": "document",
+    "gcode": "document", "zip": "archive", "eml": "email", "msg": "email",
+    "mp4": "video", "webm": "video", "ogv": "video", "m4v": "video", "mov": "video",
 }
 
 CAD_LABEL = {
     "sldprt": "SolidWorks part", "sldasm": "SolidWorks assembly", "slddrw": "SolidWorks drawing",
     "dwg": "DWG drawing (AutoCAD / GStarCAD)", "dxf": "DXF drawing", "pdf": "PDF", "step": "STEP model",
     "stp": "STEP model", "stl": "STL mesh", "igs": "IGES model", "iges": "IGES model",
+    "docx": "Word document", "xlsx": "Excel workbook", "xlsm": "Excel workbook", "pptx": "PowerPoint slides",
+    "txt": "Text file", "csv": "CSV table", "zip": "ZIP archive", "eml": "E-mail", "msg": "Outlook e-mail",
+    "mp4": "Video", "webm": "Video", "mov": "Video", "nc": "CNC program", "gcode": "CNC program",
 }
 
 # DXF already converted in bulk (see importer); keyed by SHA-256 of the DWG bytes
@@ -85,6 +92,10 @@ def process(filename: str, data: bytes) -> dict:
         elif ext in IMAGE_MIME:
             out["preview"] = (ext, data)
             out["viewer"] = (ext, data)
+        elif ext in previews.HANDLED:
+            previews.build(out, ext, data, filename)
+        if not out["preview"] and not out["viewer"]:
+            previews.from_addins(out, ext, data, filename)
     except dxf.DxfError as e:
         out["meta"]["preview_note"] = str(e)
     except Exception as e:  # never fail a check-in because of a preview

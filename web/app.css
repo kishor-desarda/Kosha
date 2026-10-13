@@ -734,3 +734,12 @@ dialog.palette { width: min(640px, 94vw); margin-top: 12vh; }
 .tour h2 { font-size: 16px; margin: 0 0 6px; }
 .tour p { margin: 0 0 10px; line-height: 1.5; }
 .tour .tour-step { font-size: 12px; color: var(--muted); }
+
+/* previews of text, tables, archives, e-mails and Office files (viewer kind "summary"), and videos */
+.summary-view { position: absolute; inset: 0; overflow: auto; padding: 20px 24px; background: var(--panel); color: var(--ink); }
+.summary-lines { margin: 0; white-space: pre-wrap; word-break: break-word; font: 13px/1.5 var(--mono); }
+.summary-table { overflow: auto; }
+.summary-table td, .summary-table th { white-space: nowrap; }
+.summary-slide { border: 1px solid var(--line); border-radius: 6px; padding: 10px 14px; background: var(--bg); }
+.video-stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--bg); }
+.video-stage video { max-width: 100%; max-height: 100%; }

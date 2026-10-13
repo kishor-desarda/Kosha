@@ -31,8 +31,28 @@ export function schemaForm(fields, values, editable) {
   return { el, values: valuesOf };
 }
 
+let view = 'list';
+
+async function catalogueView() {
+  const c = await get('/api/addins/catalogue');
+  return h('div', { class: 'col', id: 'addin-catalogue', style: { gap: '14px' } },
+    c.groups.map(g => h('section', { class: 'col', style: { gap: '6px' } },
+      h('div', { class: 'row' }, h('h3', { style: { margin: 0 } }, g.label), h('span', { class: 'small muted' }, g.description)),
+      g.addins.length ? h('ul', { class: 'check-list' }, g.addins.map(a => h('li', { class: 'row' },
+        h('span', { class: `chip st-${a.status}` }, STATUS[a.status] || a.status), h('b', null, a.name),
+        h('span', { class: 'small muted' }, `${a.version} · ${SOURCE[a.source] || a.source} · runs on ${a.where.join(', ') || '—'}`))))
+        : h('div', { class: 'small muted' }, 'None installed.', g.template ? [' Start one with the SDK: ', h('code', null, g.template)] : ' See the SDK guide to build one.'))),
+    c.broken.length ? h('div', { class: 'small sev-error' }, `${c.broken.length} add-in folder(s) could not be read: `, c.broken.map(b => `${b.name} (${b.message})`).join('; ')) : null);
+}
+
 export async function addinsTab(body) {
   const draw = async () => {
+    const seg = h('div', { class: 'seg' }, [['list', 'Installed'], ['catalogue', 'By kind']].map(([k, l]) =>
+      h('button', { 'aria-pressed': String(view === k), onclick: () => { view = k; draw(); } }, l)));
+    if (view === 'catalogue') {
+      mount(body, h('div', { class: 'row', style: { marginBottom: '10px' } }, seg), await catalogueView());
+      return;
+    }
     const { addins } = await get('/api/addins');
     const rows = addins.map(a => h('tr', null,
       h('td', null, h('b', null, a.name), h('div', { class: 'small muted', style: { maxWidth: '460px' } }, a.description),
@@ -50,7 +70,7 @@ export async function addinsTab(body) {
       h('div', { class: 'banner info small', style: { marginBottom: '14px' } }, icon('info'), h('div', null,
         'Add-ins connect Kosha to other systems and add file types, packs and screens. Official add-ins ship with Kosha. ',
         'Others wait until you have reviewed what they may do. An add-in that keeps failing is switched off automatically; Kosha carries on without it.')),
-      h('div', { class: 'row', style: { marginBottom: '10px' } }, h('span', { class: 'spacer' }),
+      h('div', { class: 'row', style: { marginBottom: '10px' } }, seg, h('span', { class: 'spacer' }),
         h('button', { class: 'btn sm', onclick: async () => { try { await post('/api/addins/rescan'); toast('Add-ins re-read', 'ok'); draw(); } catch (e) { fail(e); } } }, icon('refresh', 14), 'Look for new add-ins')),
       h('div', { style: { overflow: 'auto' } }, h('table', { class: 'tbl' },
         h('thead', null, h('tr', null, ['Add-in', 'Kind', 'Version', 'Source', 'Status', ''].map(t => h('th', null, t)))),

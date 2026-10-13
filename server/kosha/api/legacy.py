@@ -59,6 +59,53 @@ def start(req: Req):
     return {"job": db.one("SELECT * FROM import_jobs WHERE id = ?", (job_id,))}
 
 
+@api("GET", "/api/import/addins", role="admin")
+def importer_addins(req: Req):
+    """Add-ins of kind "importer" that can bring files and part data from another system."""
+    from ..addins import registry
+    return {"addins": [{"id": a.id, "name": a.manifest.name, "description": a.manifest.description,
+                        "enabled": a.status == "enabled", "why": "" if a.status == "enabled" else
+                        (a.message or "Switched off under Admin › Add-ins.")}
+                       for a in registry.by_kind("importer", enabled_only=False) if a.manifest]}
+
+
+@api("POST", "/api/import/from-addin", role="admin")
+def start_from_addin(req: Req):
+    """Import from another system through an importer add-in. The import then runs like a folder import, so
+    quality scores, review, sign-off and Undo batch apply."""
+    import uuid
+
+    from .. import config
+    from ..addins import registry
+    if db.scalar("SELECT COUNT(*) FROM import_jobs WHERE status = 'running'"):
+        raise conflict("An import is already running. Wait for it to finish or cancel it.")
+    addin_id = str(req.b("addin") or "")
+    a = registry.get(addin_id)
+    if not a or not a.manifest or "importer" not in a.manifest.kinds:
+        raise bad("There is no importer add-in with that name.")
+    if a.status != "enabled":
+        raise conflict(f"The add-in {a.manifest.name} is switched off. Switch it on under Admin › Add-ins.")
+    target = (req.b("target") or "").strip().strip("/\\")
+    if not target:
+        raise bad("Say which Kosha folder the files go to.")
+    extra = req.b("options") or {}
+    if not isinstance(extra, dict):
+        raise bad("Send the add-in's options as an object.")
+    options = {"state": req.b("state") or "in_work", "keep_revision": as_bool(req.b("keep_revision", True)),
+               "skip_identical": True, "dry_run": as_bool(req.b("dry_run", False)), "unpack_archives": True,
+               "groups": list(importer.TYPE_GROUPS), "extensions": [], "addin": addin_id, "addin_options": extra}
+    staging = config.WORK_DIR / f"addin-import-{uuid.uuid4().hex[:12]}"
+    staging.mkdir(parents=True)
+
+    def collect():
+        rows = registry.call(addin_id, "collect", staging, extra, timeout=3600)
+        return rows if isinstance(rows, list) else []
+
+    job_id = importer.start_job(req.user, str(staging), target, options, None, collect)
+    db.update("import_jobs", job_id, {"source": f"{a.manifest.name} (add-in)"})
+    return {"job": db.one("SELECT * FROM import_jobs WHERE id = ?", (job_id,))}
+
+
 @api("GET", "/api/import/jobs", role="admin")
 def jobs(req: Req):
     rows = db.rows("SELECT * FROM import_jobs ORDER BY id DESC LIMIT 50")

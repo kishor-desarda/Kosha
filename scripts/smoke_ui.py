@@ -197,6 +197,7 @@ def check_workbench(page, errors: list[str]) -> None:
     check_shop(page, errors)
     check_legacy_batch(page, errors)
     check_drawing_check(page, errors)
+    check_text_preview(page, errors)
 
 
 def close_first_tour(page, user: str, errors: list[str]) -> None:
@@ -238,6 +239,30 @@ def check_shop(page, errors: list[str]) -> None:
         page.click("#tour-close")
     except Exception as e:
         errors.append(f"Take the tour did not start the tour again: {e}")
+
+
+UPLOAD_TEXT = """async () => {
+  const core = await import('/static/js/core.js');
+  const folders = (await core.get('/api/folders')).folders;
+  const fd = new FormData();
+  fd.append('folder_id', folders.find(f => !f.parent_id).id);
+  fd.append('file', new Blob(['Smoke note\\nSecond line'], { type: 'text/plain' }), 'SMOKE-NOTE.txt');
+  return (await core.upload('/api/documents/upload', fd)).documents[0].id;
+}"""
+
+
+def check_text_preview(page, errors: list[str]) -> None:
+    """A text file opens in the viewer as text (previews of non-CAD files)."""
+    try:
+        doc = page.evaluate(UPLOAD_TEXT)
+        page.goto(f"{BASE}/#/doc/{doc}")
+        page.evaluate(f"import('/static/js/viewer.js').then(m => m.openViewer({doc}))")
+        page.wait_for_selector("#summary-view pre", timeout=15000)
+        if not wait_until(page, "document.querySelector('#summary-view pre').textContent.includes('Second line')"):
+            errors.append("the text preview did not show the file's lines")
+        page.keyboard.press("Escape")
+    except Exception as e:
+        errors.append(f"the text preview did not open: {e}")
 
 
 FIRST_DXF = """async () => {

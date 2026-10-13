@@ -108,6 +108,14 @@ async function healthSection(body) {
           ]),
           h('p', { class: 'muted small', style: { margin: 0 } }, 'Every stored file is read back once a month, a little every hour. A damaged file is replaced by the good copy in the backup folder; the damaged one is kept in the data folder under damaged.'),
           h('div', null, run('/api/admin/health/fingerprints', { everything: true }, 'Check every file now'))),
+        panel('Copies in storage add-ins',
+          !s.storage_copies.providers.length ? banner('', 'No storage add-in is switched on. One can keep a second copy of every stored file on another disk, a NAS or an object store (Admin › Add-ins).')
+            : s.storage_copies.providers.some(p => p.failed) ? banner('err', 'Some files could not be copied; Kosha tries again every hour. The reason is shown below.')
+              : banner('ok', 'Copies are made every hour, a part at a time.'),
+          props(s.storage_copies.providers.flatMap(p => [[p.name, `${p.copied} of ${s.storage_copies.files} files copied${p.failed ? `, ${p.failed} failed` : ''}`],
+            p.last_error ? ['Last problem', p.last_error] : null])),
+          h('p', { class: 'muted small', style: { margin: 0 } }, 'Kosha\'s own store stays the master copy. A missing or damaged file is brought back from a copy only when its fingerprint still matches.'),
+          s.storage_copies.providers.length ? h('div', null, run('/api/admin/health/storage-copies', {}, 'Copy now')) : null),
         panel('Nightly consistency check',
           !c ? banner('', 'Not run yet. It runs every night.') : c.ok ? banner('ok', 'Every file version has its stored file and every BOM line its item.')
             : banner('err', `${c.count} problem(s) found. Restore the missing files from a backup, or ask for help with the records listed.`),
