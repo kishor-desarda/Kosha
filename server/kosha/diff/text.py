@@ -26,22 +26,115 @@ def _decode(data: bytes) -> str:
     return data.decode("latin-1")
 
 
+class _DocTypeRefused(ValueError):
+    pass
+
+
+def _refuse(*_a):
+    raise _DocTypeRefused("The file contains an XML document type declaration, which Kosha does not read.")
+
+
+MAX_ZIP_PART = 64 * 1024 * 1024     # a Word document.xml larger than this is not compared (zip bomb guard)
+
+
 def docx_paragraphs(data: bytes) -> list[str]:
-    import docx  # python-docx
-    d = docx.Document(io.BytesIO(data))
-    out = [p.text.strip() for p in d.paragraphs if p.text.strip()]
-    for ti, t in enumerate(d.tables, start=1):
-        for ri, row in enumerate(t.rows, start=1):
-            cells = [c.text.strip() for c in row.cells]
-            if any(cells):
-                out.append(f"Table {ti}, row {ri}: " + " | ".join(cells))
-    return out
+    """Paragraphs of a Word document, then one line per table row ("Table 1, row 2: a | b").
+
+    Reads word/document.xml with a plain XML parser that refuses document type declarations (no entity expansion
+    attacks) and stops at MAX_ZIP_PART bytes, so it needs no extra library."""
+    import xml.parsers.expat
+    import zipfile
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        info = zf.getinfo("word/document.xml")
+        if info.file_size > MAX_ZIP_PART:
+            raise ValueError("The Word document is too large to compare.")
+        xml_bytes = zf.read(info)
+    W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main|"
+    paras: list[str] = []
+    tables: list[list[list[str]]] = []          # table -> rows -> cell texts
+    state = {"in_t": 0, "tbl": 0}
+    buf: list[str] = []
+    cell: list[str] = []
+
+    def start(name, _attrs):
+        if name == W + "t":
+            state["in_t"] += 1
+        elif name == W + "tab":
+            buf.append("\t")
+        elif name in (W + "br", W + "cr"):
+            buf.append("\n")
+        elif name == W + "tbl":
+            state["tbl"] += 1
+            if state["tbl"] == 1:
+                tables.append([])
+        elif name == W + "tr" and state["tbl"] == 1:
+            tables[-1].append([])
+        elif name == W + "tc" and state["tbl"] == 1:
+            cell.clear()
+
+    def end(name):
+        if name == W + "t":
+            state["in_t"] -= 1
+        elif name == W + "p":
+            text = "".join(buf).strip()
+            buf.clear()
+            if state["tbl"]:
+                if text:
+                    cell.append(text)
+            elif text:
+                paras.append(text)
+        elif name == W + "tc" and state["tbl"] == 1 and tables and tables[-1]:
+            tables[-1][-1].append(" ".join(cell))
+        elif name == W + "tbl":
+            state["tbl"] -= 1
+
+    def chars(text):
+        if state["in_t"]:
+            buf.append(text)
+
+    p = xml.parsers.expat.ParserCreate(namespace_separator="|")
+    p.StartDoctypeDeclHandler = _refuse
+    p.EntityDeclHandler = _refuse
+    p.StartElementHandler, p.EndElementHandler, p.CharacterDataHandler = start, end, chars
+    p.Parse(xml_bytes, True)
+    out = paras[:MAX_LINES]
+    for ti, t in enumerate(tables, start=1):
+        for ri, row in enumerate(t, start=1):
+            if any(row):
+                out.append(f"Table {ti}, row {ri}: " + " | ".join(row))
+    return out[:MAX_LINES]
 
 
 def pdf_lines(data: bytes) -> list[tuple[int, str]]:
+    """(page, line) pairs of a PDF's text layer, with pypdfium2 (in requirements.txt) or else pypdf."""
+    out: list[tuple[int, str]] = []
+    try:
+        import pypdfium2 as pdfium
+    except ImportError:
+        pdfium = None
+    if pdfium is not None:
+        pdf = pdfium.PdfDocument(data)
+        try:
+            for n in range(len(pdf)):
+                page = pdf[n]
+                try:
+                    tp = page.get_textpage()
+                    try:
+                        text = tp.get_text_range()
+                    finally:
+                        tp.close()
+                finally:
+                    page.close()
+                for line in text.splitlines():
+                    if line.strip():
+                        out.append((n + 1, " ".join(line.split())))
+                    if len(out) >= MAX_LINES:
+                        return out
+        finally:
+            pdf.close()
+        return out
     from pypdf import PdfReader
     r = PdfReader(io.BytesIO(data))
-    out = []
     for n, page in enumerate(r.pages, start=1):
         for line in (page.extract_text() or "").splitlines():
             if line.strip():

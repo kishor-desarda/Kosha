@@ -5,7 +5,6 @@ Each test signs in from its own made-up network address (X-Forwarded-For, truste
 HTTPS proxy), so the per-address limit of one test never blocks another.
 """
 import json
-import sqlite3
 import time
 import urllib.error
 import urllib.request
@@ -29,11 +28,17 @@ def _client(kosha, user, password, ip):
 
 
 def _db(kosha):
-    return sqlite3.connect(kosha.data_dir / "data" / "kosha.db", timeout=30)
+    return kosha.db()      # SQLite or PostgreSQL, whichever this test server runs on
 
 
 def _ago(**kw) -> str:
     return (datetime.now(timezone.utc) - timedelta(**kw)).replace(microsecond=0).isoformat()
+
+
+def _sid(client) -> str:
+    """The id under which the server keeps this client's session (a hash of the token's session id)."""
+    import hashlib
+    return hashlib.sha256(jwt.decode(client.token, options={"verify_signature": False})["sid"].encode()).hexdigest()
 
 
 def _session_of(kosha, username, sid=None):
@@ -42,7 +47,7 @@ def _session_of(kosha, username, sid=None):
         if sid:
             return con.execute("SELECT id, last_seen_at, ended_reason FROM sessions WHERE id = ?", (sid,)).fetchone()
         return con.execute("SELECT s.id, s.last_seen_at, s.ended_reason FROM sessions s JOIN users u ON u.id = s.user_id "
-                           "WHERE u.username = ? ORDER BY s.rowid DESC LIMIT 1", (username,)).fetchone()
+                           "WHERE u.username = ? ORDER BY s.created_at DESC, (s.ended_at IS NULL) DESC LIMIT 1", (username,)).fetchone()
 
 
 def test_failed_sign_ins_pause_sign_in_without_revealing_who_exists(kosha):
@@ -178,7 +183,7 @@ def test_idle_and_absolute_session_limits(kosha):
     admin = kosha.client()
     kosha.add_user("ida", "viewer", STRONG)
     c = _client(kosha, "ida", STRONG, "10.6.0.1")
-    sid = _session_of(kosha, "ida")[0]
+    sid = _sid(c)
     with _db(kosha) as con:
         con.execute("UPDATE sessions SET last_seen_at = ? WHERE id = ?", (_ago(minutes=31), sid))
     c.call("GET", "/api/auth/me", expect=401)
@@ -187,7 +192,7 @@ def test_idle_and_absolute_session_limits(kosha):
     admin.call("PUT", "/api/admin/security", {"session_idle_minutes": 120})
     try:
         c = _client(kosha, "ida", STRONG, "10.6.0.1")
-        sid = _session_of(kosha, "ida")[0]
+        sid = _sid(c)
         with _db(kosha) as con:
             con.execute("UPDATE sessions SET last_seen_at = ? WHERE id = ?", (_ago(minutes=31), sid))
         c.call("GET", "/api/auth/me")                                           # within the new idle limit
@@ -202,14 +207,14 @@ def test_idle_and_absolute_session_limits(kosha):
 def test_background_polls_do_not_keep_a_session_alive(kosha):
     kosha.add_user("bea", "viewer", STRONG)
     c = _client(kosha, "bea", STRONG, "10.7.0.1")
-    sid = _session_of(kosha, "bea")[0]
+    sid = _sid(c)
     old = _ago(minutes=5)
     with _db(kosha) as con:
         con.execute("UPDATE sessions SET last_seen_at = ? WHERE id = ?", (old, sid))
     c.call("GET", "/api/dashboard", headers={"X-Kosha-Background": "1"})
-    assert _session_of(kosha, "bea")[1] == old
+    assert _session_of(kosha, "bea", sid)[1] == old
     c.call("GET", "/api/dashboard")
-    assert _session_of(kosha, "bea")[1] > old
+    assert _session_of(kosha, "bea", sid)[1] > old
 
 
 def test_tokens_need_an_open_session_and_links_still_work(kosha):

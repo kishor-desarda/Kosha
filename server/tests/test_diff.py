@@ -193,13 +193,23 @@ def test_bom_comparer_runs_for_any_file_type_when_both_sides_have_a_bom():
 
 # ------------------------------------------------------------------ text documents
 
-def _docx(paragraphs):
-    import docx
-    d = docx.Document()
-    for p in paragraphs:
-        d.add_paragraph(p)
+def _docx(paragraphs, table=None):
+    """A minimal Word document, written by hand (no python-docx needed)."""
+    import zipfile
+    from xml.sax.saxutils import escape
+    para = "".join(f"<w:p><w:r><w:t>{escape(p)}</w:t></w:r></w:p>" for p in paragraphs)
+    tbl = "".join("<w:tr>" + "".join(f"<w:tc><w:p><w:r><w:t>{escape(c)}</w:t></w:r></w:p></w:tc>" for c in row) + "</w:tr>"
+                  for row in (table or []))
+    body = para + (f"<w:tbl>{tbl}</w:tbl>" if table else "")
+    doc = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+           '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+           f"<w:body>{body}</w:body></w:document>")
     buf = io.BytesIO()
-    d.save(buf)
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("[Content_Types].xml", '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/'
+                    'package/2006/content-types"><Override PartName="/word/document.xml" ContentType="application/'
+                    'vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>')
+        zf.writestr("word/document.xml", doc)
     return buf.getvalue()
 
 
@@ -238,6 +248,24 @@ def test_word_paragraphs_changed_added_removed():
     d = diff(a, b, "spec.docx")
     assert d.changes[0].text == "2 paragraphs changed"
     assert d.changes[1].text == "Paragraph 2 changed: “The shaft is made of C45.” → “The shaft is made of 42CrMo4.”"
+    t = texts(diff(_docx(["Parts"], [["Pos", "Part"], ["1", "Shaft"]]), _docx(["Parts"], [["Pos", "Part"], ["1", "Hub"]]),
+                   "list.docx"))
+    assert "Table 1, row 2: 1 | Shaft" in " ".join(t) and "Table 1, row 2: 1 | Hub" in " ".join(t)
+
+
+def test_word_documents_with_a_doctype_are_not_read():
+    import zipfile
+
+    from kosha.diff.text import docx_paragraphs
+    buf = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(_docx(["x"]))) as src, zipfile.ZipFile(buf, "w") as dst:
+        for n in src.namelist():
+            data = src.read(n)
+            if n == "word/document.xml":
+                data = data.replace(b"<w:document", b'<!DOCTYPE d [<!ENTITY a "aaaa">]><w:document', 1)
+            dst.writestr(n, data)
+    with pytest.raises(ValueError, match="document type declaration"):
+        docx_paragraphs(buf.getvalue())
 
 
 def test_excel_cells_and_text_files_and_pdf():

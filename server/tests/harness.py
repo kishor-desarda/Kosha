@@ -22,6 +22,7 @@ import json
 import os
 import shutil
 import socket
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -114,6 +115,25 @@ class Client:
         return json.loads(payload) if payload and "json" in ctype else payload
 
 
+class _TestDb:
+    """``with server.db() as con:`` as with sqlite3: commits at the end (rolls back on an error), then closes."""
+
+    def __init__(self, conn):
+        self.conn = conn
+
+    def __enter__(self):
+        return self.conn
+
+    def __exit__(self, exc_type, *_):
+        try:
+            if exc_type is None:
+                self.conn.commit()
+            else:
+                self.conn.rollback()
+        finally:
+            self.conn.close()
+
+
 class KoshaServer:
     def __init__(self, demo: bool = False, env: dict | None = None):
         self.demo = demo
@@ -165,6 +185,16 @@ class KoshaServer:
         self.client().call("POST", "/api/users", {"username": username, "full_name": full_name or username.title(),
                                                   "role": role, "password": password})
         return self.client(username, password)
+
+    def db(self) -> _TestDb:
+        """The server's own database (its SQLite file, or its PostgreSQL database through kosha.pgsql, so SQL is
+        written the SQLite way either way), for the few checks a test cannot make through the API."""
+        if self.database_url:
+            if str(SERVER_DIR) not in sys.path:
+                sys.path.insert(0, str(SERVER_DIR))
+            from kosha import pgsql
+            return _TestDb(pgsql.connect(self.database_url, "kosha-tests"))
+        return _TestDb(sqlite3.connect(self.data_dir / "data" / "kosha.db", timeout=30))
 
     def stop(self) -> None:
         if self.proc and self.proc.poll() is None:

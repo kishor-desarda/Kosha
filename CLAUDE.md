@@ -21,11 +21,15 @@ cd server && pytest -q                    # unit tests
 cd server && python tests/test_api.py     # end-to-end API workflows (simulated ERPNext)
 cd server && python tests/test_import.py  # legacy import and duplicate checks
 pytest -q sdk/python/tests addins/erpnext/tests addins/odoo/tests addins/teams/tests addins/slack/tests addins/telegram/tests
-python scripts/smoke_ui.py                # browser smoke test (Playwright)
+python scripts/smoke_ui.py                # browser smoke test (Playwright); add new screens to SCREENS
 python scripts/test_office_taskpane.py    # Office task pane (web/office-addin) in test mode and a simulated Word
 ruff check server sdk addins scripts
 python scripts/spdx_headers.py            # every source file needs an SPDX header (--fix adds it)
+node scripts/check_js.mjs                 # syntax of the web client (as ES modules) and the Office pane
 ```
+
+Browser tests: Kosha's Content-Security-Policy refuses `eval`, so Playwright's `wait_for_function` fails;
+poll `page.evaluate(...)` instead (see `wait_until` in `scripts/smoke_ui.py`).
 
 CI (`.github/workflows/ci.yml`) runs all of these plus `dotnet test sdk/dotnet/Kosha.CadCore.Tests` and
 `dotnet test addins/desktop/Kosha.Desktop.Core.Tests`. The AutoCAD and GStarCAD add-ins (and the DWG code they share in

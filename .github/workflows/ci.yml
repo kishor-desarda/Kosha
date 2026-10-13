@@ -156,9 +156,17 @@ jobs:
             echo "::notice title=C# tests ($(basename "$f" .trx))::$(grep -o '<Counters [^/]*' "$f" | head -1)"
           done
       - name: Build the shared task pane (net48 and net8.0-windows)
-        run: dotnet build sdk/dotnet/Kosha.CadCore.UI/Kosha.CadCore.UI.csproj --configuration Release
+        run: |
+          set -o pipefail
+          dotnet build sdk/dotnet/Kosha.CadCore.UI/Kosha.CadCore.UI.csproj --configuration Release -p:GenerateFullPaths=true -clp:NoSummary 2>&1 | tee build.log || {
+            grep -E "(error|Error) [A-Z]+[0-9]+" build.log | sort -u | head -40 | sed 's/^/::error title=Task pane build::/'
+            exit 1; }
       - name: Build the Kosha Desktop tray program (net8.0-windows; compiled here, run on Windows)
-        run: dotnet build addins/desktop/Kosha.Desktop/Kosha.Desktop.csproj --configuration Release
+        run: |
+          set -o pipefail
+          dotnet build addins/desktop/Kosha.Desktop/Kosha.Desktop.csproj --configuration Release -p:GenerateFullPaths=true -clp:NoSummary 2>&1 | tee build.log || {
+            grep -E "(error|Error) [A-Z]+[0-9]+" build.log | sort -u | head -40 | sed 's/^/::error title=Kosha Desktop build::/'
+            exit 1; }
       # The AutoCAD and GStarCAD add-ins (and the shared DWG code in sdk/dotnet/Kosha.CadCore.Dwg) need the CAD
       # programs' own assemblies, so they are built on a PC with the CAD program, not here.
 
