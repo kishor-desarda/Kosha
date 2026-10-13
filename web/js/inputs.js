@@ -4,6 +4,7 @@ import {
   S, h, mount, clear, append, icon, get, post, put, patch, del, upload, toast, fail, dialog, confirmDlg, fmtDate, fmtSize,
   ago, store, can, debounce,
 } from './core.js';
+import { favButton } from './workbench.js';
 
 const changed = () => window.dispatchEvent(new Event('kosha:changed'));
 const ENG_WHY = 'Adding and changing inputs needs the engineer role.';
@@ -1002,7 +1003,7 @@ export async function renderProject(container, [id], _p, { setTitle }) {
     mount(container, h('div', { class: 'page-pad' },
       h('div', { class: 'page-head' },
         h('div', { style: { flex: 1, minWidth: '280px' } }, h('div', { class: 'small muted' }, h('a', { href: '#/projects' }, 'Projects'), ' › ', p.code),
-          h('h1', null, h('span', { class: 'mono' }, p.code), ' ', p.name),
+          h('h1', null, h('span', { class: 'mono' }, p.code), ' ', p.name, ' ', favButton('project', p.id)),
           h('div', { class: 'inp-meta', style: { marginTop: '6px' } }, h('span', { class: `chip st-${p.status === 'open' ? 'open' : 'done'}` }, p.status_label),
             p.customer ? h('span', null, `Customer: ${p.customer}`) : null,
             p.sales_order ? h('span', null, `Sales order ${p.sales_order}`) : null,

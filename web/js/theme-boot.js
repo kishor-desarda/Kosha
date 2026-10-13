@@ -10,4 +10,9 @@
     if (saved === 'light' || saved === 'dark' || saved === 'contrast') theme = saved;
   } catch (e) { /* no storage: follow the computer */ }
   document.documentElement.setAttribute('data-theme', theme);
+  try {         // accent colour and text size (workbench.js keeps them up to date)
+    var look = JSON.parse(window.localStorage.getItem('kosha.look')) || {};
+    if (/^(teal|green|purple|orange)$/.test(look.accent || '')) document.documentElement.setAttribute('data-accent', look.accent);
+    if (look.text === 90 || look.text === 115 || look.text === 130) document.documentElement.setAttribute('data-text', String(look.text));
+  } catch (e) { /* no storage: the defaults */ }
 })();

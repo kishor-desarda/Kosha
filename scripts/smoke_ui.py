@@ -159,6 +159,42 @@ def check_drafts(page, errors: list[str]) -> None:
     page.evaluate("Object.keys(localStorage).filter(k => k.startsWith('kosha.draft.')).forEach(k => localStorage.removeItem(k))")
 
 
+def check_workbench(page, errors: list[str]) -> None:
+    """Ctrl+K finds a part and opens it; the star makes it a favourite; a pinned page gets its tab; text size grows."""
+    page.goto(f"{BASE}/#/home")
+    page.wait_for_selector("#go-to", timeout=15000)
+    page.keyboard.press("Control+k")
+    try:
+        page.wait_for_selector("dialog.palette[open] .palette-q", timeout=10000)
+        page.fill("dialog.palette .palette-q", "MX-100")
+        page.wait_for_selector("dialog.palette .palette-group >> text=Parts", timeout=10000)
+        page.click("xpath=//dialog[contains(@class,'palette')]//div[@class='palette-group' and text()='Parts']"
+                   "/following-sibling::div[1]")
+        if not wait_until(page, "location.hash.startsWith('#/item/') || location.hash.startsWith('#/doc/')"):
+            errors.append("choosing a part in Ctrl+K did not open it")
+    except Exception as e:
+        errors.append(f"Ctrl+K did not find and open a part: {e}")
+        page.keyboard.press("Escape")
+        return
+    try:
+        page.click("h1 .fav-btn")
+        if not wait_until(page, "document.querySelector('h1 .fav-btn').getAttribute('aria-pressed') === 'true'"):
+            errors.append("the star did not make the record a favourite")
+        page.keyboard.press("Control+k")
+        page.wait_for_selector("dialog.palette .palette-group >> text=Favourites", timeout=10000)
+        page.click("dialog.palette .palette-item >> text=Pin this page")
+        page.wait_for_selector(".pin-strip:not([hidden]) .pin-tab", timeout=10000)
+        page.click(".pin-strip .pin-tab button")                       # unpin; the toast offers Undo
+        page.wait_for_selector(".toast >> text=Undo", timeout=10000)
+        page.click("h1 .fav-btn")                                       # and remove the favourite again
+    except Exception as e:
+        errors.append(f"favourites or pinned pages did not work: {e}")
+    page.evaluate("""async () => { const w = await import('/static/js/workbench.js'); await w.savePrefs({ text_size: 115 }); }""")
+    if not wait_until(page, "document.documentElement.dataset.text === '115'"):
+        errors.append("a larger text size was not applied")
+    page.evaluate("""async () => { const w = await import('/static/js/workbench.js'); await w.savePrefs({ text_size: 100, pins: [] }); }""")
+
+
 def check_resumable_upload(page, errors: list[str]) -> None:
     """A file larger than one piece goes up in pieces, with the browser's SHA-256, and comes back byte for byte."""
     r = page.evaluate(RESUMABLE)
@@ -241,6 +277,7 @@ def main() -> int:
                     check_resumable_upload(page, errors)
                     check_share_page(browser, page, errors)
                     check_drafts(page, errors)
+                    check_workbench(page, errors)
                 if user == "asha":
                     choose_theme(page, "system", errors)
                 page.emulate_media(color_scheme="light")
