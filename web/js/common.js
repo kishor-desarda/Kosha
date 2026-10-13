@@ -45,7 +45,7 @@ export async function renderCommon(container, _m, params, { setTitle }) {
     ] : `${r.comparable} files can be compared. No check has run yet.`);
     clear(kindBar);
     const total = Object.values(r.open_by_kind || {}).reduce((a, b) => a + b, 0);
-    const opt = (k, label, n) => h('button', { class: 'list-row', style: { border: '1px solid var(--line)', borderRadius: '6px', background: kind === k ? 'var(--sel)' : '#fff', cursor: 'pointer', width: '100%' },
+    const opt = (k, label, n) => h('button', { class: 'list-row', style: { border: '1px solid var(--line)', borderRadius: '6px', background: kind === k ? 'var(--sel)' : 'var(--panel)', cursor: 'pointer', width: '100%' },
       onclick: () => { kind = k; active = null; loadRun(); loadGroups(); } }, h('span', { style: { flex: 1, textAlign: 'left', fontWeight: kind === k ? 700 : 500 } }, label),
     h('span', { class: `chip ${n ? 'st-submitted' : 'st-draft'}` }, n || 0));
     kindBar.append(opt('', 'All checks', total), ...KINDS.map(([k, l]) => opt(k, l, (r.open_by_kind || {})[k])));

@@ -8,7 +8,9 @@ from .. import db, security, sessions, signin
 from ..lifecycle import STATE_LABEL, doc_summary, user_names
 from ..web import ROLE_LEVEL, Req, api, as_bool, bad, conflict, not_found
 
-USER_FIELDS = "id, username, full_name, email, role, ui_mode, active, created_at"
+USER_FIELDS = "id, username, full_name, email, role, ui_mode, ui_theme, active, created_at"
+# Themes of the web client (docs/themes.md). A user's ui_theme may also be "": the installation's default_theme.
+THEMES = ("system", "light", "dark", "contrast")
 
 
 @api("POST", "/api/auth/login", role=None, auth=False)
@@ -17,7 +19,7 @@ def login(req: Req):
 
     Failed sign-ins are throttled per user name and per address (see Admin › Sign-in & sessions)."""
     r = signin.sign_in(req)
-    return {"token": r["token"], "user": r["user"], "erp_name": erp_name()}
+    return {"token": r["token"], "user": r["user"], "erp_name": erp_name(), "default_theme": default_theme()}
 
 
 def erp_name() -> str:
@@ -31,9 +33,24 @@ def erp_name() -> str:
     return a.manifest.name.replace(" connector", "") if a and a.manifest else "ERP"
 
 
+def default_theme() -> str:
+    """The installation's theme for people who have not chosen one (Admin › Users)."""
+    t = db.get_setting("default_theme")
+    return t if t in THEMES else "system"
+
+
+def _check_theme(theme, allow_default: bool) -> str:
+    if theme == "" and allow_default:
+        return theme
+    if theme not in THEMES:
+        raise bad("Theme must be system (same as the computer), light, dark or contrast"
+                  + (", or empty for the installation's default." if allow_default else "."), "bad_theme")
+    return theme
+
+
 @api("GET", "/api/auth/me")
 def me(req: Req):
-    return {"user": req.user, "erp_name": erp_name()}
+    return {"user": req.user, "erp_name": erp_name(), "default_theme": default_theme()}
 
 
 @api("POST", "/api/auth/mode")
@@ -43,6 +60,15 @@ def set_mode(req: Req):
         raise bad("Mode must be guided or expert")
     db.execute("UPDATE users SET ui_mode = ? WHERE id = ?", (mode, req.uid))
     return {"mode": mode}
+
+
+@api("POST", "/api/auth/theme")
+def set_theme(req: Req):
+    """Choose your own theme (`theme`): system (same as your computer), light, dark or contrast; "" follows the
+    installation's default. Returns the stored `theme` and the installation's `default_theme`."""
+    theme = _check_theme(req.b("theme"), allow_default=True)
+    db.execute("UPDATE users SET ui_theme = ? WHERE id = ?", (theme, req.uid))
+    return {"theme": theme, "default_theme": default_theme()}
 
 
 @api("POST", "/api/auth/password")
@@ -71,7 +97,9 @@ def create_user(req: Req):
         raise conflict("That user name is taken.")
     uid = db.insert("users", {"username": username, "full_name": (req.b("full_name") or username).strip(),
                               "email": req.b("email") or "", "role": role, "password_hash": security.hash_password(pw),
-                              "ui_mode": req.b("ui_mode") or "guided", "created_at": db.now()})
+                              "ui_mode": req.b("ui_mode") or "guided",
+                              "ui_theme": _check_theme(req.b("ui_theme") or "", allow_default=True),
+                              "created_at": db.now()})
     db.audit(req.uid, "user_create", "user", uid, username)
     return {"user": db.one(f"SELECT {USER_FIELDS} FROM users WHERE id = ?", (uid,))}
 
@@ -82,11 +110,13 @@ def update_user(req: Req):
     if not db.one("SELECT id FROM users WHERE id = ?", (uid,)):
         raise not_found("User not found")
     upd = {}
-    for k in ("full_name", "email", "role", "ui_mode"):
+    for k in ("full_name", "email", "role", "ui_mode", "ui_theme"):
         v = req.b(k)
         if v is not None:
             if k == "role" and v not in ROLE_LEVEL:
                 raise bad("Unknown role")
+            if k == "ui_theme":
+                _check_theme(v, allow_default=True)
             upd[k] = v
     if req.b("active") is not None:
         if uid == req.uid and not as_bool(req.b("active")):
@@ -109,7 +139,7 @@ def update_user(req: Req):
 # --------------------------------------------------------------- settings --
 
 PUBLIC_SETTINGS = ("part_number_regex", "revision_skip_letters", "first_revision", "require_eco_for_release",
-                   "company_name")
+                   "company_name", "default_theme")
 
 
 @api("GET", "/api/settings")
@@ -132,6 +162,8 @@ def put_settings(req: Req):
                     raise bad(f"Part number pattern is not valid: {e}")
             if k == "require_eco_for_release":
                 v = as_bool(v)
+            if k == "default_theme":
+                _check_theme(v, allow_default=False)
             db.set_setting(k, v)
     db.audit(req.uid, "settings", "settings", None, "")
     return get_settings(req)

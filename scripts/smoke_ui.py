@@ -3,6 +3,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Browser smoke test: start Kosha with demo data, sign in, open every main screen, fail on any script error.
 
+Every screen is opened twice per user: in the light theme and in the dark one (asha chooses Dark in the account
+menu; admin keeps "Same as my computer" on a computer set to dark). In dark, a screen fails when the page is not
+dark or when something still has a plain white background (a colour that bypasses the variables in app.css).
+
     python scripts/smoke_ui.py          (needs Playwright with Chromium)
 """
 from __future__ import annotations
@@ -52,6 +56,47 @@ def wait_until(page, expression: str, timeout: float = 10.0) -> bool:
     return False
 
 
+# In the dark theme: is the page dark, and which elements still have a white background (at most 5)?
+DARK_CHECK = """(() => {
+  const rgb = c => (c.match(/[\\d.]+/g) || []).map(Number);
+  const [r, g, b] = rgb(getComputedStyle(document.body).backgroundColor);
+  const name = e => e.tagName.toLowerCase() + (typeof e.className === 'string' && e.className ? '.' + e.className.trim().split(/\\s+/).join('.') : '');
+  const white = [...document.querySelectorAll('.app *, dialog[open] *')]
+    .filter(e => !['IMG', 'svg', 'CANVAS', 'IFRAME', 'VIDEO'].includes(e.tagName))
+    .filter(e => { const c = rgb(getComputedStyle(e).backgroundColor); return c.length >= 3 && c[0] > 245 && c[1] > 245 && c[2] > 245 && (c[3] === undefined || c[3] > 0.5); })
+    .map(name).slice(0, 5);
+  return { dark: r + g + b < 200, theme: document.documentElement.dataset.theme || '', white };
+})()"""
+
+
+def visit_screens(page, user: str, errors: list[str], dark: bool) -> None:
+    label = f"{user} (dark)" if dark else user
+    for hash_ in SCREENS:
+        if hash_.startswith(ADMIN_ONLY) and user != "admin":
+            continue
+        page.goto(BASE + "/" + hash_)
+        if not wait_until(page, "document.querySelector('#page') && "
+                                "document.querySelector('#page').innerText.trim().length > 20"):
+            errors.append(f"{label} {hash_}: the screen stayed empty")
+        page.wait_for_load_state("networkidle")
+        if dark:
+            r = page.evaluate(DARK_CHECK)
+            if not r["dark"]:
+                errors.append(f"{label} {hash_}: the page is not dark (theme {r['theme']!r})")
+            if r["white"]:
+                errors.append(f"{label} {hash_}: white background in the dark theme: {', '.join(r['white'])}")
+
+
+def choose_theme(page, theme: str, errors: list[str]) -> None:
+    """Account menu › Theme, as a user does it."""
+    page.click("button.avatar")
+    page.click(".ctxmenu >> text=Theme:")
+    page.check(f"dialog[open] input[name=theme][value={theme}]")
+    page.click("dialog[open] .dlg-f >> text=Done")
+    if not wait_until(page, f"document.documentElement.dataset.theme === '{theme}'"):
+        errors.append(f"choosing the {theme} theme in the account menu did not apply it")
+
+
 def main() -> int:
     data = tempfile.mkdtemp(prefix="kosha-smoke-")
     env = dict(os.environ, KOSHA_DATA_DIR=data, KOSHA_ADMIN_PASSWORD="admin-smoke-1", KOSHA_PORT=str(PORT),
@@ -81,14 +126,16 @@ def main() -> int:
                 page.fill("input[type=password]", pw)
                 page.keyboard.press("Enter")
                 page.wait_for_selector("nav.rail", timeout=15000)
-                for hash_ in SCREENS:
-                    if hash_.startswith(ADMIN_ONLY) and user != "admin":
-                        continue
-                    page.goto(BASE + "/" + hash_)
-                    if not wait_until(page, "document.querySelector('#page') && "
-                                            "document.querySelector('#page').innerText.trim().length > 20"):
-                        errors.append(f"{user} {hash_}: the screen stayed empty")
-                    page.wait_for_load_state("networkidle")
+                visit_screens(page, user, errors, dark=False)
+                if user == "asha":
+                    choose_theme(page, "dark", errors)
+                    page.reload()                     # the choice is remembered and applied before the page draws
+                    page.wait_for_selector("nav.rail", timeout=15000)
+                    if page.evaluate("document.documentElement.dataset.theme") != "dark":
+                        errors.append("asha: the dark theme was not applied again after reloading the page")
+                else:
+                    page.emulate_media(color_scheme="dark")   # "Same as my computer" on a dark computer
+                visit_screens(page, user, errors, dark=True)
                 page.click("button.avatar")                       # the account menu opens "My notifications"
                 page.click(".ctxmenu >> text=My notifications")
                 try:
@@ -96,7 +143,10 @@ def main() -> int:
                 except Exception:
                     errors.append(f"{user}: My notifications did not open")
                 page.keyboard.press("Escape")
-                print(f"ok: {user} opened {len(SCREENS)} screens and My notifications")
+                if user == "asha":
+                    choose_theme(page, "system", errors)
+                page.emulate_media(color_scheme="light")
+                print(f"ok: {user} opened {len(SCREENS)} screens in the light and the dark theme, and My notifications")
             browser.close()
     finally:
         proc.terminate()

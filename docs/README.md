@@ -7,6 +7,7 @@
 - [`../addins/`](../addins/): each official add-in has its own README.
 - [`desktop.md`](desktop.md): Kosha Desktop, Explorer commands and a tray icon for Office files, PDFs and images.
 - [`office-addin.md`](office-addin.md): the Kosha task pane in Word, Excel and PowerPoint.
+- [`themes.md`](themes.md): Light, Dark, High contrast and "Same as my computer"; choosing one, and colours for developers.
 
 The full specification and development guide will be published here as the documentation site
 (MkDocs) is set up.

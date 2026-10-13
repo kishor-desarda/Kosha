@@ -153,7 +153,7 @@ export async function renderBom(container, [id], _p, { setTitle }) {
       h('td', { class: 'lvl', style: { paddingLeft: `${8 + (level - 1) * 18}px`, whiteSpace: 'nowrap' } }, tw, level > 1 ? `L${level}` : ''),
       h('td', { class: 'mono' }, r.find_number),
       h('td', { class: 'mono nowrap' }, h('a', { href: `#/item/${r.item_id}` }, r.part_number), r.cycle ? ' ⟲' : '', lineDeviationChips(data.devs, r.item_id)),
-      h('td', null, r.description, r.standard_item_id ? h('span', { class: 'chip', style: { marginLeft: '6px', background: '#EEF3FB', color: '#1E3A8A' } }, 'has standard') : null),
+      h('td', null, r.description, r.standard_item_id ? h('span', { class: 'chip std', style: { marginLeft: '6px' } }, 'has standard') : null),
       h('td', { class: 'num' }, qty),
       indented && !edits ? h('td', { class: 'num muted' }, r.ext_qty) : null,
       h('td', null, r.uom || r.item_uom),

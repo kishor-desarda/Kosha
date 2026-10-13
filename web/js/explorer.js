@@ -273,7 +273,7 @@ function rowEl(r, cols) {
       cell = h('div', { class: 'name' }, r.kind === 'folder' ? icon('folder', 20) : thumb(r),
         h('span', { class: 'fn' }, r.filename),
         r.kind === 'doc' && S.mode === 'expert' ? typeChip(r.ext) : null,
-        r.standard_part ? h('span', { class: 'chip', style: { background: '#EEF3FB', color: '#1E3A8A' }, title: `Duplicate of standard part ${r.standard_part}` }, 'Use ' + r.standard_part) : null);
+        r.standard_part ? h('span', { class: 'chip std', title: `Duplicate of standard part ${r.standard_part}` }, 'Use ' + r.standard_part) : null);
     } else if (r.kind === 'folder') {
       cell = k === 'description' ? h('span', { class: 'muted' }, `${r.files} file${r.files === 1 ? '' : 's'}`) : k === 'updated_at' ? h('span', { class: 'muted' }, fmtDate(r.created_at, false)) : '';
     } else if (k === 'state') cell = stateChip(r.state);

@@ -13,6 +13,7 @@ import { renderLibrary } from './library.js';
 import { renderDeviations, renderDeviation } from './deviations.js';
 import { notificationBell } from './notifications.js';
 import { renderInputs, renderInput, renderProjects, renderProject } from './inputs.js';
+import { applyTheme, currentTheme, themeDialog, themeLabel } from './theme.js';
 
 const NAV = [
   ['home', 'Home', 'home', '#/home'],
@@ -93,6 +94,7 @@ function buildShell() {
       { label: `${S.user.full_name} (${S.user.role})`, icon: 'users', disabled: true },
       '-',
       { label: 'My notifications', icon: 'bell', run: () => import('./notify.js').then(m => m.myNotifications()) },
+      { label: `Theme: ${themeLabel(currentTheme())}`, icon: 'theme', run: themeDialog },
       { label: 'Change password', icon: 'checkout', run: changePassword },
       { label: 'Sign out', icon: 'logout', run: () => logout() },
     ]);
@@ -161,6 +163,8 @@ function renderLogin() {
     try {
       const r = await api('POST', '/api/auth/login', { username: user.value.trim(), password: pw.value });
       S.token = r.token; S.user = r.user; S.erp = r.erp_name || 'ERP'; S.mode = r.user.ui_mode || 'guided';
+      S.defaultTheme = r.default_theme || 'system';
+      applyTheme(currentTheme());
       localStorage.setItem('kosha.token', r.token);
       buildShell();
       location.hash = store('lastRoute') && store('lastRoute') !== '#/login' ? store('lastRoute') : '#/home';
@@ -178,9 +182,9 @@ function renderLogin() {
     h('div', { class: 'art' },
       h('div', { class: 'row' }, logo(34), h('span', { class: 'wordmark' }, 'KOSHA ', h('b', null, 'PLM'))),
       h('div', null, h('h1', null, 'The right revision, every time.'),
-        h('p', { style: { color: '#BAC1C7', fontSize: '17px', lineHeight: 1.6, maxWidth: '520px' } },
+        h('p', { class: 'lead' },
           'Drawings, models, BOMs and change orders for every product line, in one place.')),
-      h('div', { class: 'muted', style: { color: '#8C959D', fontSize: '13px' } }, 'Kosha — open-source PLM')),
+      h('div', { class: 'foot' }, 'Kosha — open-source PLM')),
     h('div', { class: 'form' }, form)));
   setTimeout(() => user.focus(), 50);
 }
@@ -193,7 +197,12 @@ async function route() {
   if (!S.token) { if (hash !== '#/login') location.hash = '#/login'; renderLogin(); return; }
   if (hash === '#/login') { location.hash = '#/home'; return; }
   if (!S.user) {
-    try { const me = await get('/api/auth/me'); S.user = me.user; S.erp = me.erp_name || 'ERP'; S.mode = S.user.ui_mode || 'guided'; } catch (e) { return; }
+    try {
+      const me = await get('/api/auth/me');
+      S.user = me.user; S.erp = me.erp_name || 'ERP'; S.mode = S.user.ui_mode || 'guided';
+      S.defaultTheme = me.default_theme || 'system';
+      applyTheme(currentTheme());    // the account's choice wins over the one remembered in this browser
+    } catch (e) { return; }
   }
   if (!shell) buildShell();
   const [path, query] = hash.split('?');
