@@ -109,6 +109,16 @@ namespace Kosha.Client
         public Task<DocStatus> UndoCheckOutAsync(int documentId, CancellationToken ct = default) =>
             PostAsync<DocStatus>("/api/documents/" + documentId + "/undo-checkout", new { }, ct);
 
+        /// <summary>Every Kosha folder, flat; build paths with the parent ids.</summary>
+        public async Task<List<FolderInfo>> FoldersAsync(CancellationToken ct = default) =>
+            (await GetAsync<JObject>("/api/folders", ct).ConfigureAwait(false))["folders"]?.ToObject<List<FolderInfo>>()
+            ?? new List<FolderInfo>();
+
+        /// <summary>The files checked out to the signed-in user, newest first.</summary>
+        public async Task<List<DocStatus>> CheckedOutToMeAsync(CancellationToken ct = default) =>
+            (await GetAsync<JObject>("/api/documents?checked_out=me", ct).ConfigureAwait(false))["documents"]?.ToObject<List<DocStatus>>()
+            ?? new List<DocStatus>();
+
         public async Task<string> NextPartNumberAsync(string prefix, CancellationToken ct = default) =>
             (string)(await PostAsync<JObject>("/api/numbering/next", new { prefix }, ct).ConfigureAwait(false))["part_number"];
 

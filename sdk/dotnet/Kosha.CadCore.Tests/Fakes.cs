@@ -102,15 +102,42 @@ namespace Kosha.CadCore.Tests
         public bool Offline;
         int nextNumber = 1;
 
+        /// <summary>Folder path ("Kosha/Products/Mixers", any case) → id; the root "Kosha" is 1, like on a fresh server.</summary>
+        readonly Dictionary<string, int> folderIds = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["Kosha"] = 1 };
+
         public Doc Find(string folder, string name) =>
             Docs.FirstOrDefault(d => string.Equals(d.Folder, folder, StringComparison.OrdinalIgnoreCase) &&
                                      string.Equals(d.FileName, name, StringComparison.OrdinalIgnoreCase));
 
         static string Sha(byte[] b) => KoshaApiClient.Sha256(b);
 
+        /// <summary>Id of a folder path, creating it (and its parents) like the server's check-in does.</summary>
+        public int FolderId(string path)
+        {
+            var parts = (path ?? "").Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+            if (parts.Count == 0 || !string.Equals(parts[0], "Kosha", StringComparison.OrdinalIgnoreCase)) parts.Insert(0, "Kosha");
+            int id = 1;
+            for (int i = 1; i <= parts.Count; i++)
+            {
+                string key = string.Join("/", parts.Take(i));
+                if (!folderIds.TryGetValue(key, out id)) folderIds[key] = id = folderIds.Count + 1;
+            }
+            return id;
+        }
+
+        JObject Folders()
+        {
+            var list = folderIds.Select(kv =>
+            {
+                int cut = kv.Key.LastIndexOf('/');
+                return new { id = kv.Value, parent_id = cut < 0 ? (int?)null : folderIds[kv.Key.Substring(0, cut)], name = kv.Key.Substring(cut + 1) };
+            });
+            return JObject.FromObject(new { folders = list.ToList() });
+        }
+
         JObject Summary(Doc d) => JObject.FromObject(new
         {
-            exists = true, id = d.Id, filename = d.FileName, revision = d.Revision, version = d.Version, state = d.State,
+            exists = true, id = d.Id, folder_id = FolderId(d.Folder), filename = d.FileName, revision = d.Revision, version = d.Version, state = d.State,
             state_label = d.State == "released" ? "Released" : "In work", checked_out_by = d.CheckedOutBy,
             checked_out_name = d.CheckedOutBy == null ? null : d.CheckedOutBy == UserId ? "Asha Menon" : "Daniel Okafor",
             latest_sha = Sha(d.Content),
@@ -160,10 +187,14 @@ namespace Kosha.CadCore.Tests
                     var doc = Find(folder, name);
                     if (doc != null && doc.CheckedOutBy != UserId)
                         return Json(new { error = "Check the file out first.", code = "conflict" }, HttpStatusCode.Conflict);
+                    var props = JObject.Parse(form["props"].Text);
+                    // like the server: the same content without properties, preview or mesh makes no new version
+                    bool unchanged = doc != null && Sha(doc.Content) == Sha(form["file"].Bytes) && props.Count == 0 &&
+                                     !form.ContainsKey("preview") && !form.ContainsKey("mesh");
                     if (doc == null) { doc = new Doc { Id = Docs.Count + 1, Folder = folder, FileName = name }; Docs.Add(doc); }
-                    else doc.Version++;
+                    else if (!unchanged) doc.Version++;
                     doc.Content = form["file"].Bytes;
-                    doc.Props = JObject.Parse(form["props"].Text);
+                    doc.Props = props;
                     doc.Source = form["source"].Text;
                     doc.Structure = form.ContainsKey("structure") ? JToken.Parse(form["structure"].Text) : null;
                     doc.CheckedOutBy = form["keep_checked_out"].Text == "1" ? (int?)UserId : null;
@@ -173,6 +204,10 @@ namespace Kosha.CadCore.Tests
                 }
                 case "/api/numbering/next":
                     return Json(new { part_number = "MX-100-" + (nextNumber++).ToString("000") });
+                case "/api/folders":
+                    return Json(Folders());
+                case "/api/documents":
+                    return Json(new { documents = Docs.Where(x => q["checked_out"] != "me" || x.CheckedOutBy == UserId).Select(Summary).ToList() });
                 case "/api/addin/similar":
                     return Json(new { similar = new[] { new { id = 1, part_number = "STD-BH-2208", description = "BEARING HOUSING", score = 0.93 } } });
             }

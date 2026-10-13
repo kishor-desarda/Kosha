@@ -26,21 +26,36 @@ namespace Kosha.CadCore
         /// Replaces a local file with new content. The old file is first copied to <paramref name="keepFolder"/>,
         /// the new content is written to a temporary file next to the target and then swapped in, so a crash
         /// or a full disk leaves either the old or the new file, never half of one. Returns the kept copy's path.
+        /// When the swap fails (the file is open in another program, say), the temporary file is removed, the old
+        /// file keeps its read-only flag, and the error is passed on.
         /// </summary>
         public static string ReplaceKeepingOld(string path, byte[] content, string keepFolder)
         {
             string kept = null;
+            bool wasReadOnly = false;
             if (File.Exists(path))
             {
                 Directory.CreateDirectory(keepFolder);
                 kept = Path.Combine(keepFolder, DateTime.Now.ToString("yyyyMMdd-HHmmss") + "_" + Path.GetFileName(path));
                 File.Copy(path, kept, overwrite: true);
+                wasReadOnly = IsReadOnly(path);
                 SetReadOnly(path, false);
             }
             string tmp = path + ".kosha-new";
-            File.WriteAllBytes(tmp, content);
-            if (File.Exists(path)) File.Replace(tmp, path, null);
-            else File.Move(tmp, path);
+            try
+            {
+                File.WriteAllBytes(tmp, content);
+                if (File.Exists(path)) File.Replace(tmp, path, null);
+                else File.Move(tmp, path);
+            }
+            catch (Exception)
+            {
+                try { if (File.Exists(tmp)) File.Delete(tmp); }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+                if (wasReadOnly) SetReadOnly(path, true);
+                throw;
+            }
             return kept;
         }
 

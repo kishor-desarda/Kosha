@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- SPDX-License-Identifier: Apache-2.0 -->
+  <!-- Tests of Kosha Desktop's logic against the same in-memory Kosha server as the CAD core tests (Fakes.cs). -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="NUnit" Version="3.14.0" />
+    <PackageReference Include="NUnit3TestAdapter" Version="4.6.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Kosha.Desktop.Core\Kosha.Desktop.Core.csproj" />
+    <Compile Include="..\..\..\sdk\dotnet\Kosha.CadCore.Tests\Fakes.cs" Link="Fakes.cs" />
+  </ItemGroup>
+</Project>
