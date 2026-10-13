@@ -419,12 +419,17 @@ def download(req: Req):
     if not store.exists(v["blob_sha"]):
         raise not_found("The stored file is missing on the server.")
     path = store.path_for(v["blob_sha"])
-    from .. import watermark
-    if v["doc"]["ext"] == "pdf" and v["doc"]["state"] in watermark.STATES and watermark.enabled():
-        stamped = watermark.stamp_pdf(path.read_bytes(), watermark.line_for(req.user["full_name"]))
+    from .. import outputs, watermark
+    newer = outputs.superseded_by(v["doc"], v["revision"]) if v["doc"]["ext"] == "pdf" else None
+    if v["doc"]["ext"] == "pdf" and (newer or (v["doc"]["state"] in watermark.STATES and watermark.enabled())):
+        data = path.read_bytes()
+        banded = watermark.superseded_band(data, f"Superseded — use Rev {newer}") if newer else None
+        stamped = watermark.stamp_pdf(banded or data, watermark.line_for(req.user["full_name"])) \
+            if watermark.enabled() else None
         db.audit(req.uid, "download", "document", v["document_id"],
-                 f"v{v['version']}" + (", watermarked" if stamped else ", not watermarked (the PDF could not be stamped)"))
-        return Response(stamped or path.read_bytes(), media_type="application/pdf", headers={
+                 f"v{v['version']}" + (", superseded band" if banded else "")
+                 + (", watermarked" if stamped else ", not watermarked" if watermark.enabled() else ""))
+        return Response(stamped or banded or data, media_type="application/pdf", headers={
             "Content-Disposition": _disposition("attachment", v["filename"]), **SAFE_HEADERS})
     size = path.stat().st_size
     start, end = _byte_range(req.request.headers.get("range", ""), size)
