@@ -319,7 +319,7 @@ def connect() -> sqlite3.Connection:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
         conn.execute("PRAGMA busy_timeout=30000")
-        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA synchronous=FULL")   # a confirmed write survives a power cut
         _local.conn = conn
     return conn
 
@@ -346,6 +346,8 @@ def init() -> None:
     if "standard_item_id" not in cols:
         conn.execute("ALTER TABLE cp_groups ADD COLUMN standard_item_id INTEGER")
     conn.execute("CREATE INDEX IF NOT EXISTS ix_versions_sha ON versions(blob_sha)")
+    from . import migrations
+    migrations.apply(conn)
     # merge in new ERP keys added in later versions
     erp = get_setting("erp")
     merged = {**DEFAULT_SETTINGS["erp"], **(erp or {})}

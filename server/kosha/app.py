@@ -15,7 +15,9 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from . import addins, config, db, erp, security, web
-from .api import addins as addins_api, core, eng, files, legacy  # noqa: F401  (registers routes)
+from .api import load_all as _load_api
+
+_load_api()   # every module in kosha/api registers its routes
 
 log = logging.getLogger("kosha")
 
