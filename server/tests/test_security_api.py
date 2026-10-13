@@ -9,8 +9,10 @@ from kosha import twostep
 from kosha.cad import dxfwriter as W
 
 
-def _code(secret: str, offset: int = 0) -> str:
-    return twostep.code_at(secret.replace(" ", ""), int(time.time() // 30) + offset)
+def _code(secret: str, offset: int = 0, at: int | None = None) -> str:
+    """The code for the current 30-second step plus offset, or for step ``at`` plus offset when given (so a test
+    that crosses a step boundary still asks for the same codes)."""
+    return twostep.code_at(secret.replace(" ", ""), (int(time.time() // 30) if at is None else at) + offset)
 
 
 def _login(kosha, username, password="password-123", expect=200):
@@ -27,7 +29,8 @@ def test_two_step_sign_in(kosha):
     setup = eng.call("POST", "/api/me/two-step/start")
     assert setup["uri"].startswith("otpauth://totp/") and "secret=" in setup["uri"]
     assert eng.call("POST", "/api/me/two-step/confirm", {"code": "000000"}, expect=400)["code"] == "bad_code"
-    on = eng.call("POST", "/api/me/two-step/confirm", {"code": _code(setup["secret"])})
+    t0 = int(time.time() // 30)
+    on = eng.call("POST", "/api/me/two-step/confirm", {"code": _code(setup["secret"], at=t0)})
     assert on["on"] and len(on["recovery_codes"]) == 10 and on["recovery_left"] == 10
 
     # signing in now takes the password, then the code
@@ -39,12 +42,12 @@ def test_two_step_sign_in(kosha):
     assert anon.call("POST", "/api/auth/two-step", {"challenge": "forged", "code": "1"},
                      expect=401)["code"] == "challenge_expired"
     # the code of the current step was used when setting up, so the next one is needed
-    done = anon.call("POST", "/api/auth/two-step", {"challenge": first["challenge"], "code": _code(setup["secret"], 1)})
+    done = anon.call("POST", "/api/auth/two-step", {"challenge": first["challenge"], "code": _code(setup["secret"], 1, at=t0)})
     assert done["token"] and done["user"]["username"] == "ts-eng"
     # a code is accepted once
     again = _login(kosha, "ts-eng")
     assert "used" in anon.call("POST", "/api/auth/two-step", {"challenge": again["challenge"],
-                                                              "code": _code(setup["secret"], 1)}, expect=400)["error"]
+                                                              "code": _code(setup["secret"], 1, at=t0)}, expect=400)["error"]
     # a recovery code works once
     rc = on["recovery_codes"][0]
     assert anon.call("POST", "/api/auth/two-step", {"challenge": again["challenge"], "code": rc})["token"]
