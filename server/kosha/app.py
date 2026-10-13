@@ -43,6 +43,8 @@ async def lifespan(app):
     bootstrap()
     if os.environ.get("KOSHA_DISABLE_WORKER") != "1":
         erp.start_worker()
+    from .inputs import start_worker as start_text_reader   # inputs library: reads file text in the background
+    start_text_reader()
     yield
 
 

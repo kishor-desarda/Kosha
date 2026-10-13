@@ -228,4 +228,6 @@ def seed() -> None:
             break
         time.sleep(0.25)
     erp.process_pending()
+    from .inputs import seed_demo as seed_inputs   # projects and reference material (inputs library)
+    seed_inputs()
     log.info("Demo data loaded in %.1fs", time.time() - t0)
