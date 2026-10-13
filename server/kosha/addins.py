@@ -294,7 +294,7 @@ class Registry:
 
     def emit(self, event: str, payload: dict) -> None:
         """Run add-in handlers for an event in the background, after the change is committed."""
-        for fn in list(self._listeners.get(event, ())):
+        for fn in [*self._listeners.get(event, ()), *self._listeners.get("*", ())]:    # "*": every event
             self._pool.submit(self._run_listener, fn, event, dict(payload))
         for a in self.all():
             if a.status != "enabled" or event not in a.manifest.events:

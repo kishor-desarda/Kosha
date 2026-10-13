@@ -361,6 +361,9 @@ def start_worker() -> threading.Thread:
                     send_reminders()        # change orders waiting too long (queues notices, then sent below)
                 while process_due() >= 50:
                     pass
+                from .events import process_due as send_webhooks
+                while send_webhooks() >= 50:    # webhooks to other programs share this worker
+                    pass
             except Exception:  # pragma: no cover
                 log.exception("Notification worker error")
 

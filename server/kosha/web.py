@@ -110,9 +110,19 @@ def _authenticate(request: Request) -> dict | None:
     if auth.lower().startswith("bearer "):
         token = auth[7:].strip()
     if not token:
+        token = request.headers.get("x-api-key", "").strip() or None
+    from . import apikeys
+    if not token:
         token = request.query_params.get("access_token")
+        if token and token.startswith(apikeys.PREFIX):     # keys travel in a header, never in an address
+            return None
     if not token:
         return None
+    if token.startswith(apikeys.PREFIX):          # a program with an API key (service account)
+        user = apikeys.authenticate(token, request.client.host if request.client else "")
+        if user:
+            user["roles"] = []
+        return user
     # background polls (X-Kosha-Background) do not count as activity for the idle limit
     found = sessions.check(token, touch=not request.headers.get("x-kosha-background"))
     if found is None:
@@ -146,6 +156,11 @@ def api(method: str, path: str, role: str | None = "viewer", auth: bool = True):
                     raise ApiError(401, "Please sign in.", "unauthorized")
                 if user is not None and user.get("kind") == "vendor" and not _vendor_may(method, path):
                     raise forbidden("A vendor account can only open the parts and files of its projects.")
+                if user is not None and "api_scopes" in user:
+                    from .apikeys import allowed
+                    why = allowed(user, method, path)
+                    if why:
+                        raise ApiError(403, why, "scope_missing")
                 if role and auth and not Req(request, user, {}, {}).has(role):   # before reading any upload
                     raise forbidden(_needs(role))
                 body = None

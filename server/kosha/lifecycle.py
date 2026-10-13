@@ -453,6 +453,11 @@ def set_state(user: dict, doc_id: int, to: str, comment: str = "", co_id: int | 
         registry.emit("revision.released", {"document_id": doc_id, "item_id": released_doc["item_id"],
                                             "filename": released_doc["filename"], "revision": released_doc["revision"],
                                             "part_number": released_doc.get("part_number"), "user_id": user["id"]})
+    if to in ("obsolete", "spares_only"):
+        from .addins import registry
+        registry.emit("revision.obsoleted", {"document_id": doc_id, "item_id": d["item_id"], "state": to,
+                                             "filename": d["filename"], "revision": d["revision"],
+                                             "part_number": d.get("part_number"), "user_id": user["id"]})
     return doc_or_404(doc_id)
 
 

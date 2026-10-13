@@ -39,7 +39,8 @@ SCREENS = ["#/home", "#/files", "#/boms", "#/changes", "#/erp", "#/common", "#/a
            "#/admin?tab=packs", "#/deviations", "#/deviation/1", "#/inputs", "#/inputs?q=bearing",
            "#/input/1", "#/projects", "#/project/1", "#/item/1", "#/erp?tab=reconcile", "#/erp?tab=settings",
            "#/admin?tab=notify", "#/ask", "#/admin?tab=ai", "#/admin?tab=access",
-           "#/ecrs", "#/ecr/1", "#/change/1", "#/admin?tab=approvals"]
+           "#/ecrs", "#/ecr/1", "#/change/1", "#/admin?tab=approvals",
+           "#/admin?tab=webhooks"]
 ADMIN_ONLY = ("#/admin", "#/erp?tab=")
 
 
@@ -70,6 +71,14 @@ DARK_CHECK = """(() => {
 })()"""
 
 
+# Counts the page's calls to the server still under way (the live event stream is not a fetch, so not counted).
+PENDING_FETCHES = """(() => {
+  window.__koshaPending = 0;
+  const orig = window.fetch;
+  window.fetch = (...a) => { window.__koshaPending++; return orig(...a).finally(() => { window.__koshaPending--; }); };
+})()"""
+
+
 def visit_screens(page, user: str, errors: list[str], dark: bool) -> None:
     label = f"{user} (dark)" if dark else user
     for hash_ in SCREENS:
@@ -79,7 +88,10 @@ def visit_screens(page, user: str, errors: list[str], dark: bool) -> None:
         if not wait_until(page, "document.querySelector('#page') && "
                                 "document.querySelector('#page').innerText.trim().length > 20"):
             errors.append(f"{label} {hash_}: the screen stayed empty")
-        page.wait_for_load_state("networkidle")
+        # "networkidle" never comes: the live updates connection stays open. Wait for the page's own calls instead.
+        if not wait_until(page, "window.__koshaPending === 0"):
+            errors.append(f"{label} {hash_}: calls to the server did not finish")
+        page.wait_for_timeout(300)
         if dark:
             r = page.evaluate(DARK_CHECK)
             if not r["dark"]:
@@ -114,6 +126,7 @@ def main() -> int:
         with sync_playwright() as p:
             browser = p.chromium.launch()
             page = browser.new_page(viewport={"width": 1366, "height": 768})
+            page.add_init_script(PENDING_FETCHES)
             page.on("pageerror", lambda e: errors.append(f"script error: {e}"))
             page.on("console", lambda m: errors.append(f"console {m.type}: {m.text}") if m.type == "error" else None)
             for user, pw in (("asha", "demo-kosha-1"), ("admin", "admin-smoke-1")):
@@ -127,6 +140,8 @@ def main() -> int:
                 page.fill("input[type=password]", pw)
                 page.keyboard.press("Enter")
                 page.wait_for_selector("nav.rail", timeout=15000)
+                if not wait_until(page, "window.koshaLive && window.koshaLive.readyState === 1"):
+                    errors.append(f"{user}: the live updates connection did not open")
                 visit_screens(page, user, errors, dark=False)
                 if user == "asha":
                     choose_theme(page, "dark", errors)

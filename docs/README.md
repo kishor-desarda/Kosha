@@ -14,6 +14,9 @@
 - [`../llms.txt`](../llms.txt): a short guide to the project for AI assistants and search tools.
 - [`themes.md`](themes.md): Light, Dark, High contrast and "Same as my computer"; choosing one, and colours for developers.
 - [`directory-sign-in.md`](directory-sign-in.md): signing in with Active Directory, LDAP or an OpenID Connect provider such as Keycloak.
+- [`changes.md`](changes.md): change requests, change orders, approval routes and stand-ins.
+- [`api-rules.md`](api-rules.md): the rules for programs that use the API (errors, idempotency, versions, paging, limits).
+- [`programs-and-events.md`](programs-and-events.md): API keys for programs, webhooks, and live updates on open screens.
 - [`ai.md`](ai.md): optional AI assistance (classification, change-log drafts, Ask Kosha): what is sent, privacy, running it fully local.
 
 The full specification and development guide will be published here as the documentation site

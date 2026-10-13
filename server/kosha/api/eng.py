@@ -67,6 +67,7 @@ def create_item(req: Req):
         if upd:
             db.update("items", iid, upd)
         db.audit(req.uid, "item_create", "item", iid, pn)
+    addins.registry.emit("item.created", {"item_id": iid, "part_number": pn, "user_id": req.uid})
     return {"item": db.one("SELECT * FROM items WHERE id = ?", (iid,))}
 
 
@@ -133,6 +134,8 @@ def update_item(req: Req):
         db.update("items", iid, upd)
         apisafety.bump("items", iid, req.uid)
         db.audit(req.uid, "item_update", "item", iid, ",".join(upd))
+    addins.registry.emit("item.updated", {"item_id": iid, "part_number": it["part_number"],
+                                          "fields": sorted(k for k in upd if k != "updated_at"), "user_id": req.uid})
     return {"item": db.one("SELECT * FROM items WHERE id = ?", (iid,))}
 
 
@@ -346,6 +349,9 @@ def use_change_route(req: Req):
 @api("POST", "/api/changes/{id:int}/decide", role="viewer")
 def decide_change(req: Req):
     changes.decide(req.user, req.int_param("id"), req.b("decision") or "", req.b("comment") or "")
+    co = changes.co_or_404(req.int_param("id"))
+    if co["state"] == "approved":
+        addins.registry.emit("eco.approved", {"change_id": co["id"], "number": co["number"], "user_id": req.uid})
     return changes.detail(req.int_param("id"), req.user)
 
 
