@@ -262,6 +262,11 @@ def upload(req: Req):
     folder_id = req.b("folder_id")
     if not folder_id:
         raise bad("Choose a folder")
+    try:
+        folder = int(folder_id)
+    except (TypeError, ValueError):
+        raise bad("Kosha could not tell which folder these files are for, so nothing was added. "
+                  "Open the folder and add the files again.") from None
     files = req.files.get("file") or req.files.get("files") or []
     if not files:
         raise bad("No file was sent")
@@ -277,7 +282,7 @@ def upload(req: Req):
     folder_cache: dict[str, int] = {}
     for idx, f in enumerate(files):
         try:
-            fid = int(folder_id)
+            fid = folder
             rel = (paths[idx] if idx < len(paths) else "") or ""
             if rel:
                 if rel not in folder_cache:

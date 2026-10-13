@@ -149,7 +149,7 @@ function buildLayout(container) {
     e.preventDefault();
     E.sel.clear(); renderSelection();
     contextMenu(e.clientX, e.clientY, [
-      { label: 'Add files…', icon: 'upload', run: pickFiles, disabled: !can('engineer') },
+      { label: 'Add files…', icon: 'upload', run: () => pickFiles(), disabled: !can('engineer') },
       { label: 'New folder', icon: 'folderPlus', run: newFolder, disabled: !can('engineer') },
       '-',
       { label: 'Refresh', icon: 'refresh', key: 'F5', run: () => refresh() },
@@ -243,7 +243,7 @@ function renderList() {
       E.filter ? `Nothing in this folder matches "${E.filter}".` : 'This folder is empty.',
       can('engineer') && !E.filter ? h('div', { style: { marginTop: '12px' } },
         h('p', { class: 'muted' }, 'Drag files here from your computer, or'),
-        h('button', { class: 'btn primary', onclick: pickFiles }, icon('upload'), 'Add files')) : null));
+        h('button', { class: 'btn primary', onclick: () => pickFiles() }, icon('upload'), 'Add files')) : null));
     renderStatus();
     return;
   }
@@ -401,7 +401,7 @@ function renderToolbar() {
   const g = (...b) => h('div', { class: 'tb-group' }, b);
   const mineOut = docs.length && docs.every(d => d.checked_out_by === S.user.id);
   mount(ui.toolbar,
-    g(tbBtn('upload', 'Add files', 'Put new files in this folder', pickFiles, eng, 'View-only access', null, !docs.length && eng),
+    g(tbBtn('upload', 'Add files', 'Put new files in this folder', () => pickFiles(), eng, 'View-only access', null, !docs.length && eng),
       tbBtn('folderPlus', 'New folder', 'Make a folder here', newFolder, eng, 'View-only access'),
       tbBtn('trash', 'Recycle bin', 'Put deleted files back', () => { location.hash = '#/bin'; }, eng, 'View-only access')),
     g(tbBtn('checkout', 'Check out', 'Lock it so you can edit', () => doCheckout(docs), allOk('checkout', docs), why('checkout', docs), 'Ctrl+O', !mineOut && allOk('checkout', docs) && S.mode === 'guided'),
@@ -740,7 +740,8 @@ async function deleteFolder(f) {
   } catch (e) { fail(e); }
 }
 
-function pickFiles(folderId = E.cur) {
+function pickFiles(folderId) {
+  if (!Number.isInteger(folderId)) folderId = E.cur;     // called from a button: never take the click for a folder
   const inp = h('input', { type: 'file', multiple: true, style: { display: 'none' } });
   inp.addEventListener('change', () => { if (inp.files.length) uploadDialog([...inp.files], folderId); inp.remove(); });
   document.body.appendChild(inp);
