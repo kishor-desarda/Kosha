@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { S, h, mount, icon, get, stateChip, ago, fileUrl, store, thumb } from './core.js';
+import { deviationsHomePanel } from './deviations.js';
 
 export async function renderHome(container, _m, _p, { setTitle }) {
   setTitle('Home');
@@ -61,6 +62,8 @@ export async function renderHome(container, _m, _p, { setTitle }) {
               h('div', { class: 'small muted' }, `From ${a.requested_by_name} · submitted ${ago(a.submitted_at)}`)),
             a.priority !== 'normal' ? h('span', { class: `chip ${a.priority === 'urgent' || a.priority === 'high' ? 'st-failed' : 'st-draft'}` }, a.priority) : null)),
           d.in_review.map(docRow)) : empty('Nothing to approve.')),
+
+      deviationsHomePanel(),
 
       panel('Recently released', null, d.recent_releases.length ? h('div', null, d.recent_releases.map(r =>
         h('a', { class: 'list-row', href: `#/doc/${r.id}` }, icon('release', 20),

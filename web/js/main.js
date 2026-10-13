@@ -9,12 +9,15 @@ import { renderChanges, renderChange } from './changes.js';
 import { renderErp } from './erp.js';
 import { renderCommon } from './common.js';
 import { renderAdmin, renderSearch } from './admin.js';
+import { renderDeviations, renderDeviation } from './deviations.js';
+import { notificationBell } from './notifications.js';
 
 const NAV = [
   ['home', 'Home', 'home', '#/home'],
   ['kosha', 'Explorer', 'kosha', '#/files'],
   ['boms', 'BOMs', 'bom', '#/boms'],
   ['changes', 'Changes', 'change', '#/changes'],
+  ['deviations', 'Deviations', 'warn', '#/deviations'],
   ['erp', 'ERP sync', 'erp', '#/erp'],
   ['common', 'Duplicates', 'common', '#/common'],
 ];
@@ -28,6 +31,8 @@ const ROUTES = [
   [/^#\/bom\/(\d+)$/, 'boms', () => renderBom],
   [/^#\/changes$/, 'changes', () => renderChanges],
   [/^#\/change\/(\d+)$/, 'changes', () => renderChange],
+  [/^#\/deviations$/, 'deviations', () => renderDeviations],
+  [/^#\/deviation\/(\d+)$/, 'deviations', () => renderDeviation],
   [/^#\/erp$/, 'erp', () => renderErp],
   [/^#\/common$/, 'common', () => renderCommon],
   [/^#\/admin$/, 'admin', () => renderAdmin],
@@ -85,7 +90,7 @@ function buildShell() {
     h('div', { class: 'search' }, h('label', { for: 'global-search', class: 'sr-only' }, 'Search Kosha'), icon('search', 16), q),
     h('span', { class: 'spacer' }),
     h('div', { class: 'seg', role: 'group', 'aria-label': 'Interface mode' }, modeBtns),
-    avatar);
+    notificationBell(), avatar);
   const page = h('main', { class: 'page', id: 'page', tabindex: '-1' });
   const app = h('div', { class: 'app' }, rail, h('div', { class: 'main' }, top, page));
   mount(root, app);
@@ -103,6 +108,7 @@ async function refreshBadges() {
     set('erp', d.erp.failed);
     set('common', d.common_parts.length);
     set('home', d.checked_out.length);
+    set('deviations', (await get('/api/deviations/summary')).waiting_for_me);
   } catch (e) { /* ignore */ }
 }
 setInterval(refreshBadges, 60000);

@@ -30,7 +30,8 @@ def _free_port() -> int:
 
 PORT = _free_port()   # parallel runs never collide
 BASE = f"http://127.0.0.1:{PORT}"
-SCREENS = ["#/home", "#/files", "#/boms", "#/changes", "#/erp", "#/common", "#/admin", "#/search?q=MX-100"]
+SCREENS = ["#/home", "#/files", "#/boms", "#/changes", "#/deviations", "#/deviation/1", "#/erp", "#/common", "#/admin",
+           "#/search?q=MX-100"]
 
 
 def main() -> int:
