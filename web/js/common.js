@@ -3,6 +3,7 @@
 // similar geometry and similar descriptions.
 import { S, h, mount, clear, icon, get, post, toast, fail, ago, fileUrl, can, stateChip, confirmDlg } from './core.js';
 import { openViewer } from './viewer.js';
+import { whyAlike } from './ai.js';
 
 const changed = () => window.dispatchEvent(new Event('kosha:changed'));
 
@@ -163,6 +164,7 @@ export async function renderCommon(container, _m, params, { setTitle }) {
           g.kind === 'part_number' ? ' Open each file, give the wrong one its own part number (check it out, edit Part number, check in), then mark this as sorted out.' : '',
           g.kind === 'geometry' ? ' Highlighted values differ from the reference.' : '')) : null,
         cards,
+        g.kind !== 'identical' ? whyAlike(gid) : null,
         actions.length ? h('div', { class: 'row wrap' }, actions) : null)));
   };
 

@@ -322,10 +322,13 @@ class FakeAiProvider(AiProvider):
             return Health.down(str(self.fail_with))
         return Health.up(f"Fake AI provider, model {self.model}")
 
+    supports_model_choice = True
+    transcript = "show drawing of MX-100-020"     # what transcribe() hears
+
     def complete(self, messages: Sequence[Message], *, max_tokens: int = 512, temperature: float = 0.2,
-                 json_mode: bool = False) -> Completion:
+                 json_mode: bool = False, model: str | None = None) -> Completion:
         self.calls.append({"messages": list(messages), "max_tokens": max_tokens, "temperature": temperature,
-                           "json_mode": json_mode})
+                           "json_mode": json_mode, "model": model})
         if self.delay_s:
             time.sleep(self.delay_s)
         if self.fail_with is not None:
@@ -340,9 +343,16 @@ class FakeAiProvider(AiProvider):
             out = self.answers
         if isinstance(out, Completion):
             return out
-        return Completion(text=str(out), model=self.model, finish_reason="stop",
+        return Completion(text=str(out), model=model or self.model, finish_reason="stop",
                           usage={"prompt_tokens": sum(len(m.content.split()) for m in messages),
                                  "completion_tokens": len(str(out).split())})
+
+    def transcribe(self, audio: bytes, *, mime: str = "audio/webm", language: str = "",
+                   model: str | None = None) -> str:
+        self.calls.append({"audio": len(audio), "mime": mime, "language": language, "model": model})
+        if self.fail_with is not None:
+            raise self.fail_with
+        return self.transcript
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         if self.embedding_size is None:

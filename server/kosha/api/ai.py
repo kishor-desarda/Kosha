@@ -7,7 +7,7 @@ file or change log except ``accept``, which the person presses after reviewing (
 """
 from __future__ import annotations
 
-from .. import ai
+from .. import ai, ai_jobs
 from ..web import Req, api, as_bool, bad
 
 
@@ -56,6 +56,61 @@ def ask(req: Req):
     return ai.submit(req.user, ai.prepare_question(req.user, req.b("question") or ""), _wait(req))
 
 
+def _id(req: Req, what: str) -> int:
+    try:
+        return int(req.b("id"))
+    except (TypeError, ValueError):
+        raise bad(f"Say which {what}: id is missing.")
+
+
+@api("GET", "/api/documents/{id:int}/drawing-check")
+def drawing_check(req: Req):
+    """Kosha's own checks of a drawing before approval (title block, material, revision, notes); no AI."""
+    out = ai_jobs.drawing_check(req.int_param("id"))
+    out.pop("_texts", None)
+    return out
+
+
+@api("POST", "/api/ai/drawing-check", role="engineer")
+def ai_drawing_check(req: Req):
+    """After the rules: what a checker would still question, as a suggestion."""
+    ai.require("drawing_check")
+    return ai.submit(req.user, ai_jobs.prepare_drawing_check(req.user, _id(req, "file")), _wait(req))
+
+
+@api("GET", "/api/common-parts/groups/{id:int}/why")
+def duplicate_why(req: Req):
+    """Kosha's own line on why the parts of a group look alike and what differs (no AI)."""
+    _, _, line = ai_jobs.duplicate_facts(req.int_param("id"))
+    return {"line": line}
+
+
+@api("POST", "/api/ai/duplicates", role="engineer")
+def ai_duplicates(req: Req):
+    """One sentence on why the parts of a group look alike and what differs."""
+    ai.require("duplicates")
+    return ai.submit(req.user, ai_jobs.prepare_duplicate(req.user, _id(req, "group")), _wait(req))
+
+
+@api("POST", "/api/ai/ocr", role="engineer")
+def ai_ocr(req: Req):
+    """Read the title block of a scanned drawing (only its corner is sent); accepting fills in the part."""
+    ai.require("ocr")
+    return ai.submit(req.user, ai_jobs.prepare_ocr(req.user, _id(req, "file")), _wait(req))
+
+
+@api("POST", "/api/ai/transcribe")
+def transcribe(req: Req):
+    """Speech to text for a spoken question: the recording in "file", the language hint in "language"."""
+    files = req.files.get("file") or []
+    if not files:
+        raise bad("Send the recording as the file \"file\".")
+    f = files[0]
+    data = f.file.read(ai_jobs.MAX_AUDIO + 1)
+    return ai_jobs.transcribe(req.user, data, getattr(f, "content_type", "") or "audio/webm",
+                              str(req.b("language") or ""))
+
+
 @api("GET", "/api/ai/suggestions/{id:int}")
 def suggestion(req: Req):
     return ai.get(req.int_param("id"), req.user)
@@ -77,7 +132,7 @@ def dismiss(req: Req):
 
 def _admin_view() -> dict:
     return {"settings": ai.settings(), "providers": ai.providers(), "features": ai.FEATURES,
-            "send_options": ai.SEND_OPTIONS, "status": ai.status(), "requests": ai.recent(30)}
+            "send_options": ai.SEND_OPTIONS, "status": ai.status(), "requests": ai.recent(30), "usage": ai.usage()}
 
 
 @api("GET", "/api/ai/settings", role="admin")
@@ -104,3 +159,12 @@ def test(req: Req):
 def sent(req: Req):
     """Exactly what was sent to the AI provider for one request."""
     return ai.sent(req.int_param("id"))
+
+
+@api("GET", "/api/ai/usage", role="admin")
+def usage(req: Req):
+    """Calls, tokens and cost per job for a month (?month=2026-10), the budget, and the acceptance rate per job."""
+    month = str(req.q("month") or "")
+    if month and not (len(month) == 7 and month[4] == "-" and month.replace("-", "").isdigit()):
+        raise bad("Give the month as YYYY-MM, for example 2026-10.")
+    return ai.usage(month or None)

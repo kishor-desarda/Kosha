@@ -79,7 +79,7 @@ class Client:
 
     def call(self, method: str, path: str, body=None, files=None, fields=None, expect=200, raw=False,
              headers: dict | None = None, raw_body: bytes | None = None):
-        """files = {"file": ("name.dxf", b"...")}; returns parsed JSON (or (bytes, content_type) when raw)."""
+        """files = {"file": ("name.dxf", b"...")} or ("name", b"...", "content/type"); returns parsed JSON (or (bytes, content_type) when raw)."""
         hdrs = dict(headers or {})
         data = None
         if self.token:
@@ -89,9 +89,9 @@ class Client:
             buf = io.BytesIO()
             for k, v in (fields or {}).items():
                 buf.write(f"--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n".encode())
-            for k, (name, content) in (files or {}).items():
+            for k, (name, content, *ctype) in (files or {}).items():
                 buf.write(f"--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"; filename=\"{name}\"\r\n"
-                          f"Content-Type: application/octet-stream\r\n\r\n".encode())
+                          f"Content-Type: {ctype[0] if ctype else 'application/octet-stream'}\r\n\r\n".encode())
                 buf.write(content)
                 buf.write(b"\r\n")
             buf.write(f"--{boundary}--\r\n".encode())

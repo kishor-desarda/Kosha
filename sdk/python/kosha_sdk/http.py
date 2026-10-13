@@ -61,12 +61,16 @@ class HttpClient:
 
     def request(self, method: str, path: str, *, json_body: Any = None, params: dict[str, Any] | None = None,
                 idempotency_key: str | None = None, allow_404: bool = False, form: dict[str, Any] | None = None,
-                headers: dict[str, str] | None = None) -> Response | None:
+                headers: dict[str, str] | None = None, raw: tuple[bytes, str] | None = None) -> Response | None:
+        """`raw` sends bytes as they are with their content type, for example a multipart upload
+        (``multipart_body`` builds one)."""
         url = self.base + path
         if params:
             url += ("&" if "?" in path else "?") + urllib.parse.urlencode(
                 {k: json.dumps(v) if isinstance(v, (list, dict)) else v for k, v in params.items()})
-        if form is not None:
+        if raw is not None:
+            data, content_type = raw
+        elif form is not None:
             data = urllib.parse.urlencode(form).encode("utf-8")
             content_type = "application/x-www-form-urlencoded"
         else:
@@ -116,3 +120,20 @@ class HttpClient:
 
     def put(self, path: str, json_body: Any = None, **kw) -> Response | None:
         return self.request("PUT", path, json_body=json_body, **kw)
+
+
+def multipart_body(fields: dict[str, str], files: dict[str, tuple[str, bytes, str]]) -> tuple[bytes, str]:
+    """A multipart/form-data body: text fields, and files as {name: (filename, content, content type)}.
+    Returns (body, content type) for ``HttpClient.request(..., raw=...)``."""
+    import uuid
+    boundary = "kosha-" + uuid.uuid4().hex
+    out = bytearray()
+    for k, v in fields.items():
+        out += (f"--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n").encode("utf-8")
+    for k, (fname, content, ctype) in files.items():
+        safe = fname.replace('"', "").replace("\r", "").replace("\n", "")
+        out += (f"--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"; filename=\"{safe}\"\r\n"
+                f"Content-Type: {ctype}\r\n\r\n").encode("utf-8")
+        out += content + b"\r\n"
+    out += f"--{boundary}--\r\n".encode("utf-8")
+    return bytes(out), f"multipart/form-data; boundary={boundary}"

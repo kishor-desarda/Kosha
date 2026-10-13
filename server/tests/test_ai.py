@@ -50,11 +50,10 @@ def _prepared(text="hello", feature="ask", shared=True, interpret=None):
 
 def test_everything_is_off_by_default(kdb):
     cfg = ai.settings()
-    assert cfg["provider"] == "" and cfg["features"] == {"classify": False, "changelog": False, "ask": False}
+    assert cfg["provider"] == "" and cfg["features"] == {k: False for k in ai.FEATURES}
     assert cfg["send_properties"] and not cfg["send_people"] and not cfg["send_file_text"]
     st = ai.status()
-    assert st == {"on": False, "features": {"classify": False, "changelog": False, "ask": False}, "provider": "",
-                  "why": ""}
+    assert st == {"on": False, "features": {k: False for k in ai.FEATURES}, "provider": "", "why": ""}
     with pytest.raises(ApiError) as e:
         ai.require("ask")
     assert e.value.status == 409 and e.value.code == "ai_off" and "Admin › AI" in e.value.message
@@ -71,7 +70,7 @@ def test_settings_are_checked(kdb_ai):
         ai.save_settings({"max_records": "lots"}, None)
     cfg = ai.save_settings({"send_file_text": "yes", "features": {"ask": False}, "max_records": "5"}, 1)
     assert cfg["send_file_text"] is True and cfg["max_records"] == 5
-    assert cfg["features"] == {"classify": True, "changelog": True, "ask": False}
+    assert cfg["features"] == {**{k: True for k in ai.FEATURES}, "ask": False}
     assert ai.status()["features"]["ask"] is False and ai.status()["on"]
     row = db.one("SELECT * FROM audit WHERE action = 'ai_settings' ORDER BY id DESC LIMIT 1")
     assert "on: classify, changelog" in row["details"] and "send_file_text=yes" in row["details"]

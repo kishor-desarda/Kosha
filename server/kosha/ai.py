@@ -22,6 +22,19 @@ Rules this module keeps:
   can never quote a record that person could not open (``can_read``).
 * **Plain words when it fails.** A provider that is off, slow or broken gives ``UNREACHABLE``; the work on
   screen is never touched.
+
+The **AI engine** (specification 14.2, 14.5 and 14.6) sits under every request:
+
+* **A model for each job.** Each feature can name its own model and a fallback (another model, or another
+  provider add-in such as a model server inside the company) with its own time-out. The model is passed only to
+  providers that say they can switch models (``supports_model_choice``); others use their own setting.
+* **One retry, then dropped.** An answer that does not fit the job's schema is asked for once more, then the
+  request fails with ``UNREADABLE``. A provider that cannot be reached goes to the fallback, if there is one.
+* **A log of every call** (``ai_calls``): job, provider, model, person, tokens, time and cost, never the content.
+* **A monthly budget.** Costs come from the admin's prices per million tokens. Admins are told at 50, 80 and
+  100 percent; at 100 percent the AI extras pause when the admin chose so (``stop_at_budget``).
+* **Local only.** Restricted parts, and the categories, customers and folders the admin lists, go only to the
+  provider marked as local (a model server inside the company), or are skipped by AI.
 """
 from __future__ import annotations
 
@@ -30,6 +43,7 @@ import json
 import logging
 import re
 import threading
+import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from dataclasses import dataclass, field
@@ -51,7 +65,14 @@ FEATURES = {
     "classify": "Classification: suggest category, material, a matching standard part and a cleaner description",
     "changelog": "Change-log drafts: draft the change description from the measured changes",
     "ask": "Ask Kosha: answer questions from Kosha's own records, with links to them",
+    "drawing_check": "Drawing check: after Kosha's own rules, point out what a checker would still question",
+    "duplicates": "Duplicate explanation: say in one line why two parts look alike and what differs",
+    "ocr": "Title-block reading (OCR): read number, description, material and revision from scans and photos",
+    "voice": "Voice: speak a question to Ask Kosha, in English, Hindi or a mix",
 }
+JOB_DEFAULT: dict[str, Any] = {"model": "", "fallback_provider": "", "fallback_model": "", "timeout_s": 0}
+LOCAL_DEFAULT: dict[str, Any] = {"restricted": True, "categories": [], "customers": [], "folders": []}
+BUDGET_ALERTS = (50, 80, 100)
 SEND_OPTIONS = {
     "send_properties": "Item properties (material, type, unit, weight, make or buy, category)",
     "send_people": "People's names (who asked for a change, who approves it)",
@@ -65,6 +86,12 @@ DEFAULTS: dict[str, Any] = {
     "send_file_text": False,
     "timeout_s": 90,
     "max_records": 12,
+    "jobs": {},                 # feature -> JOB_DEFAULT (empty model: the provider's own setting)
+    "monthly_budget": 0.0,      # 0: no budget
+    "stop_at_budget": True,
+    "prices": {},               # model -> {"in": price, "out": price} per million tokens
+    "local_provider": "",
+    "local_only": LOCAL_DEFAULT,
 }
 UNREACHABLE = ("The AI assistant could not be reached; your work is safe. Try again later or ask your "
                "administrator.")
@@ -80,7 +107,104 @@ def settings() -> dict:
     raw = db.get_setting(SETTINGS_KEY) or {}
     out = {**DEFAULTS, **{k: v for k, v in raw.items() if k in DEFAULTS}}
     out["features"] = {k: bool((raw.get("features") or {}).get(k, False)) for k in FEATURES}
+    jobs = raw.get("jobs") if isinstance(raw.get("jobs"), dict) else {}
+    out["jobs"] = {k: {**JOB_DEFAULT, **{a: b for a, b in (jobs.get(k) or {}).items() if a in JOB_DEFAULT}}
+                   for k in FEATURES}
+    lo = raw.get("local_only") if isinstance(raw.get("local_only"), dict) else {}
+    out["local_only"] = {**LOCAL_DEFAULT, **{k: v for k, v in lo.items() if k in LOCAL_DEFAULT}}
+    out["prices"] = dict(raw.get("prices") or {})
     return out
+
+
+def _names(v: Any, what: str, n: int = 200) -> list:
+    if not isinstance(v, list):
+        raise ValueError(f"Send {what} as a list.")
+    return sorted({" ".join(str(x).split())[:n] for x in v if str(x).strip()})
+
+
+def _save_engine(cfg: dict, changes: dict) -> None:
+    """The engine's settings: a model for each job, the budget, the prices and the local-only rules."""
+    known = {p["id"] for p in providers()}
+    for k in ("local_provider",):
+        if k in changes:
+            pid = str(changes.get(k) or "").strip()
+            if pid and pid not in known:
+                raise ValueError("There is no AI provider add-in with that name. Install one under Admin › Add-ins.")
+            cfg[k] = pid
+    if "jobs" in changes:
+        jobs = changes.get("jobs")
+        if not isinstance(jobs, dict):
+            raise ValueError("Send jobs as {feature: {model, fallback_provider, fallback_model, timeout_s}}.")
+        for feat, job in jobs.items():
+            if feat not in FEATURES:
+                raise ValueError(f"Unknown AI feature: {feat}. Known: {', '.join(FEATURES)}.")
+            if not isinstance(job, dict) or any(k not in JOB_DEFAULT for k in job):
+                raise ValueError(f"For {feat}, send only {', '.join(JOB_DEFAULT)}.")
+            cur = dict(cfg["jobs"][feat])
+            for k in ("model", "fallback_model"):
+                if k in job:
+                    cur[k] = " ".join(str(job[k] or "").split())[:200]
+            if "fallback_provider" in job:
+                pid = str(job["fallback_provider"] or "").strip()
+                if pid and pid not in known:
+                    raise ValueError(f"The fallback for {feat} names an AI provider that is not installed.")
+                cur["fallback_provider"] = pid
+            if "timeout_s" in job:
+                try:
+                    t = int(job["timeout_s"] or 0)
+                except (TypeError, ValueError):
+                    raise ValueError("A job's time-out must be a whole number of seconds.") from None
+                if t and not 5 <= t <= 600:
+                    raise ValueError("A job's time-out must be between 5 and 600 seconds (or 0 for the general one).")
+                cur["timeout_s"] = t
+            cfg["jobs"][feat] = cur
+    if "monthly_budget" in changes:
+        try:
+            b = round(float(changes["monthly_budget"] or 0), 2)
+        except (TypeError, ValueError):
+            raise ValueError("The monthly budget must be a number (0 for no budget).") from None
+        if b < 0:
+            raise ValueError("The monthly budget cannot be negative.")
+        cfg["monthly_budget"] = b
+    if "stop_at_budget" in changes:
+        cfg["stop_at_budget"] = bool(changes["stop_at_budget"])
+    if "prices" in changes:
+        prices = changes.get("prices")
+        if not isinstance(prices, dict):
+            raise ValueError("Send prices as {model: {in: price, out: price}} per million tokens.")
+        clean = {}
+        for model, pr in prices.items():
+            model = " ".join(str(model).split())[:200]
+            if not model:
+                continue
+            try:
+                pin, pout = float((pr or {}).get("in") or 0), float((pr or {}).get("out") or 0)
+            except (TypeError, ValueError, AttributeError):
+                raise ValueError(f"The prices of {model} must be numbers.") from None
+            if pin < 0 or pout < 0:
+                raise ValueError(f"The prices of {model} cannot be negative.")
+            clean[model] = {"in": pin, "out": pout}
+        cfg["prices"] = clean
+    if "local_only" in changes:
+        lo = changes.get("local_only")
+        if not isinstance(lo, dict) or any(k not in LOCAL_DEFAULT for k in lo):
+            raise ValueError(f"Send local_only with {', '.join(LOCAL_DEFAULT)}.")
+        cur = dict(cfg["local_only"])
+        if "restricted" in lo:
+            cur["restricted"] = bool(lo["restricted"])
+        for k in ("categories", "customers"):
+            if k in lo:
+                cur[k] = [x.upper() if k == "categories" else x for x in _names(lo[k], k)]
+        if "folders" in lo:
+            try:
+                ids = sorted({int(x) for x in (lo["folders"] or [])})
+            except (TypeError, ValueError):
+                raise ValueError("Send folders as a list of folder numbers.") from None
+            missing = [i for i in ids if not db.one("SELECT id FROM folders WHERE id = ?", (i,))]
+            if missing:
+                raise ValueError(f"There is no folder number {missing[0]}.")
+            cur["folders"] = ids
+        cfg["local_only"] = cur
 
 
 def save_settings(changes: dict, user_id: int | None) -> dict:
@@ -113,6 +237,7 @@ def save_settings(changes: dict, user_id: int | None) -> dict:
             if not lo <= v <= hi:
                 raise ValueError(f"{label} must be between {lo} and {hi}.")
             cfg[k] = v
+    _save_engine(cfg, changes)
     db.set_setting(SETTINGS_KEY, cfg)
     on = [k for k, v in cfg["features"].items() if v]
     db.audit(user_id, "ai_settings", "settings", None,
@@ -196,6 +321,8 @@ class Prepared:
     on_ready: Callable[[dict, dict], None] | None = None
     shared: bool = True                                 # False: only the person who asked may see it
     answer_now: dict | None = None                      # a result without asking the provider (nothing to ask)
+    local: bool = False                                 # local-only data: only the local provider may see it
+    on_unreachable: Callable[[], dict] | None = None    # a result made on the server when no provider answers
 
 
 _pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="ai")
@@ -222,19 +349,115 @@ def _expire_stale(cfg: dict) -> None:
                 _stale_before(cfg)))
 
 
+def route(feature: str, cfg: dict | None = None, local: bool = False) -> list[tuple[str, str, bool]]:
+    """Where a job's request goes, in order: (provider, model, is_fallback). An empty model means the provider's
+    own setting. Local-only data goes only to the local provider; with none, AI skips it (``ai_local_only``)."""
+    cfg = cfg or settings()
+    job = cfg["jobs"].get(feature) or JOB_DEFAULT
+    if local:
+        if not cfg["local_provider"]:
+            raise ApiError(409, "This record is marked local only, and no AI server inside the company is set up, so "
+                                "the AI assistant skips it. Your work is safe; an administrator can set one up under "
+                                "Admin › AI.", "ai_local_only")
+        same = cfg["local_provider"] == cfg["provider"]
+        return [(cfg["local_provider"], job["model"] if same else "", False)]
+    out = [(cfg["provider"], job["model"], False)]
+    fb = (job["fallback_provider"] or cfg["provider"], job["fallback_model"])
+    if (job["fallback_provider"] or job["fallback_model"]) and fb != (cfg["provider"], job["model"]):
+        out.append((fb[0], fb[1], True))
+    return out
+
+
+def _month(at: str | None = None) -> str:
+    return (at or db.now())[:7]
+
+
+def spent(month: str | None = None) -> float:
+    return float(db.scalar("SELECT COALESCE(SUM(cost), 0) FROM ai_calls WHERE at LIKE ?", (f"{_month(month)}%",)) or 0)
+
+
+def check_budget(cfg: dict | None = None) -> None:
+    """Refuse new requests when this month's budget is used up and the admin chose to stop there."""
+    cfg = cfg or settings()
+    budget = float(cfg["monthly_budget"] or 0)
+    if budget > 0 and cfg["stop_at_budget"] and spent() >= budget:
+        raise ApiError(409, f"This month's AI budget ({budget:.2f}) is used up, so the AI extras pause until next "
+                            "month. Your work is safe and everything else works; an administrator can raise the "
+                            "budget under Admin › AI.", "ai_budget")
+
+
+def cost_of(model: str, usage: dict, cfg: dict) -> float:
+    price = cfg["prices"].get(model) or {}
+    pt, ct = int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0)
+    return round((pt * float(price.get("in") or 0) + ct * float(price.get("out") or 0)) / 1_000_000, 6)
+
+
+def log_call(job: str, provider: str, model: str, user: dict | None, *, usage: dict | None = None, ms: int = 0,
+             ok: bool = True, fallback: bool = False, error: str = "", suggestion_id: int | None = None) -> float:
+    """One line in the AI log (never the content), then the budget alerts. Returns the cost."""
+    cfg = settings()
+    usage = usage or {}
+    cost = cost_of(model, usage, cfg) if ok else 0.0
+    db.insert("ai_calls", {"suggestion_id": suggestion_id, "job": job, "provider": provider, "model": model[:200],
+                           "user_id": (user or {}).get("id"), "prompt_tokens": int(usage.get("prompt_tokens") or 0),
+                           "completion_tokens": int(usage.get("completion_tokens") or 0), "ms": int(ms),
+                           "cost": cost, "ok": 1 if ok else 0, "fallback": 1 if fallback else 0,
+                           "error": (error or "")[:500], "at": db.now()})
+    if cost:
+        _budget_alerts(cfg)
+    return cost
+
+
+def _budget_alerts(cfg: dict) -> None:
+    """Tell every administrator once a month when the spending passes 50, 80 and 100 percent of the budget."""
+    from . import notifications
+    budget = float(cfg["monthly_budget"] or 0)
+    if budget <= 0:
+        return
+    used = spent()
+    month = _month()
+    for pct in BUDGET_ALERTS:
+        if used >= budget * pct / 100:
+            what = ("is used up: the AI extras pause until next month" if cfg["stop_at_budget"] else
+                    "is used up; AI requests go on because stopping at the budget is switched off") \
+                if pct == 100 else f"is {pct}% used"
+            for a in db.rows("SELECT id FROM users WHERE role = 'admin' AND active = 1"):
+                notifications.notify(a["id"], "ai_budget", f"This month's AI budget ({budget:.2f}) {what} "
+                                     f"({used:.2f} spent).", "#/admin/ai", key=f"ai-budget:{month}:{pct}")
+
+
+def call_provider(provider: str, model: str, method: str, *args: Any, timeout: float, **kw: Any) -> Any:
+    """Call a provider through the guard, naming the model only to providers that can switch models."""
+    if model and registry.attribute(provider, "supports_model_choice", False):
+        kw["model"] = model
+    return registry.call(provider, method, *args, timeout=timeout, **kw)
+
+
+def _sent_message(m: Message) -> dict:
+    """A message as the admin's "What was sent" shows it: images are named with their size, not stored."""
+    out = {"role": m.role, "content": m.content}
+    if m.images:
+        out["images"] = [f"{u.split(';', 1)[0].removeprefix('data:')} image, {len(u) * 3 // 4 // 1024 + 1} KB"
+                         for u in m.images]
+    return out
+
+
 def submit(user: dict, p: Prepared, wait_s: float = 2.0) -> dict:
     """Start (or find) the request for these facts and return the suggestion, waiting up to `wait_s` for it."""
     cfg = settings()
-    provider = cfg["provider"] if p.answer_now is None else ""
+    routes = route(p.feature, cfg, p.local) if p.answer_now is None else []
+    provider = routes[0][0] if routes else ""
     key = _key(user, p, provider)
     _expire_stale(cfg)
-    sent = {"params": p.params, "messages": [m.to_dict() for m in p.messages], "max_tokens": p.max_tokens,
-            "send": {k: cfg[k] for k in SEND_OPTIONS}}
+    sent = {"params": p.params, "messages": [_sent_message(m) for m in p.messages], "max_tokens": p.max_tokens,
+            "send": {k: cfg[k] for k in SEND_OPTIONS}, "local_only": p.local}
     with db.tx():
         row = db.one("SELECT * FROM ai_suggestions WHERE dedupe_key = ? AND status IN ('pending', 'ready') AND "
                      "decision = '' ORDER BY id DESC LIMIT 1", (key,))
         if row:
             return view(row, user)
+        if p.answer_now is None:
+            check_budget(cfg)
         waiting = db.scalar("SELECT COUNT(*) FROM ai_suggestions WHERE created_by = ? AND status = 'pending'",
                             (user["id"],))
         if p.answer_now is None and waiting >= MAX_WAITING_PER_USER:
@@ -249,7 +472,8 @@ def submit(user: dict, p: Prepared, wait_s: float = 2.0) -> dict:
             "result_json": json.dumps(p.answer_now) if p.answer_now is not None else "{}",
             "created_by": user["id"], "created_at": now, "finished_at": now if p.answer_now is not None else None})
     if p.answer_now is None:
-        fut = _pool.submit(_run, sid, p, provider, int(cfg["timeout_s"]), user)
+        job = cfg["jobs"].get(p.feature) or JOB_DEFAULT
+        fut = _pool.submit(_run, sid, p, routes, int(job["timeout_s"] or cfg["timeout_s"]), user)
         with _flock:
             _futures[sid] = fut
         fut.add_done_callback(lambda _f, s=sid: _forget(s))
@@ -265,31 +489,56 @@ def _forget(sid: int) -> None:
         _futures.pop(sid, None)
 
 
-def _run(sid: int, p: Prepared, provider: str, timeout_s: int, user: dict) -> None:
-    """In a background thread: ask the provider through the guard, read the answer, store the outcome."""
+def _run(sid: int, p: Prepared, routes: list[tuple[str, str, bool]], timeout_s: int, user: dict) -> None:
+    """In a background thread: ask the provider (then the fallback) through the guard, read the answer and store
+    the outcome. An answer that does not fit is asked for once more, then dropped."""
     try:
-        try:
-            comp = registry.call(provider, "complete", p.messages, max_tokens=p.max_tokens, temperature=0.1,
-                                 json_mode=p.json_mode, timeout=timeout_s)
-            if not isinstance(comp, Completion) or not isinstance(comp.text, str):
-                raise AddinError("The AI provider answered in a form Kosha does not understand.")
-        except AddinError as e:      # AiError from the provider, or the guard: switched off, too slow, crashed
-            _finish(sid, "failed", error=UNREACHABLE, message=str(e))
-            return
-        try:
-            result = p.interpret(comp)
-        except Exception as e:  # noqa: BLE001 - the model's answer did not fit; say so plainly
-            log.info("AI answer for suggestion %s could not be read: %s", sid, e)
-            _finish(sid, "failed", error=UNREADABLE, message=f"Answer not usable: {e}", model=comp.model)
-            return
-        if comp.truncated:
-            result["note"] = "The answer was cut off at its length limit, so it may be incomplete."
-        _finish(sid, "ready", result=result, model=comp.model)
-        if p.on_ready:
+        error, message, model_seen = UNREACHABLE, "", ""
+        for provider, model, fallback in routes:
+            for attempt in (1, 2):
+                t0 = time.monotonic()
+                try:
+                    comp = call_provider(provider, model, "complete", p.messages, max_tokens=p.max_tokens,
+                                         temperature=0.1 if attempt == 1 else 0.0, json_mode=p.json_mode,
+                                         timeout=timeout_s)
+                    if not isinstance(comp, Completion) or not isinstance(comp.text, str):
+                        raise AddinError("The AI provider answered in a form Kosha does not understand.")
+                except AddinError as e:  # AiError from the provider, or the guard: switched off, too slow, crashed
+                    log_call(p.feature, provider, model, user, ms=int((time.monotonic() - t0) * 1000), ok=False,
+                             fallback=fallback, error=str(e), suggestion_id=sid)
+                    error, message = UNREACHABLE, str(e)
+                    break                                   # on to the fallback, if any
+                model_seen = comp.model or model
+                log_call(p.feature, provider, model_seen, user, usage=comp.usage,
+                         ms=int((time.monotonic() - t0) * 1000), fallback=fallback, suggestion_id=sid)
+                try:
+                    result = p.interpret(comp)
+                except Exception as e:  # noqa: BLE001 - the model's answer did not fit; ask once more, then say so
+                    log.info("AI answer for suggestion %s could not be read (try %s): %s", sid, attempt, e)
+                    error, message = UNREADABLE, f"Answer not usable: {e}"
+                    continue
+                if comp.truncated:
+                    result["note"] = "The answer was cut off at its length limit, so it may be incomplete."
+                if fallback:
+                    result["fallback"] = f"Answered by the fallback ({model_seen or provider})."
+                _finish(sid, "ready", result=result, model=model_seen)
+                if p.on_ready:
+                    try:
+                        p.on_ready(result, {"id": sid, "provider": provider, "user": user})
+                    except Exception:
+                        log.exception("Follow-up of AI suggestion %s failed; the suggestion itself is kept", sid)
+                return
+            if error == UNREADABLE:
+                break                                       # two unusable answers: dropped, not sent elsewhere
+        if error == UNREACHABLE and p.on_unreachable:
             try:
-                p.on_ready(result, {"id": sid, "provider": provider, "user": user})
-            except Exception:
-                log.exception("Follow-up of AI suggestion %s failed; the suggestion itself is kept", sid)
+                result = p.on_unreachable()
+            except Exception as e:  # noqa: BLE001 - the server-side fallback failed too
+                message = f"{message} The fallback on the Kosha server failed too: {e}"
+            else:
+                _finish(sid, "ready", result=result, model="kosha-server")
+                return
+        _finish(sid, "failed", error=error, message=message, model=model_seen)
     except Exception:
         log.exception("AI request %s failed inside Kosha", sid)
         try:
@@ -339,9 +588,9 @@ def _decide(sid: int, user: dict, decision: str) -> None:
                (decision, user["id"], db.now(), sid))
 
 
-def _ready_row(sid: int, feature: str) -> dict:
+def _ready_row(sid: int, feature: str | tuple[str, ...]) -> dict:
     row = db.one("SELECT * FROM ai_suggestions WHERE id = ?", (sid,))
-    if not row or row["feature"] != feature:
+    if not row or row["feature"] not in ((feature,) if isinstance(feature, str) else feature):
         raise not_found("That AI suggestion does not exist.")
     if row["status"] != "ready":
         raise conflict("This suggestion has no answer to accept yet.", "ai_not_ready")
@@ -369,6 +618,61 @@ def recent(limit: int = 30) -> list[dict]:
     for r in rows:
         r["user"] = names.get(r.pop("created_by"), "?")
     return rows
+
+
+def usage(month: str | None = None) -> dict:
+    """Admin › AI: calls, tokens and cost per job this month (and the last six months), and how often people
+    accepted what each job suggested (specification 14.6)."""
+    cfg = settings()
+    month = _month(month)
+    jobs = db.rows("SELECT job, COUNT(*) AS calls, SUM(1 - ok) AS failed, SUM(fallback) AS fallbacks, "
+                   "SUM(prompt_tokens) AS prompt_tokens, SUM(completion_tokens) AS completion_tokens, "
+                   "SUM(cost) AS cost, AVG(ms) AS avg_ms FROM ai_calls WHERE at LIKE ? GROUP BY job ORDER BY job",
+                   (f"{month}%",))
+    for j in jobs:
+        j["cost"] = round(float(j["cost"] or 0), 4)
+        j["avg_ms"] = int(j["avg_ms"] or 0)
+    months = db.rows("SELECT SUBSTR(at, 1, 7) AS month, COUNT(*) AS calls, SUM(cost) AS cost FROM ai_calls "
+                     "GROUP BY SUBSTR(at, 1, 7) ORDER BY month DESC LIMIT 6")
+    for m in months:
+        m["cost"] = round(float(m["cost"] or 0), 4)
+    accept = []
+    for r in db.rows("SELECT feature, SUM(CASE WHEN decision IN ('accepted', 'edited') THEN 1 ELSE 0 END) AS accepted, "
+                     "SUM(CASE WHEN decision = 'edited' THEN 1 ELSE 0 END) AS edited, "
+                     "SUM(CASE WHEN decision = 'dismissed' THEN 1 ELSE 0 END) AS dismissed "
+                     "FROM ai_suggestions WHERE status = 'ready' GROUP BY feature ORDER BY feature"):
+        decided = int(r["accepted"] or 0) + int(r["dismissed"] or 0)
+        accept.append({"feature": r["feature"], "accepted": int(r["accepted"] or 0), "edited": int(r["edited"] or 0),
+                       "dismissed": int(r["dismissed"] or 0),
+                       "rate": round(100.0 * int(r["accepted"] or 0) / decided, 1) if decided else None})
+    budget = float(cfg["monthly_budget"] or 0)
+    used = spent(month)
+    return {"month": month, "jobs": jobs, "months": months, "acceptance": accept, "budget": budget,
+            "spent": round(used, 4), "percent": round(100.0 * used / budget, 1) if budget else None,
+            "stop_at_budget": cfg["stop_at_budget"]}
+
+
+def local_reason(item: dict | None = None, doc: dict | None = None, cfg: dict | None = None) -> str:
+    """Why this part or file may go only to the AI server inside the company ('' when it may go anywhere)."""
+    lo = (cfg or settings())["local_only"]
+    if item:
+        if lo["restricted"] and item.get("restricted"):
+            return "a restricted part"
+        props = json.loads(item.get("props_json") or "{}") if isinstance(item.get("props_json"), str) else {}
+        cat = str(props.get("category") or (item.get("part_number") or "").split("-", 1)[0]).upper()
+        if cat and cat in lo["categories"]:
+            return f"category {cat}"
+        if item.get("customer") and item["customer"] in lo["customers"]:
+            return f"customer {item['customer']}"
+    if doc and lo["folders"]:
+        from .lifecycle import folder_path
+        ids = {f["id"] for f in folder_path(doc.get("folder_id"))} if doc.get("folder_id") else set()
+        if ids & set(lo["folders"]):
+            return "a local-only folder"
+    if doc and not item and doc.get("item_id"):
+        it = db.one("SELECT * FROM items WHERE id = ?", (doc["item_id"],))
+        return local_reason(it, None, cfg) if it else ""
+    return ""
 
 
 def sent(sid: int) -> dict:
@@ -574,7 +878,7 @@ def prepare_classification(user: dict, subject: str, subject_id: int) -> Prepare
         return read_classification(_obj(comp.text), current, cats, mats, candidates, target)
 
     return Prepared("classify", subject, subject_id, "", _hash(request), messages, interpret, max_tokens=500,
-                    params={"subject": subject, "id": subject_id})
+                    params={"subject": subject, "id": subject_id}, local=bool(local_reason(item, doc, cfg)))
 
 
 def read_classification(ans: dict, current: dict, cats: list[dict], mats: list[dict], candidates: list[dict],
@@ -632,7 +936,7 @@ def accept_classification(user: dict, sid: int, chosen: dict, mark_standard: boo
     """Apply the fields the person ticked (with their edits) to the part, in one transaction with the audit line."""
     if ROLE_LEVEL[user["role"]] < ROLE_LEVEL["engineer"]:
         raise forbidden("You have view-only access.")
-    row = _ready_row(sid, "classify")
+    row = _ready_row(sid, ("classify", "ocr"))
     result = json.loads(row["result_json"] or "{}")
     target = result.get("target") or {}
     suggested = {f["key"]: f["suggested"] for f in result.get("fields") or []}
@@ -683,7 +987,8 @@ def accept_classification(user: dict, sid: int, chosen: dict, mark_standard: boo
         _decide(sid, user, "edited" if edited else "accepted")
         what = list(values) + (["standard part " + std["part_number"]] if std else [])
         db.audit(user["id"], "ai_accept", entity, eid,
-                 f"Classification suggestion #{sid} {'accepted with changes' if edited else 'accepted'}: "
+                 f"{'Title-block reading' if row['feature'] == 'ocr' else 'Classification'} suggestion #{sid} "
+                 f"{'accepted with changes' if edited else 'accepted'}: "
                  f"{', '.join(what)}")
     return view(db.one("SELECT * FROM ai_suggestions WHERE id = ?", (sid,)), user)
 
@@ -786,8 +1091,14 @@ def prepare_changelog(user: dict, subject: str, subject_id: int, revision: str =
                                        "sections_json": json.dumps(result["sections"]), "status": "ready",
                                        "created_by": info["user"]["id"], "created_at": db.now()})
 
+    if subject == "document":
+        local = bool(local_reason(None, d, cfg))
+    else:
+        local = any(local_reason(None, x, cfg) for x in db.rows(
+            "SELECT d.* FROM co_items ci JOIN documents d ON d.id = ci.document_id WHERE ci.co_id = ?", (co["id"],)))
     return Prepared("changelog", subject, subject_id, rev, _hash(h, note), messages, interpret, max_tokens=900,
-                    params={"subject": subject, "id": subject_id, "revision": rev, "note": note}, on_ready=on_ready)
+                    params={"subject": subject, "id": subject_id, "revision": rev, "note": note}, on_ready=on_ready,
+                    local=local)
 
 
 def record_changelog_accept(user: dict, sid: Any, subject: str, subject_id: int, revision: str,
@@ -965,12 +1276,26 @@ def prepare_question(user: dict, question: str) -> Prepared:
     cfg = settings()
     hits = retrieve(user, q, int(cfg["max_records"]))
     names = {r["id"]: r["full_name"] for r in db.rows("SELECT id, full_name FROM users")} if cfg["send_people"] else {}
+    local, left_out = False, 0
+    for f in hits:
+        if f["kind"] in ("item", "document") and local_reason(f["row"] if f["kind"] == "item" else None,
+                                                              f["row"] if f["kind"] == "document" else None, cfg):
+            if cfg["local_provider"]:
+                local = True
+            else:
+                f["skip"] = True
+                left_out += 1
+    hits = [f for f in hits if not f.get("skip")]
     records = []
     for i, f in enumerate(hits, 1):
         label, link, line = _describe(f["kind"], f["row"], cfg, names)
         records.append({"ref": f"R{i}", "kind": f["kind"], "id": f["row"]["id"], "label": label, "link": link,
                         "line": line})
     base = {"question": q, "records": [{k: r[k] for k in ("ref", "kind", "id", "label", "link")} for r in records]}
+    if left_out:
+        base["left_out"] = (f"{left_out} matching record{'s' if left_out > 1 else ''} marked local only "
+                            f"{'were' if left_out > 1 else 'was'} left out, because no AI server inside the company "
+                            "is set up.")
     context = "\n".join(f"[{r['ref']}] {r['line']}" for r in records)
     messages = conversation(ASK_SYSTEM, f"Records:\n{context}\n\nQuestion: {q}")
     by_ref = {r["ref"]: r for r in records}
@@ -1001,4 +1326,4 @@ def prepare_question(user: dict, question: str) -> Prepared:
         answer_now = {**base, "answer": NO_RECORDS, "known": False, "sources": []}
     return Prepared("ask", "question", None, "", _hash(q, [(r["kind"], r["id"], r["line"]) for r in records]),
                     messages if records else [], interpret, max_tokens=600, json_mode=True,
-                    params={"question": q}, shared=False, answer_now=answer_now)
+                    params={"question": q}, shared=False, answer_now=answer_now, local=local)

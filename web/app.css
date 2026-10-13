@@ -674,6 +674,10 @@ dialog.dlg::backdrop { background: var(--backdrop); }
 .ai-box .tbl th { background: transparent; }
 .ai-box .tbl td { height: auto; padding: 7px 8px; vertical-align: top; }
 .ai-box .tbl td:first-child { padding-top: 14px; }
+.check-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.check-list .row { gap: 8px; }
+.sev-ok { color: var(--ok); }
+.ai-usage td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .ai-chip { background: var(--ai-bg); color: var(--ai-ink); box-shadow: inset 0 0 0 1px var(--ai-line); }
 .ai-spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--ai-line); border-top-color: var(--ai-spin); animation: ai-spin 0.9s linear infinite; flex: none; }
 @keyframes ai-spin { to { transform: rotate(360deg); } }

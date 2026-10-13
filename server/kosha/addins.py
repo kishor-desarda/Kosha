@@ -248,6 +248,16 @@ class Registry:
         a.instance = cls(ctx)
         return a.instance
 
+    def attribute(self, addin_id: str, name: str, default: Any = None) -> Any:
+        """A class attribute of an enabled server add-in (a capability flag such as ``supports_model_choice``)."""
+        a = self.get(addin_id)
+        if not a or a.status != "enabled" or not a.manifest or "server" not in a.manifest.entry_points:
+            return default
+        try:
+            return getattr(self._instance(a), name, default)
+        except Exception:      # an add-in that cannot even load has no capabilities
+            return default
+
     def call(self, addin_id: str, method: str, *args: Any, timeout: float | None = None, **kwargs: Any) -> Any:
         """Call one method of an enabled server add-in, safely. Raises AddinError with a plain message."""
         a = self._require(addin_id)

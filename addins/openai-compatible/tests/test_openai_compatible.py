@@ -18,7 +18,7 @@ uvicorn = pytest.importorskip("uvicorn")
 import fake_chat as FC  # noqa: E402
 from kosha_openai_compat.provider import DEFAULT_BASE_URL, OpenAICompatibleProvider  # noqa: E402
 from kosha_sdk import AddinContext  # noqa: E402
-from kosha_sdk.ai import AiError, AiNotSupported, conversation  # noqa: E402
+from kosha_sdk.ai import AiError, AiNotSupported, Message, conversation  # noqa: E402
 from kosha_sdk.manifest import load_manifest  # noqa: E402
 from kosha_sdk.testing import check_ai_provider, check_manifest  # noqa: E402
 
@@ -145,3 +145,30 @@ def test_failures_are_plain_messages_and_never_show_the_key(base):
     assert "Cannot reach the AI server" in str(e.value) and "SECRET-KEY" not in str(e.value)
     with pytest.raises(AiError, match="not set"):
         provider(base, model="").complete(conversation("s", "u"))
+
+
+def test_a_job_can_name_its_own_model_and_send_a_picture(base):
+    p = provider(base)
+    assert p.supports_model_choice
+    pic = "data:image/png;base64,iVBORw0KGgo="
+    c = p.complete([Message("system", "Read the title block. Answer in JSON."),
+                    Message("user", "Title block:", images=(pic,))], model="kosha-vision")
+    assert c.model == "kosha-vision"
+    sent = FC.STATE["requests"][-1]["body"]
+    assert sent["model"] == "kosha-vision"
+    assert sent["messages"][1]["content"] == [{"type": "text", "text": "Title block:"},
+                                              {"type": "image_url", "image_url": {"url": pic}}]
+    assert sent["messages"][0]["content"] == "Read the title block. Answer in JSON."      # plain text stays plain
+    with pytest.raises(AiError, match="does not know the model 'nope'"):
+        p.complete(conversation("x", "y"), model="nope")
+
+
+def test_speech_to_text(base):
+    with pytest.raises(AiNotSupported, match="No speech model"):
+        provider(base).transcribe(b"RIFF....", mime="audio/wav")
+    p = provider(base, speech_model="kosha-whisper")
+    assert p.transcribe(b"\x1aE\xdf\xa3 webm bytes", mime="audio/webm;codecs=opus", language="hi") == \
+        "32 teeth wala gear ka drawing dikhao"
+    r = FC.STATE["requests"][-1]
+    assert r["form"] == {"model": "kosha-whisper", "response_format": "json", "language": "hi"}
+    assert (r["file"], r["size"], r["type"]) == ("speech.webm", 15, "audio/webm;codecs=opus")

@@ -14,7 +14,7 @@ from typing import Any, Sequence
 
 from kosha_sdk import AddinContext, Health
 from kosha_sdk.ai import AiError, AiNotSupported, AiProvider, Completion, Message
-from kosha_sdk.http import HttpError
+from kosha_sdk.http import HttpError, multipart_body
 
 DEFAULT_BASE_URL = "http://localhost:11434/v1"
 
@@ -33,12 +33,15 @@ def _detail(e: HttpError) -> str:
 
 
 class OpenAICompatibleProvider(AiProvider):
+    supports_model_choice = True        # Kosha may name a model per AI job; the settings' model is the default
+
     def __init__(self, ctx: AddinContext):
         super().__init__(ctx)
         s = ctx.settings
         self.base = (s.get("base_url") or DEFAULT_BASE_URL).strip().rstrip("/")
         self.model = (s.get("model") or "").strip()
         self.embedding_model = (s.get("embedding_model") or "").strip()
+        self.speech_model = (s.get("speech_model") or "").strip()
         self.json_mode = bool(s.get("json_mode", True))
         key = (s.get("api_key") or "").strip()
         headers = {"Authorization": f"Bearer {key}"} if key else {}
@@ -52,7 +55,7 @@ class OpenAICompatibleProvider(AiProvider):
         self._no_format = False      # the server refused response_format once: do not send it again
 
     # ------------------------------------------------------------------------------------------ errors --
-    def _plain(self, e: HttpError, what: str = "request") -> AiError:
+    def _plain(self, e: HttpError, what: str = "request", model: str = "") -> AiError:
         st = e.status
         if st is None:
             return AiError(f"Cannot reach the AI server at {self._host}. Check that it is running and that the address "
@@ -60,7 +63,7 @@ class OpenAICompatibleProvider(AiProvider):
         if st in (401, 403):
             return AiError(f"The AI server refused the API key (HTTP {st}). Check the key in the settings.", status=st)
         if st == 404:
-            return AiError(f"The AI server does not know the model '{self.model}', or the address is wrong (HTTP 404). "
+            return AiError(f"The AI server does not know the model '{model or self.model}', or the address is wrong (HTTP 404). "
                            "The address usually ends in /v1; check the model name as the server lists it.", status=st)
         if st == 429:
             return AiError("The AI server is busy or its usage limit is reached (HTTP 429). Try again later.", status=st)
@@ -95,12 +98,13 @@ class OpenAICompatibleProvider(AiProvider):
         return Health.up(f"Connected to {self._host}; model {self.model} is available.{plain}")
 
     def complete(self, messages: Sequence[Message], *, max_tokens: int = 512, temperature: float = 0.2,
-                 json_mode: bool = False) -> Completion:
+                 json_mode: bool = False, model: str | None = None) -> Completion:
         if self._http is None:
             raise AiError("The address of the AI server is not set.")
-        if not self.model:
+        model = (model or self.model or "").strip()
+        if not model:
             raise AiError("The model name is not set.")
-        body: dict[str, Any] = {"model": self.model, "messages": [m.to_dict() for m in messages],
+        body: dict[str, Any] = {"model": model, "messages": [m.to_dict() for m in messages],
                                 "max_tokens": int(max_tokens), "temperature": float(temperature), "stream": False}
         if json_mode and self.json_mode and not self._no_format:
             body["response_format"] = {"type": "json_object"}
@@ -113,9 +117,9 @@ class OpenAICompatibleProvider(AiProvider):
                 try:
                     r = self._http.post("/chat/completions", body)
                 except HttpError as e2:
-                    raise self._plain(e2) from None
+                    raise self._plain(e2, model=model) from None
             else:
-                raise self._plain(e) from None
+                raise self._plain(e, model=model) from None
         try:
             j = r.json()
             choice = (j.get("choices") or [])[0]
@@ -126,7 +130,7 @@ class OpenAICompatibleProvider(AiProvider):
             content = "".join(str(p.get("text", "")) for p in content if isinstance(p, dict))
         usage = {k: int(v) for k, v in (j.get("usage") or {}).items()
                  if k in ("prompt_tokens", "completion_tokens", "total_tokens") and isinstance(v, (int, float))}
-        return Completion(text=str(content or ""), model=str(j.get("model") or self.model),
+        return Completion(text=str(content or ""), model=str(j.get("model") or model),
                           finish_reason=str(choice.get("finish_reason") or "stop"), usage=usage)
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
@@ -146,3 +150,26 @@ class OpenAICompatibleProvider(AiProvider):
         if len(out) != len(texts):
             raise AiError("The AI server returned a different number of embeddings than texts.")
         return out
+
+    def transcribe(self, audio: bytes, *, mime: str = "audio/webm", language: str = "",
+                   model: str | None = None) -> str:
+        """Speech to text through ``/audio/transcriptions`` (Whisper-type models)."""
+        model = (model or self.speech_model or "").strip()
+        if not model:
+            raise AiNotSupported("No speech model is set for this AI provider.")
+        if self._http is None:
+            raise AiError("The address of the AI server is not set.")
+        ext = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/wav": "wav", "audio/x-wav": "wav", "audio/mpeg": "mp3",
+               "audio/mp4": "m4a"}.get(mime.split(";")[0].strip(), "webm")
+        fields = {"model": model, "response_format": "json"}
+        if language:
+            fields["language"] = language
+        try:
+            r = self._http.request("POST", "/audio/transcriptions",
+                                   raw=multipart_body(fields, {"file": (f"speech.{ext}", audio, mime)}))
+        except HttpError as e:
+            raise self._plain(e, "speech request", model=model) from None
+        try:
+            return str(r.json().get("text") or "").strip()
+        except (ValueError, AttributeError):
+            raise AiError("The AI server answered the speech request in a form Kosha does not understand.") from None

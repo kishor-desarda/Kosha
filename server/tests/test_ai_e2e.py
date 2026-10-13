@@ -40,7 +40,8 @@ def _poll(client, sug, timeout=15):
 def test_ai_is_off_until_the_admin_switches_it_on(server):
     asha = server.client("asha")
     st = asha.call("GET", "/api/ai/status")
-    assert st == {"on": False, "features": {"classify": False, "changelog": False, "ask": False}, "provider": "",
+    assert st == {"on": False, "features": {"classify": False, "changelog": False, "ask": False, "drawing_check": False,
+                                            "duplicates": False, "ocr": False, "voice": False}, "provider": "",
                   "why": ""}
     r = asha.call("POST", "/api/ai/ask", {"question": "Which shaft?"}, expect=409)
     assert r["code"] == "ai_off" and "switched off" in r["error"]
@@ -67,7 +68,8 @@ def test_ai_is_off_until_the_admin_switches_it_on(server):
 
     admin.call("POST", f"/api/addins/{FAKE}/enable")
     st = asha.call("GET", "/api/ai/status")
-    assert st["on"] and st["features"] == {"classify": True, "changelog": True, "ask": True}
+    assert st["on"] and st["features"] == {"classify": True, "changelog": True, "ask": True, "drawing_check": False,
+                                           "duplicates": False, "ocr": False, "voice": False}
     assert st["provider"] == "Fake AI"
     t = admin.call("POST", "/api/ai/test")
     assert t["ok"] and '"OK"' in t["message"]
@@ -248,7 +250,8 @@ def test_switching_a_feature_off_hides_it_again(server):
     admin, asha = server.client(), server.client("asha")
     admin.call("PUT", "/api/ai/settings", {"features": {"ask": False}})
     st = asha.call("GET", "/api/ai/status")
-    assert st["features"] == {"classify": True, "changelog": True, "ask": False}
+    assert st["features"] == {"classify": True, "changelog": True, "ask": False, "drawing_check": False,
+                              "duplicates": False, "ocr": False, "voice": False}
     asha.call("POST", "/api/ai/ask", {"question": "Which shaft?"}, expect=409)
     admin.call("PUT", "/api/ai/settings", {"provider": ""})
     assert not asha.call("GET", "/api/ai/status")["on"]

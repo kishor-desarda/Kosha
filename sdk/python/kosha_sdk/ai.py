@@ -44,18 +44,28 @@ class AiNotSupported(AiError):
 
 @dataclass(frozen=True)
 class Message:
-    """One turn of the conversation: `system` (instructions), `user` (Kosha's request) or `assistant`."""
+    """One turn of the conversation: `system` (instructions), `user` (Kosha's request) or `assistant`.
+
+    `images` are pictures for a vision model, as data URLs (``data:image/png;base64,...``): for example the
+    title-block crop of a scanned drawing. A provider whose service cannot see pictures raises AiNotSupported."""
     role: str
     content: str
+    images: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.role not in ROLES:
             raise ValueError(f"role must be one of {', '.join(ROLES)}, not {self.role!r}")
         if not isinstance(self.content, str):
             raise ValueError("content must be text")
+        if any(not (isinstance(i, str) and i.startswith("data:image/")) for i in self.images):
+            raise ValueError("images must be data URLs of pictures (data:image/...)")
 
-    def to_dict(self) -> dict[str, str]:
-        return {"role": self.role, "content": self.content}
+    def to_dict(self) -> dict[str, Any]:
+        """The OpenAI-style message: plain text, or text and pictures as content parts."""
+        if not self.images:
+            return {"role": self.role, "content": self.content}
+        return {"role": self.role, "content": [{"type": "text", "text": self.content}] +
+                [{"type": "image_url", "image_url": {"url": i}} for i in self.images]}
 
 
 @dataclass(frozen=True)
@@ -108,7 +118,13 @@ def extract_json(text: str) -> Any:
 
 
 class AiProvider(ABC):
-    """Base class for AI providers. Subclasses get their settings and HTTP from the context."""
+    """Base class for AI providers. Subclasses get their settings and HTTP from the context.
+
+    Kosha gives each AI job its own model when the admin names one (Admin › AI › Jobs). A provider that can use a
+    model other than the one in its settings sets ``supports_model_choice = True`` and accepts ``model=`` in
+    ``complete`` and ``transcribe``; Kosha passes it only then."""
+
+    supports_model_choice = False
 
     def __init__(self, ctx: AddinContext):
         self.ctx = ctx
@@ -127,3 +143,8 @@ class AiProvider(ABC):
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         """One vector per text, in the same order. Optional."""
         raise AiNotSupported("This AI provider does not offer embeddings.")
+
+    def transcribe(self, audio: bytes, *, mime: str = "audio/webm", language: str = "") -> str:
+        """Speech to text (voice commands and notes in English, Hindi or a mix). Optional. `language` is a hint
+        such as "hi" or "en", or empty to let the service find out."""
+        raise AiNotSupported("This AI provider does not offer speech to text.")
