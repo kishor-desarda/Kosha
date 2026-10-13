@@ -53,6 +53,7 @@ a browser client, CAD and Office add-ins, and no per-user fees.
 | **Legacy import** | Imports a file share with a dry run and an Excel report, skips copies and junk files, keeps legacy revisions, and can be re-run safely. |
 | **Viewer** | DXF/DWG drawn in the browser with pan, zoom, measure and red/blue revision overlay; 3D models in a WebGL viewer; PDFs and images. |
 | **Sign-in** | Local accounts with paused sign-in after repeated failures, or company accounts through **LDAP / Active Directory** and **OpenID Connect** (Keycloak and other providers) add-ins. Directory groups map to Kosha roles; the local `admin` keeps working when the directory is down. See [directory sign-in](docs/directory-sign-in.md). |
+| **AI assistance (optional)** | Off until an admin switches it on. Suggests categories, materials and standard parts, drafts change logs from the measured changes, and answers questions from Kosha's own records with links (**Ask Kosha**), only from what the asking person may see. Nothing is saved until a person accepts it. Works with any OpenAI-compatible server, including local runners, through an add-in. See [AI assistance](docs/ai.md). |
 | **Themes** | Light, Dark, High contrast or *Same as my computer*, chosen by each person; text meets WCAG AA contrast in every theme. See [themes](docs/themes.md). |
 | **Add-ins** | Manifest, permissions approved by the admin, automatic switch-off of failing add-ins, settings forms generated from the manifest, Python SDK with conformance tests. |
 
@@ -288,12 +289,15 @@ The same suites run on every pull request in GitHub Actions.
 
 The full specification and the development guide are maintained alongside the project. In short:
 
-- **0.5 preview:** this release, plus the remaining open-source groundwork.
-- **1.0:** PostgreSQL, directory sign-in (LDAP / Active Directory, OpenID Connect), inputs library,
-  measured change logs, deviations, copy design, standard-parts library, AutoCAD add-in, themes
-  including dark mode.
-- **1.1 and later:** AI assistance that stays optional (classification, change-log drafts, ask-Kosha),
-  more ERP connectors, Office add-in, industry packs.
+- **0.5 preview (now):** everything in the table above. PostgreSQL, directory sign-in, the inputs library,
+  measured change logs, deviations, copy design, the standard-parts library, themes with dark mode, optional
+  AI assistance, the Office add-in, industry packs and the ERPNext, Odoo, Dolibarr and file-exchange
+  connectors are all in the code and tested.
+- **1.0:** pilots at real design offices, then hardening: the newer features proven on PostgreSQL in daily
+  use, the Dolibarr connector checked against live Dolibarr versions, the AI prompts tuned on real models,
+  and the AutoCAD and GStarCAD add-ins out of preview.
+- **Later:** more ERP connectors and CAD add-ins, AI features that use embeddings (similar-part search),
+  and a documentation site.
 
 ## Frequently asked questions
 
@@ -327,6 +331,10 @@ with verified backups and a documented [export format](docs/export-format.md) so
 **Can people sign in with their company accounts?**
 Yes. The LDAP add-in works with Active Directory and OpenLDAP, the OpenID Connect add-in with Keycloak and other
 standard providers. Directory groups decide each person's role.
+
+**Does Kosha need AI or the cloud?**
+No. AI assistance is optional and off by default. When it is on, it can use a model running on your own
+server, and the admin chooses exactly what may be sent.
 
 **Is there an API?**
 Yes. Every Kosha server describes its REST API at `/api/docs` (OpenAPI at `/api/openapi.json`), and the

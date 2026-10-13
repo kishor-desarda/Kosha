@@ -9,6 +9,7 @@ Key facts:
 - Roles: viewer, engineer, approver, admin.
 - Every server describes its REST API at /api/docs and /api/openapi.json.
 - Add-ins (ERP connectors, notifiers, CAD add-ins, file types, industry packs) run behind a guard with time-outs and permissions an admin approves.
+- Optional AI assistance (off by default; any OpenAI-compatible server, including local runners): classification suggestions, change-log drafts and Ask Kosha; nothing is saved until a person accepts it.
 - Themes: Light, Dark, High contrast and "Same as my computer", chosen per user.
 - Demo data belongs to the invented company Demo Engineering (mixers, conveyors, pumps).
 
@@ -19,6 +20,7 @@ Key facts:
 - [Export format](https://github.com/kishor-desarda/Kosha/blob/main/docs/export-format.md): how to take every record and file out of Kosha
 - [Kosha Desktop](https://github.com/kishor-desarda/Kosha/blob/main/docs/desktop.md): Windows tray program and Explorer commands for Office files, PDFs and images
 - [Directory sign-in](https://github.com/kishor-desarda/Kosha/blob/main/docs/directory-sign-in.md): LDAP / Active Directory and OpenID Connect
+- [AI assistance](https://github.com/kishor-desarda/Kosha/blob/main/docs/ai.md): what is sent, privacy, running fully local
 - [Themes](https://github.com/kishor-desarda/Kosha/blob/main/docs/themes.md): Light, Dark, High contrast
 - [Office add-in](https://github.com/kishor-desarda/Kosha/blob/main/docs/office-addin.md): task pane for Word, Excel and PowerPoint
 - [Architecture decisions](https://github.com/kishor-desarda/Kosha/blob/main/docs/adr): one record per decision
@@ -29,6 +31,7 @@ Key facts:
 - [Odoo connector](https://github.com/kishor-desarda/Kosha/blob/main/addins/odoo/README.md): example ERP connector add-in
 - [Dolibarr connector](https://github.com/kishor-desarda/Kosha/blob/main/addins/dolibarr/README.md) and [file-exchange connector](https://github.com/kishor-desarda/Kosha/blob/main/addins/file-exchange/README.md): file layout for any ERP
 - [LDAP add-in](https://github.com/kishor-desarda/Kosha/blob/main/addins/ldap/README.md) and [OpenID Connect add-in](https://github.com/kishor-desarda/Kosha/blob/main/addins/oidc/README.md): sign-in providers
+- [OpenAI-compatible AI provider](https://github.com/kishor-desarda/Kosha/blob/main/addins/openai-compatible/README.md): AI provider add-in
 
 ## Project
 
