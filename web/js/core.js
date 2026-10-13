@@ -172,6 +172,7 @@ export async function api(method, path, body, opts = {}) {
   if (S.token) opt.headers.Authorization = `Bearer ${S.token}`;
   if (opts.background) opt.headers['X-Kosha-Background'] = '1';
   if (body instanceof FormData) opt.body = body;
+  else if (body instanceof Blob) { opt.headers['Content-Type'] = 'application/octet-stream'; opt.body = body; }
   else if (body !== undefined) { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
   let r;
   try { r = await fetch(path, opt); } catch (e) { throw new ApiError(leaving ? '' : 'Cannot reach the Kosha server. Check your network connection.', 0, leaving ? 'aborted' : 'network'); }
@@ -203,6 +204,31 @@ export function upload(path, form, onProgress) {
     x.onerror = () => reject(new ApiError('Upload failed: cannot reach the server.', 0, 'network'));
     x.send(form);
   });
+}
+
+// Big files go in 8 MB pieces that resume after a network break; the server checks the whole file's SHA-256
+// before it keeps it. finish: { folder_id, path?, comment, keep_checked_out } or { document_id, ... }.
+export const RESUMABLE_FROM = 32 * 1024 * 1024;
+export async function resumableUpload(file, finish, onProgress = () => {}) {
+  const { sha256File } = await import('./sha256.js');
+  const sha256 = await sha256File(file, p => onProgress(0.1 * p));      // reading the file: the first tenth
+  const up = await post('/api/uploads', { filename: file.name, size: file.size, sha256 });
+  let at = up.received;
+  let tries = 0;
+  while (at < file.size) {
+    const piece = file.slice(at, at + up.piece_size);
+    try {
+      at = (await api('PUT', `/api/uploads/${up.id}?offset=${at}`, piece)).received;
+      tries = 0;
+      onProgress(0.1 + 0.9 * at / file.size);
+    } catch (e) {
+      if (e.status && e.code !== 'wrong_offset') throw e;
+      if (++tries > 8) throw new ApiError(`The connection keeps breaking. ${Math.round(100 * at / file.size)}% of ${file.name} arrived; nothing was added yet. Try again when the network is steady.`, 0, 'network');
+      await new Promise(r => setTimeout(r, Math.min(30000, 1000 * 2 ** tries)));      // wait, then ask how far it got
+      try { at = (await get(`/api/uploads/${up.id}`)).received; } catch (e2) { /* still offline: try again */ }
+    }
+  }
+  return post(`/api/uploads/${up.id}/finish`, finish);
 }
 
 export function fileUrl(id, kind = 'preview', version) {

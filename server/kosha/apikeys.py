@@ -38,7 +38,7 @@ SCOPES = [f"{a}:{m}" for a in AREAS for m in ("read", "write")]
 # first path segment after /api/ -> area
 PATH_AREA = {
     "items": "items", "oems": "items", "oem-refs": "items", "numbering": "items", "numbers": "items",
-    "families": "items", "documents": "files", "folders": "files", "uploads": "files", "files": "files",
+    "families": "items", "documents": "files", "folders": "files", "uploads": "files", "files": "files", "recycle-bin": "files",
     "boms": "boms", "changes": "changes", "change-requests": "changes", "deviations": "changes",
     "inputs": "inputs", "projects": "inputs", "collections": "inputs", "discussions": "discussions",
     "search": "search", "meta": "search", "library": "search", "settings": "search", "ai": "ai",

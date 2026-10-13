@@ -178,6 +178,8 @@ def api(method: str, path: str, role: str | None = "viewer", auth: bool = True):
                     elif ctype.startswith("application/json"):
                         raw = await request.body()
                         body = json.loads(raw) if raw else {}
+                    elif ctype.startswith("application/octet-stream"):     # a piece of a resumable upload
+                        body = await request.body()
                     else:
                         raw = await request.body()
                         if raw:
