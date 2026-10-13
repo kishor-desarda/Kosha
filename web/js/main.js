@@ -9,6 +9,7 @@ import { renderChanges, renderChange } from './changes.js';
 import { renderErp } from './erp.js';
 import { renderCommon } from './common.js';
 import { renderAdmin, renderSearch } from './admin.js';
+import { renderLibrary } from './library.js';
 
 const NAV = [
   ['home', 'Home', 'home', '#/home'],
@@ -17,6 +18,7 @@ const NAV = [
   ['changes', 'Changes', 'change', '#/changes'],
   ['erp', 'ERP sync', 'erp', '#/erp'],
   ['common', 'Duplicates', 'common', '#/common'],
+  ['library', 'Library', 'grid', '#/library'],
 ];
 
 const ROUTES = [
@@ -30,6 +32,7 @@ const ROUTES = [
   [/^#\/change\/(\d+)$/, 'changes', () => renderChange],
   [/^#\/erp$/, 'erp', () => renderErp],
   [/^#\/common$/, 'common', () => renderCommon],
+  [/^#\/library$/, 'library', () => renderLibrary],
   [/^#\/admin$/, 'admin', () => renderAdmin],
   [/^#\/search$/, 'search', () => renderSearch],
 ];

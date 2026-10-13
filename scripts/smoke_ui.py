@@ -30,7 +30,8 @@ def _free_port() -> int:
 
 PORT = _free_port()   # parallel runs never collide
 BASE = f"http://127.0.0.1:{PORT}"
-SCREENS = ["#/home", "#/files", "#/boms", "#/changes", "#/erp", "#/common", "#/admin", "#/search?q=MX-100"]
+SCREENS = ["#/home", "#/files", "#/boms", "#/changes", "#/erp", "#/common", "#/admin", "#/search?q=MX-100", "#/library",
+           "#/library?q=M16x60", "#/admin?tab=packs"]
 
 
 def main() -> int:
@@ -61,7 +62,7 @@ def main() -> int:
                 page.keyboard.press("Enter")
                 page.wait_for_selector("nav.rail", timeout=15000)
                 for hash_ in SCREENS:
-                    if hash_ == "#/admin" and user != "admin":
+                    if hash_.startswith("#/admin") and user != "admin":
                         continue
                     page.goto(BASE + "/" + hash_)
                     try:   # each screen shows its title in the top bar once it has loaded
