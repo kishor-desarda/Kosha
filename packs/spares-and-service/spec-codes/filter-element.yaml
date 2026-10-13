@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: CC-BY-4.0
+id: filter-element
+category: FE
+label: Filter element
+hint: A replaceable cartridge by filter medium, rating and size. Use it for spares lists and service kits.
+code: "FE-{media}-{micron}-{od_mm}X{length_mm}"
+fields:
+  media:     {type: choice, label: Filter medium, dictionary: filter_media}
+  micron:    {type: int, label: Rating, unit: µm, min: 1, max: 500}
+  od_mm:     {type: int, label: Outside diameter, unit: mm, min: 10, max: 1000}
+  length_mm: {type: int, label: Length, unit: mm, min: 10, max: 2000}
+description: "Filter element {media.name} {micron} µm Ø{od_mm} x {length_mm}"

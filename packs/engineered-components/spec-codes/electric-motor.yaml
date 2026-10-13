@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: CC-BY-4.0
+id: electric-motor
+category: MTR
+label: Electric motor (three-phase)
+hint: An induction motor by rated output, number of poles, mounting and efficiency class (IEC 60034-30-1).
+code: "MTR-{power_kw}KW-{poles}P-{mounting}-{efficiency}"
+fields:
+  power_kw:   {type: decimal, label: Rated output, unit: kW, choices: [0.18, 0.25, 0.37, 0.55, 0.75, 1.1, 1.5, 2.2, 3, 4, 5.5, 7.5, 11, 15, 18.5, 22, 30, 37, 45, 55, 75, 90, 110, 132, 160, 200]}
+  poles:      {type: int, label: Poles, choices: [2, 4, 6, 8]}
+  mounting:   {type: choice, label: Mounting, dictionary: motor_mountings}
+  efficiency: {type: choice, label: Efficiency class, dictionary: efficiency_classes}
+description: "Electric motor {power_kw} kW {poles}-pole {mounting.name} {efficiency}"
