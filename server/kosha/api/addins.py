@@ -26,6 +26,41 @@ def rescan(req: Req):
     return list_addins(req)
 
 
+KIND_INFO = {
+    "erp-connector": ("ERP connector", "Sends released parts and BOMs to an ERP and reads stock, cost and orders back."),
+    "file-type": ("File type", "Previews and facts for file types Kosha does not read itself."),
+    "pack": ("Industry pack", "Categories, number formats, materials and standard parts for an industry."),
+    "ai-provider": ("AI provider", "Answers Kosha's AI requests (a hosted service or a model server inside the company)."),
+    "sign-in": ("Sign-in", "Lets people sign in with the company directory or single sign-on."),
+    "notifier": ("Notifications", "Sends Kosha's notices to a chat or messaging service."),
+    "storage": ("Storage copies", "Keeps a second copy of every stored file elsewhere and brings files back."),
+    "importer": ("Importer", "Brings files and part data from another system into a Kosha import."),
+    "cad-addin": ("CAD add-in", "Works inside a CAD program on the design PCs."),
+    "office-addin": ("Office add-in", "Works inside Word, Excel or Outlook."),
+    "web-extension": ("Screen extension", "Adds a panel or a page to Kosha's screens."),
+}
+RUNS_ON = {"server": "Kosha server", "web": "Kosha screens", "cad": "design PCs", "office": "Office",
+           "frappe": "ERP server"}
+
+
+@api("GET", "/api/addins/catalogue", role="admin")
+def catalogue(req: Req):
+    """Every add-in Kosha knows (shipped with Kosha or installed here), grouped by kind, with where it runs and
+    whether it is on; and for each kind, what it is for and how to start a new one."""
+    from kosha_sdk.cli import TEMPLATES
+    from kosha_sdk.manifest import KINDS
+    groups = []
+    found = [a for a in addins.registry.all() if a.manifest]
+    for kind in sorted(KINDS, key=lambda k: KIND_INFO.get(k, (k,))[0]):
+        label, text = KIND_INFO.get(kind, (kind, ""))
+        items = [{**a.to_dict(), "where": [RUNS_ON.get(e, e) for e in sorted(a.manifest.entry_points)]}
+                 for a in found if kind in a.manifest.kinds]
+        groups.append({"kind": kind, "label": label, "description": text, "addins": items,
+                       "template": f"kosha-sdk new {kind} my-addin" if kind in TEMPLATES else ""})
+    broken = [a.to_dict() for a in addins.registry.all() if not a.manifest]
+    return {"groups": groups, "broken": broken}
+
+
 @api("GET", "/api/addins/{addin_id}", role="admin")
 def detail(req: Req):
     a = _get(req)

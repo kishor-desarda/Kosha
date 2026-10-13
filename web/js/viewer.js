@@ -44,6 +44,8 @@ export async function openViewer(docOrId, opts = {}) {
     if (kind === 'svg') current.dispose = svgViewer(stage, tools, det, v, versions);
     else if (kind === 'stl') current.dispose = stlViewer(stage, tools, det, v);
     else if (kind === 'pdf') stage.appendChild(h('iframe', { src: fileUrl(det.id, 'viewer', v.version), title: det.filename }));
+    else if (kind === 'summary') summaryViewer(stage, det, v);
+    else if (VIDEO.includes(kind)) stage.appendChild(h('div', { class: 'video-stage' }, h('video', { src: fileUrl(det.id, 'viewer', v.version), controls: true, preload: 'metadata', title: det.filename })));
     else if (kind) current.dispose = imageViewer(stage, tools, fileUrl(det.id, 'viewer', v.version), det.filename);
     else {
       stage.appendChild(h('div', { style: { position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '12px', padding: '30px', textAlign: 'center' } },
@@ -53,6 +55,43 @@ export async function openViewer(docOrId, opts = {}) {
     }
   }
   show();
+}
+
+// ------------------------------------------------------------------ text, tables, archives, e-mails, Office
+const VIDEO = ['mp4', 'm4v', 'webm', 'ogv'];
+const fmtBytes = n => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} bytes`);
+
+async function summaryViewer(stage, det, v) {
+  stage.classList.add('paper');
+  const box = h('div', { class: 'summary-view', id: 'summary-view' }, 'Loading…');
+  stage.appendChild(box);
+  let s;
+  try {
+    const r = await fetch(fileUrl(det.id, 'viewer', v.version));
+    if (!r.ok) throw new Error(`The preview could not be loaded (${r.status}).`);
+    s = await r.json();
+  } catch (e) { mount(box, h('p', { class: 'sev-error' }, e.message)); return; }
+  const lines = list => h('pre', { class: 'summary-lines' }, (list || []).join('\n'));
+  const parts = [];
+  if (s.headers) parts.push(h('dl', { class: 'props' }, Object.entries(s.headers).flatMap(([k, val]) => [h('dt', null, k), h('dd', null, val)])));
+  if (s.type === 'table' && s.rows) {
+    const [head, ...body] = s.rows;
+    parts.push(h('div', { class: 'summary-table' }, h('table', { class: 'tbl' },
+      head ? h('thead', null, h('tr', null, head.map(c => h('th', null, c)))) : null,
+      h('tbody', null, body.map(r => h('tr', null, r.map(c => h('td', null, c))))))));
+    if (s.sections && s.sections.length > 1) parts.push(h('div', { class: 'small muted' }, 'Sheets: ', s.sections.map(x => x.title).join(', ')));
+  } else if (s.type === 'archive') {
+    parts.push(h('table', { class: 'tbl' }, h('thead', null, h('tr', null, h('th', null, 'File in the archive'), h('th', null, 'Size'), h('th', null, ''))),
+      h('tbody', null, (s.entries || []).map(e => h('tr', null, h('td', { class: 'mono' }, e.name), h('td', { class: 'nowrap' }, fmtBytes(e.size)), h('td', { class: 'small sev-warning' }, e.note || ''))))));
+  } else if (s.type === 'slides') {
+    parts.push(h('div', { class: 'col', style: { gap: '12px' } }, (s.sections || []).map(x => h('section', { class: 'summary-slide' }, h('b', null, x.title), x.lines.length ? h('ul', null, x.lines.map(l => h('li', null, l))) : null))));
+  } else {
+    parts.push(lines(s.lines));
+  }
+  if (s.attachments && s.attachments.length) parts.push(h('div', null, h('b', null, `Attachments (${s.attachments.length})`), h('ul', null, s.attachments.map(a => h('li', null, `${a.name} · ${fmtBytes(a.size)}`)))));
+  mount(box, h('div', { class: 'col', style: { gap: '12px' } }, s.title && s.title !== det.filename ? h('h2', null, s.title) : null,
+    s.note ? h('div', { class: 'banner info small' }, icon('info'), h('div', null, s.note)) : null, parts,
+    h('div', { class: 'small muted' }, 'A preview made by Kosha; nothing in the file is run. Download the file to open it in its own program.')));
 }
 
 function close() {

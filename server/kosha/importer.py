@@ -38,6 +38,7 @@ import uuid
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 from . import config, db, legacy, lifecycle, store
 from .cad import dwg as dwgmod
@@ -69,6 +70,8 @@ META_ALIASES = {
     "uom": ("uom", "unit", "stock uom", "stock_uom"),
     "make_buy": ("make/buy", "make buy", "make_buy", "procurement", "type"),
 }
+
+META_EXTRA = ("item_type", "weight_kg")      # also accepted from importer add-ins
 
 
 def sha256_file(path: Path) -> str:
@@ -110,10 +113,19 @@ def read_metadata(path_or_bytes, filename: str = "") -> tuple[dict, list[dict]]:
             break
     if not header:
         raise ValueError("The spreadsheet needs a 'Part number' or 'File name' column in its first rows.")
+    return metadata_from_rows({k: (row[i].strip() if i < len(row) and row[i] else "") for k, i in header.items()}
+                              for row in table[start:])
+
+
+def metadata_from_rows(rows) -> tuple[dict, list[dict]]:
+    """Part master rows ({filename, part_number, description, ...}) -> ({file name lower: props}, [item rows])."""
     by_file: dict = {}
     items: list = []
-    for row in table[start:]:
-        rec = {k: (row[i].strip() if i < len(row) and row[i] else "") for k, i in header.items()}
+    for rec in rows:
+        if not isinstance(rec, dict):
+            continue
+        rec = {k: str(v).strip()[:500] for k, v in rec.items()
+               if v is not None and (k in META_ALIASES or k in META_EXTRA)}
         if not any(rec.values()):
             continue
         if rec.get("filename"):
@@ -506,7 +518,10 @@ def report_bytes(rows: list[dict], summary: dict) -> tuple[bytes, str]:
 
 # ------------------------------------------------------------------ jobs
 
-def start_job(user: dict, source: str, target: str, options: dict, metadata: tuple | None) -> int:
+def start_job(user: dict, source: str, target: str, options: dict, metadata: tuple | None,
+              collect: "Callable[[], list[dict]] | None" = None) -> int:
+    """Run an import in the background. `collect`, for importer add-ins, first fills the source folder and returns
+    the part master rows."""
     job_id = db.insert("import_jobs", {"source": source, "target": target, "options_json": json.dumps(options),
                                        "status": "running", "phase": "Starting", "created_by": user["id"],
                                        "started_at": db.now()})
@@ -517,8 +532,16 @@ def start_job(user: dict, source: str, target: str, options: dict, metadata: tup
             db.update("import_jobs", job_id, upd)
 
     def work():
+        nonlocal metadata
         imp = None
         try:
+            if collect:
+                progress(phase="Collecting the files from the add-in")
+                rows = collect()
+                if rows:
+                    metadata = metadata_from_rows(rows)
+                    options["metadata_rows"] = len(metadata[1])
+                    db.update("import_jobs", job_id, {"options_json": json.dumps(options)})
             imp = Importer(source, target, user, options.get("state", "released"), options.get("keep_revision", True),
                            options.get("skip_identical", True), options.get("groups"), set(options.get("extensions") or []),
                            metadata, options.get("dry_run", False), job_id, progress,
@@ -542,6 +565,8 @@ def start_job(user: dict, source: str, target: str, options: dict, metadata: tup
                                               "finished_at": db.now(), "phase": "Finished"})
             db.audit(user["id"], "legacy_import", "import_job", job_id, msg)
         finally:
+            if collect and status == "done" and not options.get("dry_run"):
+                shutil.rmtree(source, ignore_errors=True)     # the add-in's copies; the files are in the store now
             db.close_thread_connection()
 
     threading.Thread(target=work, name=f"import-{job_id}", daemon=True).start()

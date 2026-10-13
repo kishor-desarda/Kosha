@@ -15,7 +15,8 @@ from ..web import ROLE_LEVEL, Req, api, as_bool, bad, conflict, not_found
 from .core import DOC_SELECT, _with_preview
 
 MIME = {"svg": "image/svg+xml", "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif",
-        "bmp": "image/bmp", "webp": "image/webp", "pdf": "application/pdf", "stl": "model/stl"}
+        "bmp": "image/bmp", "webp": "image/webp", "pdf": "application/pdf", "stl": "model/stl",
+        "summary": "application/json", "mp4": "video/mp4", "m4v": "video/mp4", "webm": "video/webm", "ogv": "video/ogg"}
 
 # Stored files never run as part of Kosha; Kosha's own pages may show them in a frame (the PDF viewer).
 SAFE_HEADERS = {"X-Content-Type-Options": "nosniff", "X-Frame-Options": "SAMEORIGIN",
@@ -475,9 +476,23 @@ def _read_range(path, start: int, end: int):
             yield chunk
 
 
-def _blob_response(sha: str | None, kind: str | None, filename: str) -> Response:
+def _blob_response(sha: str | None, kind: str | None, filename: str, req: Req | None = None) -> Response:
     if not sha or not kind or not store.exists(sha):
         raise not_found("No preview for this file")
+    if req is not None and MIME.get(kind, "").startswith("video/"):      # videos stream, so the player can seek
+        path = store.path_for(sha)
+        size = path.stat().st_size
+        start, end = _byte_range(req.request.headers.get("range", ""), size)
+        if start is None:
+            return Response(status_code=416, headers={"Content-Range": f"bytes */{size}"})
+        partial = (start, end) != (0, size - 1)
+        headers = {"Accept-Ranges": "bytes", "Content-Length": str(end - start + 1), "ETag": sha[:32],
+                   "Cache-Control": "private, max-age=604800",
+                   "Content-Disposition": _disposition("inline", filename), **SAFE_HEADERS}
+        if partial:
+            headers["Content-Range"] = f"bytes {start}-{end}/{size}"
+        return StreamingResponse(_read_range(path, start, end), status_code=206 if partial else 200,
+                                 media_type=MIME[kind], headers=headers)
     return Response(store.read_bytes(sha), media_type=MIME.get(kind, "application/octet-stream"),
                     headers={"Cache-Control": "private, max-age=604800", "ETag": sha[:32],
                              "Content-Disposition": _disposition("inline", filename + "." + kind), **SAFE_HEADERS})
@@ -492,7 +507,7 @@ def preview(req: Req):
 @api("GET", "/api/documents/{id:int}/viewer")
 def viewer(req: Req):
     v = _version(req.int_param("id"), req)
-    return _blob_response(v["viewer_sha"], v["viewer_kind"], v["filename"])
+    return _blob_response(v["viewer_sha"], v["viewer_kind"], v["filename"], req)
 
 
 @api("POST", "/api/documents/{id:int}/reprocess", role="engineer")

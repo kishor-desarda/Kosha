@@ -94,15 +94,22 @@ def _sha_of(path: Path) -> str:
 def repair(sha: str) -> str:
     """Put a good copy back in place of a damaged stored file. Returns '' when repaired, else why not."""
     src = _backup_copy(sha)
-    if not src:
-        return "no copy in the backup folder"
-    if _sha_of(src) != sha:
-        return "the copy in the backup folder is damaged too"
+    why = "" if src and _sha_of(src) == sha else \
+        "the copy in the backup folder is damaged too" if src else "no copy in the backup folder"
+    data = None
+    if why:                    # a storage add-in may still have a good copy
+        from . import replicas
+        data = replicas.fetch(sha)
+        if data is None:
+            return why
     dest = store.path_for(sha)
     damaged = config.DATA_DIR / "damaged"
     damaged.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_name(dest.name + ".repair")
-    shutil.copy2(src, tmp)
+    if data is not None:
+        tmp.write_bytes(data)
+    else:
+        shutil.copy2(src, tmp)
     with open(tmp, "rb") as f:
         os.fsync(f.fileno())
     if _sha_of(tmp) != sha:
@@ -139,7 +146,7 @@ def check_fingerprints(budget_bytes: int = FINGERPRINT_RUN_BYTES, everything: bo
                     note = f"Damaged; not repaired: {why}."
                     bad.append({"sha": sha, "why": why})
                 else:
-                    ok, fixed_at, note = True, db.now(), "Damaged; repaired from the backup folder."
+                    ok, fixed_at, note = True, db.now(), "Damaged; repaired from a good copy (backup folder or storage add-in)."
                     repaired.append(sha)
             with db.tx():
                 db.execute("INSERT INTO blob_checks(sha, checked_at, ok, size, repaired_at, note) "
@@ -156,7 +163,7 @@ def check_fingerprints(budget_bytes: int = FINGERPRINT_RUN_BYTES, everything: bo
             db.audit(None, "file_repaired", "blob", None, sha)
             _alert(f"repaired:{sha}", "A damaged stored file was repaired",
                    f"The stored file {sha[:12]}… no longer matched its fingerprint (disk damage). A good copy from the "
-                   "backup folder was put back; the damaged file is kept in the damaged folder. Check the disk.",
+                   "backup folder or a storage add-in was put back; the damaged file is kept in the damaged folder. Check the disk.",
                    severity="warning")
         for b in bad:
             db.audit(None, "file_damaged", "blob", None, f"{b['sha']}: {b['why']}")
@@ -298,7 +305,7 @@ def send_alerts() -> int:
 # ------------------------------------------------------------------ timing --
 
 PERIODS = {"fingerprints": 3600, "consistency": 24 * 3600, "erp_reconcile": 24 * 3600, "alerts": 3600,
-           "practice": 24 * 3600}
+           "practice": 24 * 3600, "storage_copies": 3600}
 
 
 def run_due() -> dict:
@@ -321,6 +328,9 @@ def run_due() -> dict:
             elif name == "practice":
                 from . import practice
                 done[name] = practice.clear()
+            elif name == "storage_copies":
+                from . import replicas
+                done[name] = {**replicas.copy_due(), "restore": replicas.restore_missing()}
             else:
                 done[name] = send_alerts()
         except Exception:
@@ -331,8 +341,9 @@ def run_due() -> dict:
 
 
 def status() -> dict:
+    from . import replicas
     return {"fingerprints": fingerprint_status(), "consistency": db.get_setting(CONSISTENCY_LAST),
-            "problems": problems(), "runs": db.get_setting(RUNS) or {}}
+            "problems": problems(), "runs": db.get_setting(RUNS) or {}, "storage_copies": replicas.status()}
 
 
 def start_worker() -> threading.Thread:

@@ -25,3 +25,14 @@ def check_consistency(req: Req):
     r = health.check_consistency()
     db.audit(req.uid, "health_consistency", "system", None, f"{r['count']} problem(s)")
     return {**r, "status": health.status()}
+
+
+@api("POST", "/api/admin/health/storage-copies", role="admin")
+def storage_copies(req: Req):
+    """Copy the stored files the storage add-ins do not have yet, and bring back missing files from copies."""
+    from .. import replicas
+    r = {**replicas.copy_due(), "restore": replicas.restore_missing()}
+    if not r.get("busy"):
+        db.audit(req.uid, "storage_copies", "system", None,
+                 f"{r.get('copied', 0)} copied, {r.get('failed', 0)} failed, {r['restore']['restored']} restored")
+    return {**r, "status": health.status()}

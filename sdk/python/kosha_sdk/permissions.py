@@ -17,6 +17,9 @@ PERMISSIONS: dict[str, str] = {
     "ai:use": "use the AI provider configured by the admin",
     "ai:provide": "receive the texts Kosha sends for AI assistance (descriptions, properties, change lists, "
                   "questions) and pass them to the AI service in its settings",
+    "files:preview": "read the files of its file types to show their previews",
+    "storage:copy": "receive a copy of every stored file to keep elsewhere, and give copies back to restore files",
+    "import:provide": "bring files and part data from another system into a Kosha import",
     "users:read": "read user names and roles",
     "users:sign-in": "check who signs in to Kosha (user names and passwords typed into the sign-in form reach it)",
 }

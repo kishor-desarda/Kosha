@@ -149,6 +149,21 @@ assert check_ai_provider(fake) == []          # run it against your provider and
 The official [OpenAI-compatible provider](../../addins/openai-compatible/) works with self-hosted runners
 and hosted services alike.
 
+## File types, storage and importers
+
+`kosha_sdk.files` has the base classes for three more kinds:
+
+- **file-type** (`FileTypeHandler`, permission `files:preview`): previews for file types Kosha does not read
+  itself. List them in `extensions`; `preview(filename, data)` returns a `FilePreview` with a summary (text
+  lines, a table, an archive listing, an e-mail, slides) and, optionally, a thumbnail. Kosha keeps only the
+  keys it knows and cuts long lists.
+- **storage** (`StorageProvider`, permission `storage:copy`): a second place for Kosha's stored files. Kosha
+  copies files there every hour and uses a copy, after checking its SHA-256 fingerprint, to bring back a file
+  that went missing or was damaged. Kosha's own store stays the master copy.
+- **importer** (`Importer`, permission `import:provide`): `collect(dest, options)` writes the files of another
+  system into a folder and returns part master rows; Kosha then runs a normal import with review, sign-off and
+  Undo batch.
+
 ## Events
 
 `revision.released`, `bom.released`, `change.implemented`, `item.created`, `change.submitted` and
