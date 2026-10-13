@@ -13,6 +13,7 @@
 - [`brand/`](brand/README.md): the Kosha logo, icons and colours.
 - [`../llms.txt`](../llms.txt): a short guide to the project for AI assistants and search tools.
 - [`themes.md`](themes.md): Light, Dark, High contrast and "Same as my computer"; choosing one, and colours for developers.
+- [`directory-sign-in.md`](directory-sign-in.md): signing in with Active Directory, LDAP or an OpenID Connect provider such as Keycloak.
 
 The full specification and development guide will be published here as the documentation site
 (MkDocs) is set up.

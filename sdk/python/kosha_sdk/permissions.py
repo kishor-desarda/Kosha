@@ -16,6 +16,7 @@ PERMISSIONS: dict[str, str] = {
     "notify:send": "send notifications to users",
     "ai:use": "use the AI provider configured by the admin",
     "users:read": "read user names and roles",
+    "users:sign-in": "check who signs in to Kosha (user names and passwords typed into the sign-in form reach it)",
 }
 
 

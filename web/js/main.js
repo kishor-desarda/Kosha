@@ -14,6 +14,7 @@ import { renderDeviations, renderDeviation } from './deviations.js';
 import { notificationBell } from './notifications.js';
 import { renderInputs, renderInput, renderProjects, renderProject } from './inputs.js';
 import { applyTheme, currentTheme, themeDialog, themeLabel } from './theme.js';
+import { providerChoices, finishSso, ssoErrorText } from './signin.js';
 
 const NAV = [
   ['home', 'Home', 'home', '#/home'],
@@ -143,17 +144,30 @@ function changePassword() {
   });
 }
 
-function renderLogin() {
+function signedIn(r) {
+  S.token = r.token; S.user = r.user; S.erp = r.erp_name || 'ERP'; S.mode = r.user.ui_mode || 'guided';
+  S.defaultTheme = r.default_theme || 'system';
+  applyTheme(currentTheme());
+  localStorage.setItem('kosha.token', r.token);
+  buildShell();
+  location.hash = store('lastRoute') && store('lastRoute') !== '#/login' ? store('lastRoute') : '#/home';
+  route();
+}
+
+function renderLogin(message = '') {
   shell = null;
   const user = h('input', { class: 'input', id: 'u', autocomplete: 'username', required: true });
   const pw = h('input', { class: 'input', id: 'p', type: 'password', autocomplete: 'current-password', required: true });
-  const err = h('div', { class: 'banner err', hidden: !sessionStorage.getItem('kosha.expired') }, icon('warn'),
-    h('span', null, sessionStorage.getItem('kosha.expired') ? 'Your session ended. Please sign in again.' : ''));
+  const shown = message || (sessionStorage.getItem('kosha.expired') ? 'Your session ended. Please sign in again.' : '');
+  const err = h('div', { class: 'banner err', role: 'alert', hidden: !shown }, icon('warn'), h('span', null, shown));
   sessionStorage.removeItem('kosha.expired');
   const btn = h('button', { class: 'btn primary', type: 'submit', style: { minHeight: '46px', justifyContent: 'center', fontSize: '15px' } }, 'Sign in');
+  const subtitle = h('p', { class: 'muted', style: { margin: '6px 0 0' } }, 'Use the account your Kosha administrator gave you.');
+  const choices = h('div', { class: 'col', style: { gap: '16px' }, hidden: true });
   const form = h('form', { novalidate: true },
-    h('div', null, h('h1', { style: { fontSize: '30px' } }, 'Sign in'), h('p', { class: 'muted', style: { margin: '6px 0 0' } }, 'Use the account your Kosha administrator gave you.')),
+    h('div', null, h('h1', { style: { fontSize: '30px' } }, 'Sign in'), subtitle),
     err,
+    choices,
     h('div', { class: 'field' }, h('label', { for: 'u' }, 'User name'), user),
     h('div', { class: 'field' }, h('label', { for: 'p' }, 'Password'), pw),
     btn);
@@ -161,14 +175,7 @@ function renderLogin() {
     e.preventDefault();
     btn.disabled = true;
     try {
-      const r = await api('POST', '/api/auth/login', { username: user.value.trim(), password: pw.value });
-      S.token = r.token; S.user = r.user; S.erp = r.erp_name || 'ERP'; S.mode = r.user.ui_mode || 'guided';
-      S.defaultTheme = r.default_theme || 'system';
-      applyTheme(currentTheme());
-      localStorage.setItem('kosha.token', r.token);
-      buildShell();
-      location.hash = store('lastRoute') && store('lastRoute') !== '#/login' ? store('lastRoute') : '#/home';
-      route();
+      signedIn(await api('POST', '/api/auth/login', { username: user.value.trim(), password: pw.value }));
     } catch (ex) {
       let msg = ex.message;
       if (ex.code === 'sign_in_paused' && ex.data && ex.data.retry_at) {
@@ -187,7 +194,26 @@ function renderLogin() {
           'Drawings, models, BOMs and change orders for every product line, in one place.')),
       h('div', { class: 'foot' }, 'Kosha — open-source PLM')),
     h('div', { class: 'form' }, form)));
+  providerChoices(choices, subtitle);
   setTimeout(() => user.focus(), 50);
+}
+
+// Back from a redirect sign-in (OpenID Connect): the server put a one-time ticket, or why it failed, in the address.
+async function returnFromSso(hash) {
+  const ticket = hash.match(/^#\/sso\/([\w-]+)$/);
+  const failed = hash.match(/^#\/sso-error\/(\w+)$/);
+  if (!ticket && !failed) return false;
+  history.replaceState(null, '', '#/login');      // the ticket works once; keep it out of the history
+  if (failed) {
+    if (S.token) { toast(ssoErrorText(failed[1]), 'err'); location.hash = '#/home'; } else renderLogin(ssoErrorText(failed[1]));
+    return true;
+  }
+  try {
+    signedIn(await finishSso(ticket[1]));
+  } catch (e) {
+    if (S.token) { toast(e.message, 'err'); location.hash = '#/home'; } else renderLogin(e.message);
+  }
+  return true;
 }
 
 async function route() {
@@ -195,6 +221,7 @@ async function route() {
   closeViewer();
   document.querySelectorAll('dialog[open]').forEach(d => { d.close(); d.remove(); });
   const hash = location.hash || '#/home';
+  if (await returnFromSso(hash)) return;
   if (!S.token) { if (hash !== '#/login') location.hash = '#/login'; renderLogin(); return; }
   if (hash === '#/login') { location.hash = '#/home'; return; }
   if (!S.user) {

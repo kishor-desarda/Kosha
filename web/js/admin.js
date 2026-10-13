@@ -6,6 +6,7 @@ import { backupsTab, securityTab } from './admin_ops.js';
 import { packsTab } from './packs.js';
 import { notifyAdminTab } from './notify.js';
 import { THEMES, themeLabel, applyTheme, currentTheme } from './theme.js';
+import { userDirectoryDialog } from './directory.js';
 
 export async function renderAdmin(container, _m, params, { setTitle }) {
   setTitle('Administration');
@@ -154,6 +155,7 @@ async function users(body, draw) {
         h('td', { class: 'nowrap' }, h('div', { class: 'row' },
           h('button', { class: 'btn sm', onclick: () => resetPw(u) }, 'Reset password'),
           h('button', { class: 'btn sm', title: 'End all sessions of this user, in browsers and CAD add-ins. They can sign in again at once.', onclick: () => signOutEverywhere(u) }, 'Sign out everywhere'),
+          h('button', { class: 'btn sm', title: 'Link this user to an account in Active Directory, LDAP or an OpenID Connect provider', onclick: () => userDirectoryDialog(u) }, 'Directory'),
           u.id !== S.user.id ? h('button', { class: 'btn sm', onclick: async () => { try { await patch(`/api/users/${u.id}`, { active: !u.active }); draw(); } catch (e) { fail(e); } } }, u.active ? 'Disable' : 'Enable') : null)))))));
 }
 
