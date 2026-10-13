@@ -603,6 +603,8 @@ def addin_checkin(req: Req):
         except ValueError:
             raise bad("structure must be JSON")
     extra_meta = {"source": (req.b("source") or "cad-addin")[:60]}
+    if req.b("props"):   # CAD custom properties of this version, for the measured change list
+        extra_meta["properties"] = {str(k)[:80]: str(v)[:500] for k, v in list(raw.items())[:200]}
     if structure is not None:
         extra_meta["structure"] = structure
     if req.b("configuration"):
