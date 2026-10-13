@@ -181,7 +181,9 @@ def update_user(req: Req):
 # --------------------------------------------------------------- settings --
 
 PUBLIC_SETTINGS = ("part_number_regex", "revision_skip_letters", "first_revision", "require_eco_for_release",
-                   "company_name", "default_theme")
+                   "company_name", "default_theme", "revision_scheme", "four_eyes_categories",
+                   "allow_self_approval_with_reason", "obsolete_needs_change_order")
+BOOL_SETTINGS = ("require_eco_for_release", "allow_self_approval_with_reason", "obsolete_needs_change_order")
 
 
 @api("GET", "/api/settings")
@@ -194,7 +196,7 @@ def get_settings(req: Req):
 
 @api("PUT", "/api/settings", role="admin")
 def put_settings(req: Req):
-    for k in PUBLIC_SETTINGS:
+    for k in sorted(PUBLIC_SETTINGS, key=lambda k: k != "revision_scheme"):    # the scheme sets the first revision
         if isinstance(req.body, dict) and k in req.body:
             v = req.body[k]
             if k == "part_number_regex":
@@ -202,8 +204,23 @@ def put_settings(req: Req):
                     re.compile(v)
                 except re.error as e:
                     raise bad(f"Part number pattern is not valid: {e}")
-            if k == "require_eco_for_release":
+            if k in BOOL_SETTINGS:
                 v = as_bool(v)
+            if k == "revision_scheme":
+                if v not in ("letters", "numeric"):
+                    raise bad("The revision scheme is letters (A, B, C) or numeric (R0, R1, R2).")
+                if v != db.get_setting(k):
+                    if db.scalar("SELECT 1 FROM lifecycle_events WHERE to_state = 'released' LIMIT 1"):
+                        raise bad("Kosha already has released revisions. The revision scheme is chosen once, before "
+                                  "go-live, so the shop floor's prints stay in order.")
+                    db.set_setting("first_revision", "R0" if v == "numeric" else "A")
+                    req.body.pop("first_revision", None)     # the scheme decides where revisions start
+            if k == "four_eyes_categories":
+                if isinstance(v, str):
+                    v = [c for c in re.split(r"[\s,]+", v) if c]
+                if not isinstance(v, list) or not all(isinstance(c, str) and re.match(r"^[A-Za-z0-9]{1,6}$", c) for c in v):
+                    raise bad("List category codes such as ROT, PRV; leave it empty for every category.")
+                v = sorted({c.upper() for c in v})
             if k == "default_theme":
                 _check_theme(v, allow_default=False)
             db.set_setting(k, v)

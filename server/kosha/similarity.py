@@ -486,8 +486,12 @@ def decide(user: dict, group_id: int, decision: str, standard_document_id: int |
             if not d:
                 continue
             if d["state"] == "released":
-                lifecycle.set_state(user, d["id"], "obsolete", f"Duplicate of document #{keep} ({g['label']})")
-                done.append(f"{d['filename']} made obsolete")
+                try:       # the duplicate decision is the recorded decision, so no change order is needed
+                    lifecycle.set_state(user, d["id"], "obsolete", f"Duplicate of document #{keep} ({g['label']})",
+                                        via_change=True)
+                    done.append(f"{d['filename']} made obsolete")
+                except Exception as e:  # still used in a released assembly: leave it
+                    done.append(f"{d['filename']} kept ({getattr(e, 'message', e)})")
             elif d["state"] == "in_work" and not d["checked_out_by"]:
                 try:
                     lifecycle.delete(user, d["id"], True)

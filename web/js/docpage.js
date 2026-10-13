@@ -13,14 +13,14 @@ const changed = () => window.dispatchEvent(new Event('kosha:changed'));
 
 function stepper(state) {
   const steps = [['in_work', 'In work'], ['in_review', 'In review'], ['released', 'Released']];
-  const idx = state === 'obsolete' ? 3 : steps.findIndex(s => s[0] === state);
+  const idx = state === 'obsolete' || state === 'spares_only' ? 3 : steps.findIndex(s => s[0] === state);
   const out = h('div', { class: 'stepper', 'aria-label': `Lifecycle: ${state}` });
   steps.forEach(([k, label], i) => {
     if (i) out.appendChild(h('span', { class: 'line' }));
-    const cls = i < idx || (state === 'released' && i === idx) || state === 'obsolete' ? 'done' : i === idx ? 'cur' : '';
+    const cls = i < idx || (state === 'released' && i === idx) || state === 'obsolete' || state === 'spares_only' ? 'done' : i === idx ? 'cur' : '';
     out.appendChild(h('span', { class: `s ${cls}` }, h('span', { class: 'dot' }, cls === 'done' ? '✓' : i + 1), label));
   });
-  if (state === 'obsolete') { out.appendChild(h('span', { class: 'line' })); out.appendChild(h('span', { class: 's cur' }, h('span', { class: 'dot' }, '4'), 'Obsolete')); }
+  if (state === 'obsolete' || state === 'spares_only') { out.appendChild(h('span', { class: 'line' })); out.appendChild(h('span', { class: 's cur' }, h('span', { class: 'dot' }, '4'), state === 'obsolete' ? 'Obsolete' : 'Spares only')); }
   return out;
 }
 
@@ -47,13 +47,15 @@ export async function renderDoc(container, [id], params, { setTitle }) {
           h('span', null, d.description), h('span', { class: 'muted' }, `· Rev ${d.revision} · v${d.version}`)),
         h('div', { style: { marginTop: '10px' } }, stepper(d.state)),
         S.mode === 'guided' ? h('p', { class: 'muted small', style: { margin: '6px 0 0' } }, STATE_PLAIN[d.state]) : null,
+        d.returned ? h('div', { class: 'banner err small', style: { marginTop: '10px' } }, icon('warn'), h('div', null, h('b', null, `Sent back by ${d.returned.by} ${ago(d.returned.at)}`), d.returned.comment ? `: ${d.returned.comment}` : '. Ask them what to change.')) : null,
+        d.replaced_by ? h('div', { class: 'banner small', style: { marginTop: '10px' } }, icon('info'), h('div', null, 'Spares only. New machines use ', h('a', { href: `#/item/${d.replaced_by.id}` }, d.replaced_by.part_number), ` (${d.replaced_by.description}).`)) : null,
         d.checked_out_by ? h('div', { class: 'banner small', style: { marginTop: '10px' } }, icon('checkout'), h('div', null, `Checked out by ${d.checked_out_by === S.user.id ? 'you' : d.checked_out_name} ${ago(d.checked_out_at)}.`)) : null),
       h('div', { class: 'row wrap', style: { alignSelf: 'flex-start' } },
         h('button', { class: 'btn', onclick: () => openViewer(d) }, icon('cube', 16), 'View'),
         h('button', { class: 'btn', onclick: () => downloadDoc(d.id) }, icon('download', 16), 'Download'),
         act('Check out', 'checkout', 'checkout', () => doAct('checkout', {}, 'Checked out to you'), true),
         act('Submit', 'review', 'submit', () => doAct('state', { to: 'in_review' }, 'Submitted for review')),
-        act('Release', 'release', 'release', () => doAct('state', { to: 'released' }, 'Released'), true),
+        act('Release', 'release', 'release', () => (A.release_needs_reason ? releaseWithReason(d, A, doAct) : doAct('state', { to: 'released' }, 'Released')), true),
         act(`Revise to ${A.next_revision}`, 'revise', 'revise', async () => {
           if (await confirmDlg('Start a new revision', `Start revision ${A.next_revision}? Revision ${d.revision} stays released.`, 'Start revision')) doAct('revise', {}, `Revision ${A.next_revision} started`);
         }),
@@ -143,7 +145,7 @@ function versionsTab(c, d) {
   c.appendChild(h('table', { class: 'tbl' },
     h('thead', null, h('tr', null, ['Version', 'Revision', 'Checked in', 'By', 'Comment', 'Size', ''].map(t => h('th', null, t)))),
     h('tbody', null, d.versions.map(v => h('tr', null,
-      h('td', null, h('b', null, `v${v.version}`)), h('td', null, v.revision), h('td', { class: 'nowrap' }, fmtDate(v.created_at)), h('td', null, v.by),
+      h('td', null, h('b', null, `v${v.version}`)), h('td', null, v.revision, v.superseded_by ? [' ', h('span', { class: 'chip st-superseded', title: 'An older released revision; nobody should make it from this one' }, `Superseded — use Rev ${v.superseded_by}`)] : null), h('td', { class: 'nowrap' }, fmtDate(v.created_at)), h('td', null, v.by),
       h('td', null, v.comment || h('span', { class: 'muted' }, '—')), h('td', { class: 'nowrap' }, fmtSize(v.size)),
       h('td', { class: 'nowrap' }, h('div', { class: 'row' },
         v.viewer_kind ? h('button', { class: 'btn sm', onclick: () => openViewer(d, { version: v.version }) }, 'View') : null,
@@ -152,7 +154,7 @@ function versionsTab(c, d) {
 
 function historyTab(c, d) {
   c.appendChild(h('div', { class: 'timeline' }, d.events.map(e => h('div', { class: 'tl' }, h('span', { class: `dot ${e.to_state}` }),
-    h('div', null, h('div', null, h('b', null, `Revision ${e.revision}: ${({ in_work: 'In work', in_review: 'In review', released: 'Released', obsolete: 'Obsolete' })[e.to_state]}`),
+    h('div', null, h('div', null, h('b', null, `Revision ${e.revision}: ${({ in_work: 'In work', in_review: 'In review', released: 'Released', spares_only: 'Spares only', obsolete: 'Obsolete' })[e.to_state]}`),
       e.change_number ? [' · ', h('a', { href: `#/change/${e.change_order_id}` }, e.change_number)] : null),
     h('div', { class: 'small muted' }, `${e.by} · ${fmtDate(e.at)}`), e.comment ? h('div', { class: 'small' }, e.comment) : null)))));
 }
@@ -195,6 +197,20 @@ async function erpPush(kind, id, reload) {
 export function docTable(docs) {
   return h('table', { class: 'tbl' }, h('tbody', null, docs.map(x => h('tr', { class: 'clickable', onclick: () => { location.hash = `#/doc/${x.id}`; } },
     h('td', { style: { width: '52px' } }, thumb(x, 'mini')), h('td', null, x.filename), h('td', null, typeChip(x.ext)), h('td', null, `Rev ${x.revision}`), h('td', null, stateChip(x.state))))));
+}
+
+function releaseWithReason(d, A, doAct) {
+  const reason = h('textarea', { class: 'input', id: 'rl-reason', rows: 3 });
+  dialog({
+    title: `Release ${d.filename}`,
+    body: h('div', { class: 'col', style: { gap: '10px' } },
+      h('p', { style: { margin: 0, lineHeight: 1.5 } }, A.release_why || 'Write why this is released.'),
+      h('div', { class: 'field' }, h('label', { for: 'rl-reason' }, 'Reason (kept in the audit log)'), reason)),
+    actions: [{ label: 'Cancel' }, { label: 'Release', primary: true, onClick: async () => {
+      if (reason.value.trim().length < 5) { toast('Write a short reason first.', 'err'); return false; }
+      await doAct('state', { to: 'released', reason: reason.value.trim() }, 'Released');
+    } }],
+  });
 }
 
 // ------------------------------------------------------------------ item page

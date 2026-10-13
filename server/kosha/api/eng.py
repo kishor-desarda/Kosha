@@ -265,7 +265,7 @@ def patch_change(req: Req):
 def add_change_item(req: Req):
     cid = req.int_param("id")
     for d in req.b("document_ids") or ([req.b("document_id")] if req.b("document_id") else []):
-        changes.add_item(req.user, cid, int(d), req.b("action") or "release")
+        changes.add_item(req.user, cid, int(d), req.b("action") or "release", req.b("replacement") or "")
     return changes.detail(cid)
 
 

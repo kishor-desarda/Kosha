@@ -10,13 +10,16 @@ from . import access, db, store, uploads
 from .cad import process as cadproc
 from .web import bad, conflict, forbidden, not_found
 
-STATES = ("in_work", "in_review", "released", "obsolete")
+STATES = ("in_work", "in_review", "released", "spares_only", "obsolete")
 STATE_LABEL = {
     "in_work": "In work",
     "in_review": "In review",
     "released": "Released",
+    "spares_only": "Released — spares only",
     "obsolete": "Obsolete",
 }
+# released for use: the shop floor and the stores may work from these
+LIVE_STATES = ("released", "spares_only")
 MODEL_TYPES = ("part", "assembly", "model")
 
 
@@ -29,6 +32,9 @@ def _letters() -> list[str]:
 
 def next_revision(rev: str) -> str:
     rev = (rev or "").strip().upper()
+    m = re.match(r"^R(\d+)$", rev)
+    if m:       # the numeric scheme R0, R1, R2 (Admin › Numbering & revisions)
+        return f"R{int(m.group(1)) + 1}"
     if rev.isdigit():
         return str(int(rev) + 1).zfill(len(rev))
     letters = _letters()
@@ -339,7 +345,7 @@ def checkout(user: dict, doc_id: int) -> dict:
         if d["checked_out_by"]:
             who = db.scalar("SELECT full_name FROM users WHERE id = ?", (d["checked_out_by"],))
             raise conflict(f"Already checked out by {who}.", "checked_out_by_other")
-        if d["state"] == "released":
+        if d["state"] in LIVE_STATES:
             raise conflict(f"Revision {d['revision']} is released and locked. Use Revise to start revision "
                            f"{next_revision(d['revision'])}.", "released_locked")
         if d["state"] == "in_review":
@@ -369,12 +375,18 @@ ALLOWED = {
     ("in_review", "in_work"): "engineer",   # submitter can pull back; approvers reject
     ("in_review", "released"): "approver",
     ("in_work", "released"): "approver",
+    ("released", "spares_only"): "approver",
     ("released", "obsolete"): "approver",
+    ("spares_only", "obsolete"): "approver",
 }
 
 
 def set_state(user: dict, doc_id: int, to: str, comment: str = "", co_id: int | None = None,
-              via_change: bool = False) -> dict:
+              via_change: bool = False, reason: str = "", replacement: str = "") -> dict:
+    """Move a file to another lifecycle state after the checks of release_rules. ``via_change`` is set when a change
+    order (or another recorded decision) does it; ``reason`` accepts a self-approval or open duplicates where the
+    settings allow it; ``replacement`` names the part that replaces one made spares only."""
+    from . import release_rules as rules
     from .web import ROLE_LEVEL
     if to not in STATES:
         raise bad("Unknown state")
@@ -393,11 +405,28 @@ def set_state(user: dict, doc_id: int, to: str, comment: str = "", co_id: int | 
             raise conflict("Check the file in before changing its state.", "checked_out")
         if to == "released" and not via_change and db.get_setting("require_eco_for_release"):
             raise conflict("Your settings require a change order to release files.", "eco_required")
+        if to in ("spares_only", "obsolete") and not via_change and db.get_setting("obsolete_needs_change_order"):
+            what = "Spares only" if to == "spares_only" else "Obsolete"
+            raise conflict(f"{what} is decided through a change order: add this file to a change order with the "
+                           f"action 'make {what.lower()}'.", "eco_required")
         if frm == "in_review" and to == "in_work" and ROLE_LEVEL[user["role"]] < ROLE_LEVEL["approver"]:
             submitter = db.scalar("SELECT user_id FROM lifecycle_events WHERE document_id = ? AND to_state = 'in_review' "
                                   "ORDER BY id DESC LIMIT 1", (doc_id,))
             if submitter != user["id"]:
                 raise forbidden("Only the submitter or an approver can send this back to In work.")
+        if frm == "in_work" and to in ("in_review", "released") and not via_change:
+            rules.refuse(rules.review_problems(d, co_id), "Not ready for review yet")
+        if to == "released" and not via_change:
+            rules.refuse(rules.release_problems(user, d, reason), "Not released")
+        replaced_by = None
+        if to == "spares_only":
+            problems, replaced_by = rules.spares_only_problems(d, replacement)
+            rules.refuse(problems, "Not made spares only")
+        if to == "obsolete":
+            rules.refuse(rules.obsolete_problems(d), "Not made obsolete")
+        if reason.strip():
+            db.audit(user["id"], "state_reason", "document", doc_id,
+                     f"{d['filename']} rev {d['revision']} to {to}: {reason.strip()[:500]}")
         db.update("documents", doc_id, {"state": to, "updated_at": db.now()})
         _event(d, to, user["id"], comment, co_id, from_state=frm)
         db.audit(user["id"], f"state_{to}", "document", doc_id, f"{d['filename']} rev {d['revision']}")
@@ -406,6 +435,9 @@ def set_state(user: dict, doc_id: int, to: str, comment: str = "", co_id: int | 
             _sync_item_on_release(d)
             from .diff import snapshots
             snapshots.on_release(d)   # item properties as released, for the measured change list
+        if to == "spares_only" and d["item_id"]:
+            db.update("items", d["item_id"], {"state": "spares_only", "replaced_by_item_id": replaced_by,
+                                              "updated_at": db.now()})
         if to == "obsolete" and d["item_id"]:
             others = db.scalar("SELECT COUNT(*) FROM documents WHERE item_id = ? AND deleted = 0 AND state != 'obsolete' "
                                "AND id != ?", (d["item_id"], doc_id))
@@ -437,7 +469,9 @@ def _sync_item_on_release(d: dict) -> None:
             db.update("boms", bom["id"], {"state": "released", "updated_at": db.now()})
 
 
-def revise(user: dict, doc_id: int, comment: str = "", co_id: int | None = None) -> dict:
+def revise(user: dict, doc_id: int, comment: str = "", co_id: int | None = None, _with_siblings: bool = True) -> dict:
+    """Start the next revision of a released file. Its part's other released files at the same revision (the model
+    and its drawing) are revised with it, so they always carry the same revision."""
     with db.tx():
         d = doc_or_404(doc_id)
         if d["state"] != "released":
@@ -460,6 +494,10 @@ def revise(user: dict, doc_id: int, comment: str = "", co_id: int | None = None)
                 db.execute("INSERT INTO bom_lines (bom_id, line_no, child_item_id, qty, uom, find_number, note) "
                            "SELECT ?, line_no, child_item_id, qty, uom, find_number, note FROM bom_lines WHERE bom_id = ?",
                            (nb, old["id"]))
+        if _with_siblings and d["item_id"]:
+            for sib in db.rows("SELECT id FROM documents WHERE item_id = ? AND id != ? AND deleted = 0 AND state = "
+                               "'released' AND revision = ?", (d["item_id"], doc_id, d["revision"])):
+                revise(user, sib["id"], f"Revised with {d['filename']}", co_id, _with_siblings=False)
     return doc_or_404(doc_id)
 
 

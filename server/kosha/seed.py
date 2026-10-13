@@ -143,11 +143,11 @@ def seed() -> None:
     # --- Impeller hub disc
     disc = M.disc_mesh(900, 110, 60, 220, 90)
     m = _put(asha, mx, "MX-100-010 Impeller Disc.stl", M.write_stl(disc), "3D model")
-    release(m)
     d = _put(asha, mx, "MX-100-010 Impeller Disc.dxf",
              W.flange(od=900, pcd=700, holes=12, hole_d=22, bore=110, values=_tb("MX-100-010", "IMPELLER DISC", "1.4401 (316)", "B")),
              "Impeller disc drawing")
-    disc_doc = release(d)
+    disc_doc = release(d)       # the drawing brings the material the model is checked for
+    release(m)
 
     # --- Bearing housings (standard part + legacy duplicates)
     hs = _put(daniel, std, "STD-BH-2208 Bearing Housing.dxf",

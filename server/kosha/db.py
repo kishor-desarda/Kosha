@@ -312,6 +312,14 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "revision_skip_letters": "I,O,Q,S,X,Z",
     "first_revision": "A",
     "require_eco_for_release": False,
+    # letters (A, B, C ... skipping the letters above) or numeric (R0, R1, R2); chosen once, before go-live
+    "revision_scheme": "letters",
+    # four-eyes rule on release: empty = every category; otherwise only these category codes (e.g. ["ROT", "PRV"])
+    "four_eyes_categories": [],
+    # small companies: an approver may release their own work with a written reason (kept in the audit log)
+    "allow_self_approval_with_reason": False,
+    # spares only and obsolete are decided through a change order
+    "obsolete_needs_change_order": True,
     "company_name": "",
     # Theme of the web client for people who have not chosen one: system (same as their computer), light, dark
     # or contrast.

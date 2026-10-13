@@ -122,11 +122,12 @@ export function typeChip(ext) {
   return h('span', { class: `chip type${TYPE_TINT.has(e) ? ' t-' + e : ''}` }, TYPE_LABEL[e] || e.toUpperCase() || 'FILE');
 }
 
-export const STATE_LABEL = { in_work: 'In work', in_review: 'In review', released: 'Released', obsolete: 'Obsolete' };
+export const STATE_LABEL = { in_work: 'In work', in_review: 'In review', released: 'Released', spares_only: 'Spares only', obsolete: 'Obsolete' };
 export const STATE_PLAIN = {
   in_work: 'In work — being designed, can be changed',
   in_review: 'In review — waiting for a checker',
   released: 'Released — safe to manufacture',
+  spares_only: 'Spares only — supplied as a spare, not for new machines',
   obsolete: 'Obsolete — do not use',
 };
 export function stateChip(state, label) {

@@ -13,6 +13,7 @@ export async function openViewer(docOrId, opts = {}) {
   const versions = det.versions;
   let ver = opts.version || det.version;
   const stage = h('div', { class: 'stage' });
+  const band = h('div', { class: 'superseded-band', role: 'status', hidden: true });
   const tools = h('div', { class: 'row' });
   const verSel = h('select', { 'aria-label': 'Version' }, versions.map(v => h('option', { value: v.version, selected: v.version === ver }, `v${v.version} · rev ${v.revision} · ${new Date(v.created_at).toLocaleDateString()}`)));
   verSel.addEventListener('change', () => { ver = Number(verSel.value); show(); });
@@ -25,7 +26,7 @@ export async function openViewer(docOrId, opts = {}) {
       h('span', { class: 'spacer' }), tools, verSel,
       h('button', { class: 'btn', onclick: () => downloadDoc(det.id, ver) }, icon('download', 16), 'Download'),
       h('a', { class: 'btn', href: `#/doc/${det.id}`, onclick: close }, icon('info', 16), 'Details')),
-    stage);
+    band, stage);
   document.body.appendChild(root);
   const onKey = e => { if (e.key === 'Escape') close(); };
   document.addEventListener('keydown', onKey);
@@ -38,6 +39,8 @@ export async function openViewer(docOrId, opts = {}) {
     const v = versions.find(x => x.version === ver) || versions[0];
     const kind = v.viewer_kind;
     stage.className = 'stage';
+    band.hidden = !v.superseded_by;
+    band.textContent = v.superseded_by ? `Superseded — use Rev ${v.superseded_by}` : '';
     if (kind === 'svg') current.dispose = svgViewer(stage, tools, det, v, versions);
     else if (kind === 'stl') current.dispose = stlViewer(stage, tools, det, v);
     else if (kind === 'pdf') stage.appendChild(h('iframe', { src: fileUrl(det.id, 'viewer', v.version), title: det.filename }));

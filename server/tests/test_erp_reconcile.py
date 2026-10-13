@@ -70,6 +70,7 @@ def test_reconciliation(kosha, erpnext):
                     {"item_code": "DE-100-099", "qty": 1, "uom": "Nos"}]
     FE.STATE["items"]["DE-999-999"] = {"item_code": "DE-999-999", "description": "STRAY", "stock_uom": "Nos",
                                        "custom_kosha_revision": "A", "disabled": 0}
+    admin.call("PUT", "/api/settings", {"obsolete_needs_change_order": False})   # a small shop: no change order
     admin.call("POST", f"/api/documents/{parts['DE-100-004']['doc']['id']}/state", {"to": "obsolete"})
     writes_before = [c for c in FE.STATE["calls"] if c[0] in ("POST", "PUT")]
 
