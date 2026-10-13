@@ -102,6 +102,16 @@ def test_security_headers_for_the_app_and_the_api():
     assert _h("/", https=True)["strict-transport-security"].startswith("max-age=31536000")
 
 
+def test_office_add_in_pages_may_load_office_js_and_sit_in_office_frames():
+    pane = _h("/static/office-addin/taskpane.html")
+    csp = pane["content-security-policy"]
+    assert "script-src 'self' https://appsforoffice.microsoft.com;" in csp
+    assert "frame-ancestors 'self' https://*.office.com" in csp and "x-frame-options" not in pane
+    assert "'unsafe-eval'" not in csp and "'unsafe-inline'" not in csp.split("script-src")[1].split(";")[0]
+    other = _h("/static/js/main.js")                              # the rest of Kosha stays as strict as before
+    assert "appsforoffice" not in other["content-security-policy"] and other["x-frame-options"] == "DENY"
+
+
 @pytest.mark.parametrize("spec, expected", [
     ("tcp://127.0.0.1:3310", ("tcp", ("127.0.0.1", 3310))),
     ("clamav.local:3311", ("tcp", ("clamav.local", 3311))),

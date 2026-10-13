@@ -1,9 +1,21 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Browser test of the measured change list, the change-log editor and the copy design dialog.
 Skipped when Playwright with Chromium is not installed (the CI browser job runs scripts/smoke_ui.py)."""
+import time
+
 import pytest
 
 sync_api = pytest.importorskip("playwright.sync_api")
+
+
+def _wait_until(page, expression, timeout=15.0):
+    """Poll an expression (page.wait_for_function uses eval in the page, which Kosha's CSP refuses)."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if page.evaluate(expression):
+            return
+        time.sleep(0.1)
+    raise AssertionError(f"timed out waiting for: {expression}")
 
 
 @pytest.fixture(scope="module")
@@ -47,7 +59,7 @@ def test_change_log_tab_viewer_changes_and_change_order(page, demo_kosha):
     page.select_option("select[aria-label=Revision]", "D")
     page.fill("textarea[placeholder^='In one or two']", "Fretting at the hub seat.")
     page.get_by_role("button", name="Build draft").click()
-    page.wait_for_function("[...document.querySelectorAll('textarea')].some(t => t.value === 'Fretting at the hub seat.' && t.id.startsWith('cl-why'))")
+    _wait_until(page, "[...document.querySelectorAll('textarea')].some(t => t.value === 'Fretting at the hub seat.' && t.id.startsWith('cl-why'))")
     page.get_by_role("button", name="Save change log").click()
     page.wait_for_selector("text=Saved by Asha Menon")
 
@@ -68,7 +80,7 @@ def test_change_log_tab_viewer_changes_and_change_order(page, demo_kosha):
     co = next(c for c in asha.call("GET", "/api/changes")["changes"] if c["number"] == "ECO-0001")
     page.goto(f"{base}/#/change/{co['id']}")
     page.wait_for_selector("text=No version of revision B has been checked in yet.")
-    page.wait_for_function("[...document.querySelectorAll('textarea')].some(t => t.value.startsWith('Field report: fretting'))")
+    _wait_until(page, "[...document.querySelectorAll('textarea')].some(t => t.value.startsWith('Field report: fretting'))")
 
 
 def test_explorer_offers_copy_design_on_models(page, demo_kosha):

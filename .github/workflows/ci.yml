@@ -99,7 +99,7 @@ jobs:
       - name: SPDX licence headers
         run: python scripts/spdx_headers.py
       - name: Web client syntax
-        run: for f in web/js/*.js web/office-addin/*.js; do node --check "$f"; done
+        run: node scripts/check_js.mjs
       - name: Office add-in manifest and AutoCAD bundle are well-formed XML
         run: python -c "import sys, xml.etree.ElementTree as ET; [ET.parse(f) for f in sys.argv[1:]]" web/office-addin/manifest.xml addins/autocad/Kosha.bundle/PackageContents.xml
       - name: PowerShell scripts (Kosha Desktop install and uninstall)

@@ -34,7 +34,22 @@ SCREENS = ["#/home", "#/files", "#/boms", "#/changes", "#/erp", "#/common", "#/a
            "#/admin?tab=security", "#/search?q=MX-100", "#/library", "#/library?q=M16x60",
            "#/admin?tab=packs", "#/deviations", "#/deviation/1", "#/inputs", "#/inputs?q=bearing",
            "#/input/1", "#/projects", "#/project/1", "#/item/1", "#/erp?tab=reconcile", "#/erp?tab=settings",
-           "#/admin?tab=notify", "#/erp?tab="]
+           "#/admin?tab=notify"]
+ADMIN_ONLY = ("#/admin", "#/erp?tab=")
+
+
+def wait_until(page, expression: str, timeout: float = 10.0) -> bool:
+    """Poll a JavaScript expression. (page.wait_for_function evaluates its predicate with eval inside the page,
+    which Kosha's Content-Security-Policy rightly refuses.)"""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            if page.evaluate(expression):
+                return True
+        except Exception:
+            pass    # the page is navigating; try again
+        time.sleep(0.1)
+    return False
 
 
 def main() -> int:
@@ -67,13 +82,11 @@ def main() -> int:
                 page.keyboard.press("Enter")
                 page.wait_for_selector("nav.rail", timeout=15000)
                 for hash_ in SCREENS:
-SCREENS = ["#/admin"]
+                    if hash_.startswith(ADMIN_ONLY) and user != "admin":
                         continue
                     page.goto(BASE + "/" + hash_)
-                    try:   # each screen shows its title in the top bar once it has loaded
-                        page.wait_for_function("document.querySelector('#app') && document.querySelector('#app').innerText.trim().length > 40",
-                                               timeout=10000)
-                    except Exception:
+                    if not wait_until(page, "document.querySelector('#page') && "
+                                            "document.querySelector('#page').innerText.trim().length > 20"):
                         errors.append(f"{user} {hash_}: the screen stayed empty")
                     page.wait_for_load_state("networkidle")
                 page.click("button.avatar")                       # the account menu opens "My notifications"

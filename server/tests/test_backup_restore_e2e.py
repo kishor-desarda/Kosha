@@ -10,7 +10,13 @@ import subprocess
 import sys
 import zipfile
 
-from harness import SERVER_DIR, Client, KoshaServer
+import pytest
+
+from harness import SERVER_DIR, TEST_DATABASE_URL, Client, KoshaServer
+
+# The restore and the restore test read SQLite database copies; a PostgreSQL backup (pg_dump) is restored with
+# pg_restore as the README describes, and its automated restore test is on the roadmap.
+pytestmark = pytest.mark.skipif(bool(TEST_DATABASE_URL), reason="restore test covers SQLite database copies")
 
 
 def _run(kosha, *args, expect=0):

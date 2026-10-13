@@ -33,7 +33,9 @@ import uvicorn  # noqa: E402
 from kosha.cad import dxfwriter as W  # noqa: E402
 from kosha.cad import mesh as M  # noqa: E402
 
-PORT, ERP_PORT = 18080, 18081
+from harness import free_port  # noqa: E402
+
+PORT, ERP_PORT = free_port(), free_port()     # free ports, so two runs (or another program) never collide
 BASE = f"http://127.0.0.1:{PORT}"
 
 

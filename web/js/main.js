@@ -51,6 +51,7 @@ const ROUTES = [
 const root = document.getElementById('app');
 let shell = null;
 let cleanup = null;
+let routeSeq = 0;
 
 function setMode(mode, save = true) {
   S.mode = mode;
@@ -204,11 +205,17 @@ async function route() {
     if (typeof cleanup === 'function') { try { cleanup(); } catch (e) { /* ignore */ } }
     cleanup = null;
     store('lastRoute', hash);
-    const container = shell.page;
-    container.scrollTop = 0;
+    // Every page gets a fresh container: a page still loading when the user moves on finishes into a detached
+    // element instead of overwriting the page they moved to, and its clean-up runs straight away.
+    const seq = ++routeSeq;
+    const container = h('div', { class: 'route-view' });
+    mount(shell.page, container);
+    shell.page.scrollTop = 0;
     try {
-      cleanup = await loader()(container, m.slice(1), params, { setTitle });
-    } catch (e) { fail(e); }
+      const done = await loader()(container, m.slice(1), params, { setTitle });
+      if (seq === routeSeq) cleanup = done;
+      else if (typeof done === 'function') { try { done(); } catch (e) { /* ignore */ } }
+    } catch (e) { if (seq === routeSeq) fail(e); }
     return;
   }
   location.hash = '#/home';

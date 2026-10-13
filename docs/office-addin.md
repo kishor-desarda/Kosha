@@ -50,15 +50,19 @@ expires (`KOSHA_TOKEN_HOURS`, 12 hours by default) or the user signs out.
 ## Content-Security-Policy
 
 Every script of the pane is in a file of its own (`taskpane.js`, `commands.js`); there is no
-inline script or style, so a strict Content-Security-Policy works. Office requires `office.js`
-from Microsoft, so the policy for `/static/office-addin/` must allow it:
+inline script or style, so a strict Content-Security-Policy works. Kosha sends its own policy for
+`/static/office-addin/` (in `server/kosha/headers.py`) that allows exactly what Office needs and
+nothing more:
 
 ```text
 script-src 'self' https://appsforoffice.microsoft.com
+frame-ancestors 'self' https://*.office.com https://*.office365.com https://*.officeapps.live.com
+                https://*.sharepoint.com https://*.microsoft365.com https://*.cloud.microsoft https://outlook.live.com
 ```
 
-Office also shows the pane inside a frame, so do not send `X-Frame-Options: DENY` or
-`frame-ancestors 'none'` for `/static/office-addin/`.
+and leaves out `X-Frame-Options: DENY` there, because Office on the web shows the pane in a frame.
+Every other page of Kosha keeps the strict policy. If a reverse proxy in front of Kosha adds its own
+headers, give `/static/office-addin/` the same exception there.
 
 ## Test mode
 
