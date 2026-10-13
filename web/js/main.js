@@ -141,6 +141,58 @@ async function refreshBadges() {
 setInterval(refreshBadges, 60000);
 window.addEventListener('kosha:changed', () => setTimeout(refreshBadges, 300));
 
+// Live updates: one server-sent events connection per tab. Only event names and record ids arrive; when something
+// another person did touches the page on screen, a bar offers to refresh it (the page is never redrawn under the
+// user's hands).
+let live = null;
+let liveRetry = null;
+const LIST_PAGES = new Set(['home', 'files', 'boms', 'changes', 'ecrs', 'deviations', 'common', 'inputs', 'projects']);
+const PAGE_ID = { doc: 'document_id', item: 'item_id', bom: 'bom_id', change: 'change_id', ecr: 'change_request_id',
+  deviation: 'deviation_id' };
+
+function touchesPage(ev) {
+  const [, page, id] = (location.hash || '').split('?')[0].match(/^#\/(\w+)(?:\/(\d+))?/) || [];
+  if (!page) return false;
+  if (LIST_PAGES.has(page) && !id) return true;
+  if (page === 'files') return true;
+  const key = PAGE_ID[page];
+  return Boolean(key && id && String(ev[key]) === id);
+}
+
+function liveBar() {
+  if (!shell || shell.page.querySelector('.live-bar')) return;
+  const bar = h('div', { class: 'banner info live-bar', role: 'status' },
+    h('span', null, 'Someone else changed something on this page.'),
+    h('button', { class: 'btn sm', onClick: () => { bar.remove(); route(); } }, 'Refresh'),
+    h('button', { class: 'btn sm ghost', title: 'Keep what is on screen', onClick: () => bar.remove() }, 'Not now'));
+  shell.page.prepend(bar);
+}
+
+function startLive() {
+  if ((live && live.readyState !== EventSource.CLOSED) || !S.token || isVendor() || typeof EventSource === 'undefined') return;
+  live = new EventSource(`/api/events/stream?access_token=${encodeURIComponent(S.token)}`);
+  window.koshaLive = live;
+  const onEvent = e => {
+    let ev = {};
+    try { ev = JSON.parse(e.data); } catch (err) { return; }
+    if (S.user && ev.user_id === S.user.id) return;        // this person's own actions already refreshed the page
+    window.dispatchEvent(new CustomEvent('kosha:live', { detail: ev }));
+    window.dispatchEvent(new Event('kosha:changed'));
+    if (touchesPage(ev) && !document.querySelector('dialog[open]')) liveBar();
+  };
+  for (const name of LIVE_EVENTS) live.addEventListener(name, onEvent);
+  live.onerror = () => {
+    if (live && live.readyState === EventSource.CLOSED) {     // refused (signed out, server restarting): try later
+      live = null; window.koshaLive = null;
+      clearTimeout(liveRetry);
+      if (S.token) liveRetry = setTimeout(startLive, 60000);
+    }
+  };
+}
+const LIVE_EVENTS = ['item.created', 'item.updated', 'file.checked_in', 'file.checked_out', 'revision.released',
+  'revision.obsoleted', 'bom.released', 'ecr.raised', 'eco.submitted', 'eco.approved', 'eco.implemented',
+  'deviation.approved', 'comment.added'];
+
 export function setTitle(t) { if (shell) shell.titleEl.textContent = t; document.title = `${t} — Kosha`; }
 
 function changePassword() {
@@ -248,6 +300,7 @@ async function route() {
     } catch (e) { return; }
   }
   if (!shell) buildShell();
+  startLive();
   const [path, query] = hash.split('?');
   if (isVendor() && !VENDOR_ROUTES.has((path.match(/^#\/(\w+)/) || [])[1])) { location.hash = '#/projects'; return; }
   const params = Object.fromEntries(new URLSearchParams(query || ''));

@@ -75,6 +75,9 @@ def has_role(user: dict | None, role: str) -> bool:
     if not user:
         return False
     main = LADDER.get(user.get("role"), -1)
+    if user.get("kind") == "service":           # programs propose; releasing and approving need a person
+        main = min(main, LADDER["engineer"])
+        return role in LADDER and main >= LADDER[role]
     if role in LADDER:
         return main >= LADDER[role]
     if main >= LADDER["admin"]:

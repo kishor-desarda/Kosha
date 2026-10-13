@@ -219,6 +219,7 @@ export function logout(expired) {
   // end the session on the server too, so the token can't be used again
   if (!expired && S.token) fetch('/api/auth/logout', { method: 'POST', keepalive: true, headers: { Authorization: `Bearer ${S.token}` } }).catch(() => {});
   S.token = ''; S.user = null;
+  if (window.koshaLive) { window.koshaLive.close(); window.koshaLive = null; }   // the live updates connection
   localStorage.removeItem('kosha.token');
   if (expired) sessionStorage.setItem('kosha.expired', '1');
   location.hash = '#/login';

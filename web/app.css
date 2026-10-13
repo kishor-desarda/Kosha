@@ -637,3 +637,4 @@ dialog.dlg::backdrop { background: var(--backdrop); }
 .ai-sources { margin: 4px 0 0; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
 .ai-pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font-family: var(--mono); font-size: 12px; max-height: 40vh; overflow: auto; margin: 4px 0 0; }
 .ask-slot:empty { display: none; }
+.live-bar { margin: 0 0 12px; align-items: center; }

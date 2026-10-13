@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .. import discussions
+from ..addins import registry
 from ..web import Req, api, bad
 
 
@@ -26,6 +27,7 @@ def list_threads(req: Req):
 def start_thread(req: Req):
     etype, eid = _entity(req, "body")
     tid = discussions.start(req.user, etype, eid, req.b("body") or "", req.b("title") or "", req.b("revision"))
+    registry.emit("comment.added", {"thread_id": tid, "entity_type": etype, "entity_id": eid, "user_id": req.uid})
     return {**discussions.threads(req.user, etype, eid), "thread_id": tid}
 
 
@@ -37,6 +39,9 @@ def _thread_view(req: Req, thread_id: int, **extra) -> dict:
 @api("POST", "/api/discussions/{id:int}/comments")
 def reply(req: Req):
     cid = discussions.reply(req.user, req.int_param("id"), req.b("body") or "")
+    t = discussions.thread_or_404(req.int_param("id"))
+    registry.emit("comment.added", {"thread_id": t["id"], "comment_id": cid, "entity_type": t["entity_type"],
+                                    "entity_id": t["entity_id"], "user_id": req.uid})
     return _thread_view(req, req.int_param("id"), comment_id=cid)
 
 

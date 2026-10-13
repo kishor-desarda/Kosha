@@ -16,7 +16,7 @@ export async function renderAdmin(container, _m, params, { setTitle }) {
   const cleanups = [];
   const draw = async () => {
     while (cleanups.length) { try { cleanups.pop()(); } catch (e) { /* ignore */ } }
-    const items = S.user.role === 'admin' ? [['users', 'Users'], ['access', 'Access'], ['import', 'Import legacy data'], ['rules', 'Numbering & revisions'], ['approvals', 'Approval routes'], ['cad', 'CAD conversion'], ['addins', 'Add-ins'], ['security', 'Sign-in & sessions'], ['backups', 'Backups'], ['packs', 'Packs'], ['notify', 'Notifications'], ['ai', 'AI assistant'], ['audit', 'Audit log']] : [['review', 'Access review'], ['audit', 'Audit log']];
+    const items = S.user.role === 'admin' ? [['users', 'Users'], ['access', 'Access'], ['import', 'Import legacy data'], ['rules', 'Numbering & revisions'], ['approvals', 'Approval routes'], ['cad', 'CAD conversion'], ['addins', 'Add-ins'], ['webhooks', 'Webhooks'], ['security', 'Sign-in & sessions'], ['backups', 'Backups'], ['packs', 'Packs'], ['notify', 'Notifications'], ['ai', 'AI assistant'], ['audit', 'Audit log']] : [['review', 'Access review'], ['audit', 'Audit log']];
     const body = h('div', { class: 'panel-b' });
     mount(container, h('div', { class: 'page-pad' }, h('div', { class: 'page-head' }, h('h1', null, 'Administration')),
       h('div', { class: 'panel' }, tabs(items, tab, k => { tab = k; draw(); }), body)));
@@ -28,6 +28,7 @@ export async function renderAdmin(container, _m, params, { setTitle }) {
     if (tab === 'approvals') await import('./ecr.js').then(m => m.routesSection(body));
     if (tab === 'cad') await cad(body);
     if (tab === 'addins') await addinsTab(body);
+    if (tab === 'webhooks') await import('./programs.js').then(m => m.webhooksSection(body));
     if (tab === 'security') await securityTab(body);
     if (tab === 'backups') await backupsTab(body);
     if (tab === 'packs') await packsTab(body);
@@ -161,6 +162,7 @@ async function users(body, draw) {
         h('td', null, h('span', { class: `chip ${u.active ? 'st-released' : 'st-obsolete'}` }, u.active ? 'Active' : 'Disabled')),
         h('td', { class: 'nowrap' }, h('div', { class: 'row' },
           h('button', { class: 'btn sm', title: 'Extra roles, vendor projects, view only and end date', onclick: () => userAccessDialog(u, draw).catch(fail) }, 'Access'),
+          u.kind === 'service' ? h('button', { class: 'btn sm', title: 'Keys with which programs use this service account', onclick: () => import('./programs.js').then(m => m.apiKeysDialog(u)).catch(fail) }, 'API keys') : null,
           h('button', { class: 'btn sm', onclick: () => resetPw(u) }, 'Reset password'),
           h('button', { class: 'btn sm', title: 'End all sessions of this user, in browsers and CAD add-ins. They can sign in again at once.', onclick: () => signOutEverywhere(u) }, 'Sign out everywhere'),
           h('button', { class: 'btn sm', title: 'Link this user to an account in Active Directory, LDAP or an OpenID Connect provider', onclick: () => userDirectoryDialog(u) }, 'Directory'),

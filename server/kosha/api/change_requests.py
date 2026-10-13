@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .. import approval, change_requests, changes
+from ..addins import registry
 from ..web import Req, api, bad
 
 
@@ -18,6 +19,9 @@ def list_requests(req: Req):
 def raise_request(req: Req):
     cr_id = change_requests.create(req.user, req.b("title") or "", req.b("reason") or "", req.b("document_id"),
                                    req.b("item_id"))
+    cr = change_requests.cr_or_404(cr_id)
+    registry.emit("ecr.raised", {"change_request_id": cr_id, "number": cr["number"], "document_id": cr["document_id"],
+                                 "item_id": cr["item_id"], "user_id": req.uid})
     return change_requests.detail(cr_id, req.user)
 
 

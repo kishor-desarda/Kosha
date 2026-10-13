@@ -8,6 +8,7 @@ import urllib.parse
 from starlette.responses import Response
 
 from .. import access, boms, db, lifecycle, store
+from ..addins import registry
 from ..cad import process as cadproc
 from ..web import ROLE_LEVEL, Req, api, as_bool, bad, conflict, not_found
 from .core import DOC_SELECT, _with_preview
@@ -310,12 +311,17 @@ def checkin(req: Req):
     f = files[0]
     d = lifecycle.checkin(req.user, 0 or lifecycle.doc_or_404(did)["folder_id"], f.filename, f.file,
                           req.b("comment") or "", keep, _upload_props(req), document_id=did)
+    registry.emit("file.checked_in", {"document_id": did, "item_id": d.get("item_id"), "filename": d["filename"],
+                                      "revision": d["revision"], "version": d.get("latest_version"), "user_id": req.uid})
     return lifecycle.doc_summary(d, lifecycle.user_names())
 
 
 @api("POST", "/api/documents/{id:int}/checkout", role="engineer")
 def checkout(req: Req):
-    return lifecycle.doc_summary(lifecycle.checkout(req.user, req.int_param("id")), lifecycle.user_names())
+    d = lifecycle.checkout(req.user, req.int_param("id"))
+    registry.emit("file.checked_out", {"document_id": d["id"], "item_id": d.get("item_id"), "filename": d["filename"],
+                                       "user_id": req.uid})
+    return lifecycle.doc_summary(d, lifecycle.user_names())
 
 
 @api("POST", "/api/documents/{id:int}/undo-checkout", role="engineer")
