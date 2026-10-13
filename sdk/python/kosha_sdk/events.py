@@ -16,6 +16,8 @@ EVENTS = {
     "bom.released": "a BOM was released",
     "change.implemented": "a change order was implemented",
     "item.created": "a new item was created",
+    "change.submitted": "a change order was submitted for approval",
+    "erp.job_failed": "a transfer to the ERP failed (it is kept for a retry)",
 }
 
 Handler = Callable[[Any, dict], None]
