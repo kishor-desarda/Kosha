@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -19,7 +20,15 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parent.parent
-PORT = 18556
+
+
+def _free_port() -> int:
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+PORT = _free_port()   # parallel runs never collide
 BASE = f"http://127.0.0.1:{PORT}"
 SCREENS = ["#/home", "#/files", "#/boms", "#/changes", "#/erp", "#/common", "#/admin", "#/search?q=MX-100"]
 
