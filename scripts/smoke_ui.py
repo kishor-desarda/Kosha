@@ -30,7 +30,9 @@ def _free_port() -> int:
 
 PORT = _free_port()   # parallel runs never collide
 BASE = f"http://127.0.0.1:{PORT}"
-SCREENS = ["#/home", "#/files", "#/boms", "#/changes", "#/erp", "#/common", "#/admin", "#/search?q=MX-100"]
+SCREENS = ["#/home", "#/files", "#/boms", "#/changes", "#/erp", "#/erp?tab=reconcile", "#/erp?tab=settings", "#/common",
+           "#/admin", "#/admin?tab=notify", "#/search?q=MX-100"]
+ADMIN_ONLY = ("#/admin", "#/erp?tab=")
 
 
 def main() -> int:
@@ -61,7 +63,7 @@ def main() -> int:
                 page.keyboard.press("Enter")
                 page.wait_for_selector("nav.rail", timeout=15000)
                 for hash_ in SCREENS:
-                    if hash_ == "#/admin" and user != "admin":
+                    if hash_.startswith(ADMIN_ONLY) and user != "admin":
                         continue
                     page.goto(BASE + "/" + hash_)
                     try:   # each screen shows its title in the top bar once it has loaded
@@ -70,7 +72,14 @@ def main() -> int:
                     except Exception:
                         errors.append(f"{user} {hash_}: the screen stayed empty")
                     page.wait_for_load_state("networkidle")
-                print(f"ok: {user} opened {len(SCREENS)} screens")
+                page.click("button.avatar")                       # the account menu opens "My notifications"
+                page.click(".ctxmenu >> text=My notifications")
+                try:
+                    page.wait_for_selector("dialog[open] table", timeout=10000)
+                except Exception:
+                    errors.append(f"{user}: My notifications did not open")
+                page.keyboard.press("Escape")
+                print(f"ok: {user} opened {len(SCREENS)} screens and My notifications")
             browser.close()
     finally:
         proc.terminate()

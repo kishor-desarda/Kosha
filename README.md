@@ -28,7 +28,8 @@ built for design offices that work in SolidWorks, AutoCAD, GStarCAD and other CA
 | **Revision control** | Check-out locks a file; check-in creates a version. Revisions run A, B, C… (skipping I, O, Q, S, X, Z as ASME Y14.35 recommends). Lifecycle *In work → In review → Released → Obsolete*, with role checks. Released revisions are locked; **Revise** starts the next one. Everything is in the audit log. |
 | **All engineering data** | Folders by product line hold SolidWorks, DWG, DXF, PDF, STEP, STL, Office files and images. Files link to **items** (the part master) by part number, read from the file name, the DWG/DXF title block or SolidWorks custom properties. |
 | **Engineering BOMs** | Built from CAD assembly structure at check-in, imported from a BOM table (indented numbers create sub-assemblies), or edited by hand. Validation (unreleased parts, missing material, duplicates, loops), comparison between revisions, Excel export, copy forward on revise. |
-| **ERP sync** | On release, items and BOMs are queued and sent to the ERP through a connector add-in (ERPNext today): children first, unchanged BOMs not sent again, dry-run by default, failures kept with the ERP's own message and a **Retry** button. Stock and cost are read back. |
+| **ERP sync** | On release, items and BOMs are queued and sent to the ERP through a connector add-in (ERPNext and Odoo today): children first, unchanged BOMs not sent again, dry-run by default, failures kept with the ERP's own message and a **Retry** button. Stock and cost are read back. **Reconciliation** compares released items and BOMs with the ERP and lists the differences in plain words, with **Send again** and an Excel export. |
+| **Notifications** | Change orders waiting for approval, failed ERP transfers and (for those who ask) new releases reach people by e-mail or in Teams, Slack or Telegram. Each person chooses under **My notifications**; an outbox delivers in the background and retries, so a broken mail server never holds up work. |
 | **Change orders** | ECOs collect the affected files, start new revisions, route to named approvers, and **Implement** releases everything and triggers the ERP push. |
 | **Duplicate finder** | Four checks across legacy data: identical files, same part number, similar geometry (DXF/DWG shape signatures; 3D size and volume) and similar descriptions ("BLT HEX M16 X 60 8.8" = "HEX BOLT M16X60 GR8.8"). Review side by side, choose a standard part, export to Excel. |
 | **Legacy import** | Imports a file share with a dry run and an Excel report, skips copies and junk files, keeps legacy revisions, and can be re-run safely. |
@@ -119,7 +120,23 @@ by default:
 3. In Kosha, open **ERP sync › Connection settings**, fill in the address, key and secret, press
    **Test connection**, then untick **Dry run** and tick **Connect**.
 
-Other ERPs plug into the same `ErpConnector` interface (see *Add-ins* below).
+The official **Odoo connector** (`addins/odoo`) works the same way through Odoo's external API; choose
+**Odoo** under *ERP system* on the same page and follow its [README](addins/odoo/README.md). Other
+ERPs plug into the same `ErpConnector` interface (see *Add-ins* below).
+
+**ERP sync › Reconciliation** reads the ERP and lists what differs from Kosha's released items and
+BOMs: items missing in the ERP, description, unit, revision or material differences, missing, extra or
+changed BOM lines, and items the ERP marks as coming from Kosha that Kosha no longer has. The check
+only reads; nothing changes in the ERP until someone presses **Send again**, which queues the usual,
+idempotent transfer.
+
+### Notifications
+
+Under **Admin › Notifications**, set Kosha's own address (for links), the mail server (STARTTLS,
+SSL/TLS or none; **Send a test e-mail**), and test the chat channels. Teams, Slack and Telegram are
+notifier add-ins: fill in their webhook address or bot token under **Admin › Add-ins**. Each person
+then picks channels per kind of notice under **My notifications** in the menu behind their initials.
+The delivery log shows every notice, its attempts and errors, with **Send again**.
 
 ## CAD add-ins
 
@@ -159,7 +176,7 @@ server/tests/        unit tests (pytest) and end-to-end suites with a simulated 
 web/                 browser client (plain JavaScript modules, no build step)
 sdk/python/          add-in SDK (Apache-2.0): manifest, base classes, safe HTTP, conformance tests
 sdk/dotnet/          shared C# libraries for CAD add-ins (Apache-2.0)
-addins/              official add-ins (Apache-2.0): ERPNext, SolidWorks, GStarCAD
+addins/              official add-ins (Apache-2.0): ERPNext, Odoo, Teams, Slack, Telegram, SolidWorks, GStarCAD
 packs/               industry packs and standard-parts data (CC BY 4.0)
 deploy/              Linux service, backup timer, Caddy example, Windows scripts for trying Kosha
 docs/                documentation and decision records
@@ -172,7 +189,7 @@ cd server
 pytest                       # unit tests: add-in guard, file store, backups
 python tests/test_api.py     # main workflows end to end, with a simulated ERPNext
 python tests/test_import.py  # legacy import of a messy folder tree and all duplicate checks
-cd .. && pytest sdk/python/tests addins/erpnext/tests
+cd .. && pytest sdk/python/tests addins/erpnext/tests addins/odoo/tests addins/teams/tests addins/slack/tests addins/telegram/tests
 python scripts/smoke_ui.py   # browser smoke test (needs Playwright)
 dotnet test sdk/dotnet/Kosha.CadCore.Tests   # shared CAD core (needs the .NET 8 SDK)
 ```
