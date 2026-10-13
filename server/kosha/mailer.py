@@ -36,6 +36,8 @@ _EMAIL = re.compile(r"^[^@\s<>]+@[^@\s<>]+\.[^@\s<>]+$")
 def settings() -> dict:
     cfg = dict(DEFAULTS)
     cfg.update({k: v for k, v in (db.get_setting(SETTINGS_KEY) or {}).items() if k in DEFAULTS})
+    from .vault import unseal
+    cfg["password"] = unseal(cfg.get("password") or "")      # kept encrypted (vault.py)
     return cfg
 
 
@@ -71,7 +73,8 @@ def save(changes: dict) -> dict:
         cfg[k] = v
     if cfg["from_address"] and not _EMAIL.match(cfg["from_address"]):
         raise ValueError("The sender address does not look like an e-mail address.")
-    db.set_setting(SETTINGS_KEY, cfg)
+    from .vault import seal
+    db.set_setting(SETTINGS_KEY, {**cfg, "password": seal(cfg["password"])})
     return masked()
 
 

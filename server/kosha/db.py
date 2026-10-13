@@ -322,6 +322,9 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "allow_self_approval_with_reason": False,
     # spares only and obsolete are decided through a change order
     "obsolete_needs_change_order": True,
+    # released PDFs leave Kosha with a line naming the person, the date and this wording (specification 15.3)
+    "watermark_downloads": True,
+    "watermark_text": "Company confidential",
     # days a deleted file can be put back by the person who deleted it (afterwards an admin can)
     "recycle_bin_days": 30,
     "company_name": "",

@@ -58,6 +58,11 @@ def bootstrap() -> None:
     if not db.scalar("SELECT COUNT(*) FROM folders"):
         db.insert("folders", {"parent_id": None, "name": "Kosha", "created_at": db.now()})
     addins.registry.discover()
+    try:
+        from .vault import seal_existing
+        seal_existing()         # secrets stored before they were kept encrypted
+    except Exception:   # never stop the start for this; they are sealed next time
+        log.exception("Could not seal stored secrets")
 
 
 @contextlib.asynccontextmanager

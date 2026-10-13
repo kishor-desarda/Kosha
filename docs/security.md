@@ -49,3 +49,31 @@ history and places, directory links, notification settings, comments, audit entr
 identifies them: the account becomes *Former user 17*, is switched off and signed out, and its sign-in history,
 places, directory links and settings go. Drawings, approvals and the audit log stay (records of engineering
 decisions are kept), naming the person only by number.
+
+## Watermarks
+
+Released PDFs (released, spares only, obsolete) are downloaded with one line along the bottom of every page: the
+person's name, the date and the company's wording (*Company confidential* by default; Admin › Sign-in & sessions ›
+Watermarks). Files in work are downloaded unchanged so they can be edited and checked in again. PDFs opened through a
+share link always carry the recipient's name. Watermarking uses pdfium (the `pypdfium2` package from
+`requirements.txt`); without it, or for a PDF it cannot open, the file goes out unchanged and the audit entry says
+so. Images are not watermarked yet.
+
+## Share links
+
+From a released file's page, **Share outside** makes a link for a customer or supplier who has no Kosha account:
+who it is for, how many days it works (14 by default, at most 90), an optional password (send it another way), and
+view only or download. The recipient opens `https://<kosha>/#/share/<token>` and sees the files with their
+revision; when a newer revision is released later, the page says so. The link's secret is shown once and Kosha keeps
+only its fingerprint; the part after `#` never reaches a server log. **My share links** (menu behind your initials)
+lists your links with how often they were opened and downloaded, and **Withdraw** stops one at once. Admins see every
+link. Making, opening, viewing and downloading are all in the audit log; wrong passwords count towards the sign-in
+pause of that link.
+
+## Secrets
+
+The secrets Kosha keeps for other systems (the add-ins' ERP, AI and directory keys, the mail server password and
+webhook signing secrets) are stored encrypted (`enc1:` values: HMAC-SHA256 keystream with encrypt-then-MAC). The key
+comes from the installation's secret key (`secret.key` in the data folder, or `KOSHA_SECRET`), kept apart from the
+database, so a copy of the database alone does not reveal them. Secrets stored before this was added are sealed at
+the next start.

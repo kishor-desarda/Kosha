@@ -196,6 +196,10 @@ class Registry:
         a = self._require(addin_id)
         values = a.manifest.defaults()
         values.update(db.get_setting(f"addin:{addin_id}") or {})
+        from .vault import unseal
+        for s in a.manifest.settings:      # secrets are kept encrypted (vault.py)
+            if s.type == "secret" and values.get(s.key):
+                values[s.key] = unseal(values[s.key])
         return values
 
     def masked_settings(self, addin_id: str) -> dict:
@@ -217,7 +221,10 @@ class Registry:
                 values[key] = s.coerce(raw)
             except ManifestError as e:
                 raise AddinError(str(e)) from None
-        db.set_setting(f"addin:{addin_id}", values)
+        from .vault import seal
+        db.set_setting(f"addin:{addin_id}", {k: seal(v) if (a.manifest.setting(k) and a.manifest.setting(k).type == "secret"
+                                                             and isinstance(v, str)) else v
+                                             for k, v in values.items()})
         a.instance = None   # rebuilt with the new settings on next use
         db.audit(user_id, "addin_settings", "addin", None, a.id)
         return self.masked_settings(addin_id)

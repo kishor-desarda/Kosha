@@ -30,6 +30,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
 from . import db
+from .vault import seal, unseal
 from .web import bad, not_found
 
 log = logging.getLogger("kosha.events")
@@ -138,7 +139,7 @@ def add_hook(user_id: int, body: dict) -> dict:
     secret = "whsec_" + secrets.token_urlsafe(24)
     with db.tx():
         hid = db.insert("webhooks", {"name": name, "url": _check_url(body.get("url")),
-                                     "events_json": json.dumps(_check_events(body.get("events"))), "secret": secret,
+                                     "events_json": json.dumps(_check_events(body.get("events"))), "secret": seal(secret),
                                      "active": 1, "created_by": user_id, "created_at": db.now()})
         db.audit(user_id, "webhook_add", "webhook", hid, name)
     return {**next(h for h in hooks() if h["id"] == hid), "secret": secret}
@@ -210,7 +211,7 @@ def _send(d: dict) -> None:
         req = urllib.request.Request(h["url"], data=body, method="POST", headers={
             "Content-Type": "application/json", "User-Agent": "Kosha-Webhooks/1", "X-Kosha-Event": d["event"],
             "X-Kosha-Delivery": str(d["id"]), "X-Kosha-Event-Id": d["event_id"],
-            "X-Kosha-Signature": sign(h["secret"], body)})
+            "X-Kosha-Signature": sign(unseal(h["secret"]), body)})
         with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as r:
             status = r.status
     except urllib.error.HTTPError as e:

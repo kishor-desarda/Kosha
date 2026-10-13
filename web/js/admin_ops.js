@@ -103,8 +103,24 @@ export async function securityTab(body) {
       } catch (ex) { fail(ex); } finally { e.target.disabled = false; }
     } }, 'Save'))));
   twoStepSettings(body, r.settings);
+  await watermarkSection(body);
   await apiLimitSection(body);
   await directorySection(body);
+}
+
+// Released PDFs leave Kosha with a line naming the person, the date and the company's wording.
+async function watermarkSection(body) {
+  const s = await get('/api/settings');
+  const on = h('input', { type: 'checkbox', checked: s.watermark_downloads });
+  const text = h('input', { class: 'input', id: 'wm-text', value: s.watermark_text, maxlength: 80 });
+  body.appendChild(h('section', { class: 'col', style: { gap: '10px', maxWidth: '820px', marginTop: '24px' } },
+    h('h2', null, 'Watermarks'),
+    h('label', { class: 'check' }, on, 'Released PDFs carry the name of the person who downloads them, the date and this wording'),
+    h('div', { class: 'field' }, h('label', { for: 'wm-text' }, 'Wording'), text,
+      h('span', { class: 'hint' }, 'Files in work are downloaded unchanged so they can be edited. PDFs opened through share links always carry the recipient\'s name.')),
+    h('div', null, h('button', { class: 'btn', onclick: async () => {
+      try { await put('/api/settings', { watermark_downloads: on.checked, watermark_text: text.value }); toast('Saved', 'ok'); } catch (e) { fail(e); }
+    } }, 'Save watermark'))));
 }
 
 // How many calls a minute each account may make through the API (protects the server from a runaway script).
