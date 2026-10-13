@@ -7,6 +7,8 @@
 - [`../addins/`](../addins/): each official add-in has its own README.
 - [`desktop.md`](desktop.md): Kosha Desktop, Explorer commands and a tray icon for Office files, PDFs and images.
 - [`office-addin.md`](office-addin.md): the Kosha task pane in Word, Excel and PowerPoint.
+- [`brand/`](brand/README.md): the Kosha logo, icons and colours.
+- [`../llms.txt`](../llms.txt): a short guide to the project for AI assistants and search tools.
 
 The full specification and development guide will be published here as the documentation site
 (MkDocs) is set up.

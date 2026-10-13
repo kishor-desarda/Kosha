@@ -176,7 +176,8 @@ function renderLogin() {
   });
   mount(root, h('div', { class: 'login' },
     h('div', { class: 'art' },
-      h('div', { class: 'row' }, logo(34), h('span', { class: 'wordmark' }, 'KOSHA ', h('b', null, 'PLM'))),
+      h('div', { class: 'row' }, h('img', { class: 'login-logo', src: '/static/brand/kosha-logo-dark.svg', alt: 'Kosha', width: 166, height: 48 }),
+        h('span', { class: 'wordmark' }, 'PLM')),
       h('div', null, h('h1', null, 'The right revision, every time.'),
         h('p', { style: { color: '#BAC1C7', fontSize: '17px', lineHeight: 1.6, maxWidth: '520px' } },
           'Drawings, models, BOMs and change orders for every product line, in one place.')),

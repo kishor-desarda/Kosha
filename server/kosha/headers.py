@@ -2,7 +2,7 @@
 """Security headers on every response (plain ASGI middleware, so streamed responses are untouched).
 
 The web client loads only its own scripts, styles and data from Kosha; it sets inline style attributes and uses
-data: URIs for the favicon and some images, and shows PDFs in a frame from Kosha itself. A response that already
+data: URIs for some images, and shows PDFs in a frame from Kosha itself. A response that already
 carries one of these headers keeps its own value (file downloads and previews set a stricter policy).
 
 The Office add-in pages (/static/office-addin/) are the one exception: Office loads office.js from Microsoft's

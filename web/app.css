@@ -13,6 +13,7 @@
   --rail: #16191D;
   --rail-2: #252B31;
   --rail-ink: #B6BDC3;
+  --brand: #EF5A28;          /* Kosha orange (docs/brand); the logo only, not the interface accent */
   --accent: #0B5CAD;
   --accent-hover: #094C8F;
   --accent-soft: #E7F0FA;
@@ -314,8 +315,10 @@ dialog.dlg::backdrop { background: rgba(17, 20, 23, .45); }
 .login .art h1 { font-size: 46px; line-height: 1.05; max-width: 520px; }
 .login .form { display: flex; align-items: center; justify-content: center; padding: 40px 24px; }
 .login form { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 16px; }
-.wordmark { font-family: var(--display); font-weight: 700; letter-spacing: .08em; font-size: 17px; }
-.wordmark b { color: #5AA2F0; font-weight: 700; }
+.wordmark { font-family: var(--display); font-weight: 700; letter-spacing: .08em; font-size: 17px; color: var(--brand); }
+.brand-mark { display: inline-flex; }
+.brand-mark svg { fill: var(--brand); }
+.login-logo { height: 48px; width: auto; display: block; }
 @media (max-width: 1100px) {
   .ex-body { grid-template-columns: 220px minmax(0, 1fr); }
   .ex-preview { display: none; }

@@ -1,0 +1,39 @@
+# Kosha
+
+> Kosha is a free, open-source, self-hosted product lifecycle management (PLM) and product data management (PDM) system for engineering companies. It keeps CAD files (SolidWorks, AutoCAD/GStarCAD DWG and DXF, STEP, STL), drawings, PDFs and Office files under revision control, manages engineering bills of materials (BOMs) and engineering change orders (ECOs), and sends released items and BOMs to an ERP (ERPNext and Odoo connectors). Python server (Starlette, SQLite or PostgreSQL), plain-JavaScript browser client, add-in SDK in Python and C#. Licences: AGPL-3.0-or-later (server and web client), Apache-2.0 (SDKs and add-ins), CC BY 4.0 (packs and documentation). Status: 0.5 preview.
+
+Key facts:
+
+- Every file version is stored once by its SHA-256 fingerprint and written safely to disk before check-in completes; backups are verified and restore-tested.
+- Lifecycle: In work, In review, Released, Obsolete. Revisions A, B, C... skipping I, O, Q, S, X, Z (ASME Y14.35).
+- Roles: viewer, engineer, approver, admin.
+- Every server describes its REST API at /api/docs and /api/openapi.json.
+- Add-ins (ERP connectors, notifiers, CAD add-ins, file types, industry packs) run behind a guard with time-outs and permissions an admin approves.
+- Demo data belongs to the invented company Demo Engineering (mixers, conveyors, pumps).
+
+## Docs
+
+- [README](https://github.com/kishor-desarda/Kosha/blob/main/README.md): features, two-minute demo, installation, PostgreSQL, ERP, notifications, CAD add-ins, FAQ
+- [Documentation index](https://github.com/kishor-desarda/Kosha/blob/main/docs/README.md): all documentation pages
+- [Export format](https://github.com/kishor-desarda/Kosha/blob/main/docs/export-format.md): how to take every record and file out of Kosha
+- [Kosha Desktop](https://github.com/kishor-desarda/Kosha/blob/main/docs/desktop.md): Windows tray program and Explorer commands for Office files, PDFs and images
+- [Office add-in](https://github.com/kishor-desarda/Kosha/blob/main/docs/office-addin.md): task pane for Word, Excel and PowerPoint
+- [Architecture decisions](https://github.com/kishor-desarda/Kosha/blob/main/docs/adr): one record per decision
+
+## Building add-ins
+
+- [Python add-in SDK](https://github.com/kishor-desarda/Kosha/blob/main/sdk/python/README.md): manifest, base classes, safe HTTP, conformance tests
+- [Odoo connector](https://github.com/kishor-desarda/Kosha/blob/main/addins/odoo/README.md): example ERP connector add-in
+
+## Project
+
+- [Contributing](https://github.com/kishor-desarda/Kosha/blob/main/CONTRIBUTING.md): how to contribute; commits signed off under the DCO
+- [Governance](https://github.com/kishor-desarda/Kosha/blob/main/GOVERNANCE.md): how decisions are made
+- [Security](https://github.com/kishor-desarda/Kosha/blob/main/SECURITY.md): reporting vulnerabilities
+- [Trademarks](https://github.com/kishor-desarda/Kosha/blob/main/TRADEMARKS.md): use of the name and logo
+- [Brand](https://github.com/kishor-desarda/Kosha/blob/main/docs/brand/README.md): logo files and colours
+
+## Optional
+
+- [Licence](https://github.com/kishor-desarda/Kosha/blob/main/LICENSE): GNU AGPL-3.0-or-later
+- [Citation](https://github.com/kishor-desarda/Kosha/blob/main/CITATION.cff): how to cite Kosha

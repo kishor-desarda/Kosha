@@ -1,8 +1,25 @@
-# Kosha
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/kosha-logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/brand/kosha-logo-primary.svg">
+    <img src="docs/brand/kosha-logo-primary.svg" alt="Kosha: open-source PLM" width="400">
+  </picture>
+</p>
+
+<p align="center">
+  <a href="https://github.com/kishor-desarda/Kosha/actions/workflows/ci.yml"><img src="https://github.com/kishor-desarda/Kosha/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licence-AGPL--3.0--or--later-262522" alt="Licence: AGPL-3.0-or-later"></a>
+  <img src="https://img.shields.io/badge/python-3.10%2B-262522" alt="Python 3.10 or newer">
+  <img src="https://img.shields.io/badge/status-0.5%20preview-EF5A28" alt="Status: 0.5 preview">
+</p>
+
+# Kosha: open-source PLM
 
 **Open-source product lifecycle management (PLM) for engineering companies.**
 Drawings, 3D models, revisions, bills of materials, change orders and ERP sync in one place,
 built for design offices that work in SolidWorks, AutoCAD, GStarCAD and other CAD programs.
+Kosha is a self-hosted PLM and PDM (product data management) system: one small Linux server,
+a browser client, CAD and Office add-ins, and no per-user fees.
 
 *Kosha* (कोश) means a treasury, a place where valuable things are kept safe.
 
@@ -276,6 +293,38 @@ The full specification and the development guide are maintained alongside the pr
 - **1.1 and later:** AI assistance that stays optional (classification, change-log drafts, ask-Kosha),
   more ERP connectors, Office add-in, industry packs.
 
+## Frequently asked questions
+
+**What is Kosha?**
+Kosha is a free, open-source product lifecycle management (PLM) and product data management (PDM)
+system for engineering and manufacturing companies. It keeps CAD files, drawings and documents under
+revision control, manages engineering bills of materials (BOMs) and engineering change orders (ECOs),
+and sends released items and BOMs to an ERP.
+
+**Who is it for?**
+Design offices and small to mid-sized manufacturers that keep drawings on a
+file share today and want revision control, releases and BOMs without a per-user licence.
+
+**Which CAD programs and file types does it support?**
+SolidWorks (parts, assemblies, drawings and custom properties), AutoCAD and GStarCAD (DWG and DXF with
+title-block reading), STEP and STL models, PDFs, Office files and images. DXF and DWG drawings and 3D
+models are viewed in the browser.
+
+**Which ERP systems does it connect to?**
+ERPNext and Odoo through official connector add-ins. Other ERPs plug into the same connector interface.
+
+**Is it really free? What is the licence?**
+Yes. The server and web client are AGPL-3.0-or-later; the SDKs and official add-ins are Apache-2.0, so
+you can write your own add-ins under any licence; packs and documentation are CC BY 4.0.
+
+**Where does my data live?**
+On your own server. Files are stored once by their SHA-256 fingerprint, records in SQLite or PostgreSQL,
+with verified backups and a documented [export format](docs/export-format.md) so you can always leave.
+
+**Is there an API?**
+Yes. Every Kosha server describes its REST API at `/api/docs` (OpenAPI at `/api/openapi.json`), and the
+Python SDK builds add-ins that react to Kosha events.
+
 ## Contributing
 
 Contributions of every kind are welcome: bug reports, translations, test files you may share,
@@ -290,4 +339,5 @@ privately as described in [SECURITY.md](SECURITY.md).
   so companies can build and keep their own add-ins under any licence.
 - Packs, standard-parts data and documentation: **CC BY 4.0**.
 
-"Kosha" and the Kosha logo are covered by the [trademark policy](TRADEMARKS.md).
+"Kosha" and the Kosha logo are covered by the [trademark policy](TRADEMARKS.md); logo files and colours are in
+[docs/brand](docs/brand/README.md).
