@@ -65,3 +65,10 @@ def preview(req: Req):
 def download(req: Req):
     data, ext, name = shares.content(req.params["token"], req.q("key"), req.int_param("doc"), "file")
     return _send(data, ext, name, False)
+
+
+@api("GET", "/api/share/{token}/outputs/{output:int}", role=None, auth=False)
+def download_output(req: Req):
+    """The PDF stamped at release, for a shared file's revision."""
+    data, name = shares.output(req.params["token"], req.q("key"), req.int_param("output"))
+    return _send(data, "pdf", name, False)

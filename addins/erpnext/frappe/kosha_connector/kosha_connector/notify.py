@@ -35,6 +35,11 @@ def stock_changed(doc, method=None):
     _queue("stock_changed", doc.item_code)
 
 
+def sales_order_submitted(doc, method=None):
+    """A booked sales order: Kosha makes its project with the standard folders (customer | delivery date)."""
+    _queue("sales_order", doc.name, f"{doc.customer_name or doc.customer or ''}|{doc.delivery_date or ''}")
+
+
 def send(events):
     """Runs in a worker. A failure is logged and retried by the queue; ERPNext data is never affected."""
     s = _settings()

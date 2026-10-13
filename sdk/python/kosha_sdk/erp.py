@@ -83,7 +83,8 @@ class ErpResult:
 
 @dataclass(frozen=True)
 class ErpEvent:
-    """Something that changed in the ERP and matters to Kosha: `item_changed`, `stock_changed`, `bom_cancelled`."""
+    """Something that changed in the ERP and matters to Kosha: `item_changed`, `stock_changed`, `bom_cancelled`,
+    `sales_order` (code: the order number; detail: "customer|delivery date")."""
     kind: str
     code: str
     detail: str = ""

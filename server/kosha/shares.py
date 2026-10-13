@@ -178,9 +178,12 @@ def view(token: str, key: str | None) -> dict:
                    (f["document_id"], f["version"]))
         if not d or not v or d["deleted"]:
             continue
+        outs = db.rows("SELECT id, filename, size FROM release_outputs WHERE document_id = ? AND revision = ? AND "
+                       "kind = 'released_pdf' AND status = 'ok' ORDER BY version DESC LIMIT 1",
+                       (d["id"], f["revision"]))
         files.append({"id": d["id"], "filename": d["filename"], "part_number": d["part_number"],
                       "description": d["description"], "revision": f["revision"], "size": v["size"],
-                      "preview": bool(v["preview_kind"]),
+                      "preview": bool(v["preview_kind"]), "outputs": outs,
                       "superseded": d["revision"] != f["revision"] or d["state"] == "obsolete"})
     with db.tx():
         db.execute("UPDATE share_links SET opened_count = opened_count + 1, last_opened_at = ? WHERE id = ?",
@@ -200,6 +203,38 @@ def _file(r: dict, doc_id: int) -> tuple[dict, dict]:
     if not d or not v:
         raise not_found("This file is no longer available. Ask the sender.")
     return d, v
+
+
+def output(token: str, key: str | None, output_id: int) -> tuple[bytes, str]:
+    """The PDF stamped at release of a shared file's revision, as the recipient downloads it."""
+    from . import outputs
+    r = _live(token)
+    _key_ok(r, key)
+    o = db.one("SELECT * FROM release_outputs WHERE id = ? AND kind = 'released_pdf' AND status = 'ok'", (output_id,))
+    f = next((f for f in json.loads(r["files_json"]) if o and f["document_id"] == o["document_id"]), None)
+    if not o or not f or f["revision"] != o["revision"]:
+        raise not_found("This file is not part of the link.")
+    if r["view_only"]:
+        raise forbidden("This link is for viewing only; the sender did not allow downloads.")
+    if not store.exists(o["blob_sha"]):
+        raise not_found("The stored file is missing on the server. Ask the sender.")
+    data = store.read_bytes(o["blob_sha"])
+    data = watermark_line(data, f"Uncontrolled when printed — {date.today():%d-%b-%Y}", r["recipient"])
+    d = db.one("SELECT * FROM documents WHERE id = ?", (o["document_id"],))
+    newer = outputs.superseded_by(d, o["revision"]) if d else None
+    if newer:
+        from . import watermark
+        data = watermark.superseded_band(data, "Superseded — ask for the new drawing") or data
+    with db.tx():
+        db.execute("UPDATE share_links SET download_count = download_count + 1 WHERE id = ?", (r["id"],))
+        db.audit(None, "share_download", "share", r["id"], f"{o['filename']} (stamped PDF)")
+    return data, o["filename"]
+
+
+def watermark_line(data: bytes, printed: str, recipient: str) -> bytes:
+    from . import watermark
+    data = watermark.printed_line(data, printed) or data
+    return watermark.stamp_pdf(data, watermark.line_for(recipient)) or data
 
 
 def content(token: str, key: str | None, doc_id: int, kind: str) -> tuple[bytes, str, str]:

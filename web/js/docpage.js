@@ -205,6 +205,9 @@ function changesTab(c, d) {
     S.user.kind === 'vendor' || !can('engineer') ? null : h('button', { class: 'btn', disabled: !['released', 'spares_only'].includes(d.state),
       title: ['released', 'spares_only'].includes(d.state) ? 'Send a link to a customer or supplier' : 'Only released files are shared outside the company',
       onclick: () => import('./share.js').then(m => m.shareDialog([d])) }, icon('external', 16), 'Share outside'),
+    S.user.kind === 'vendor' || !can('engineer') ? null : h('button', { class: 'btn', disabled: !['released', 'spares_only'].includes(d.state),
+      title: ['released', 'spares_only'].includes(d.state) ? 'Send this revision to a supplier or customer, with a numbered record' : 'Only released files are sent outside the company',
+      onclick: () => import('./transmittals.js').then(m => m.sendDialog([d])) }, icon('external', 16), 'Send to vendor'),
     can('engineer') ? h('button', { class: 'btn', onclick: () => import('./changes.js').then(m => m.newChangeDialog([d.id])) }, icon('plus', 16), 'New change order') : null));
   c.appendChild(d.changes.length ? h('table', { class: 'tbl' }, h('tbody', null, d.changes.map(x => h('tr', { class: 'clickable', onclick: () => { location.hash = `#/change/${x.id}`; } },
     h('td', { class: 'mono' }, x.number), h('td', null, x.title), h('td', null, x.action), h('td', null, h('span', { class: `chip st-${x.state}` }, x.state))))))

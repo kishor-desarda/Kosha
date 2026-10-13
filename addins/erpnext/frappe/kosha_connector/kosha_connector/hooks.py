@@ -16,4 +16,5 @@ doc_events = {
     "Item": {"on_update": "kosha_connector.notify.item_changed"},
     "BOM": {"on_cancel": "kosha_connector.notify.bom_cancelled"},
     "Stock Ledger Entry": {"on_submit": "kosha_connector.notify.stock_changed"},
+    "Sales Order": {"on_submit": "kosha_connector.notify.sales_order_submitted"},
 }

@@ -8,7 +8,7 @@ from starlette.responses import Response
 
 from .. import access, addins, apisafety, boms, changes, db, erp, itemmaster, lifecycle, similarity
 from ..cad import process as cadproc
-from ..web import Req, api, as_bool, bad, conflict, not_found
+from ..web import ApiError, Req, api, as_bool, bad, conflict, not_found
 from ..packs import PackConfig
 from .core import DOC_SELECT, _with_preview
 
@@ -468,7 +468,18 @@ async def erp_webhook(req: Req):
 
 def _apply_erp_events(events) -> dict:
     queued = 0
+    projects_made = 0
     for e in events:
+        if e.kind == "sales_order":         # a booked sales order gets its project and folders (6.2)
+            from .. import projects
+            customer, _, due = (e.detail or "").partition("|")
+            try:
+                _p, made = projects.from_sales_order(None, e.code, customer, due.strip() or None)
+            except ApiError as ex:
+                db.audit(None, "erp_sales_order_refused", "project", None, f"{e.code}: {ex}")
+                continue
+            projects_made += made
+            continue
         item = db.one("SELECT id FROM items WHERE part_number = ? COLLATE NOCASE", (e.code,))
         if not item:
             continue
@@ -477,7 +488,10 @@ def _apply_erp_events(events) -> dict:
             queued += 1
         elif e.kind == "bom_cancelled":
             db.audit(None, "erp_bom_cancelled", "item", item["id"], e.detail or "BOM cancelled in the ERP")
-    return {"accepted": len(events), "queued": queued}
+    out = {"accepted": len(events), "queued": queued}
+    if any(e.kind == "sales_order" for e in events):
+        out["projects_created"] = projects_made
+    return out
 
 
 @api("GET", "/api/erp/jobs", role="viewer")
