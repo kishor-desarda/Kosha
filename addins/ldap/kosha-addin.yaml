@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: Apache-2.0
+id: org.kosha.ldap
+name: LDAP / Active Directory sign-in
+version: 0.5.0
+publisher: Kosha project
+licence: Apache-2.0
+kosha: ">=0.5,<2.0"
+kind: [sign-in]
+description: >
+  People sign in to Kosha with their network user name and password, checked against Active
+  Directory or an LDAP directory (OpenLDAP, 389 Directory Server ...). Their directory groups decide
+  their Kosha role.
+help: >
+  Use an ldaps:// address, or ldap:// with StartTLS, so passwords travel encrypted. Create a
+  read-only service account for Kosha and enter its DN (or user@domain for Active Directory) and
+  password; Kosha uses it to find people and read their groups, then checks each person's password
+  by signing in as them. Press Test, then map groups to roles and test a real account
+  under Admin › Sign-in & sessions. The local admin account keeps working when the directory is down.
+entry_points:
+  server: kosha_ldap.provider:LdapProvider
+permissions: [users:sign-in]
+events: []
+settings:
+  server_url:       {type: string, required: true, label: Directory address, hint: "ldaps://dc1.example.com or ldap://ldap.example.com:389"}
+  directory_type:   {type: choice, choices: [active-directory, openldap], default: active-directory, label: Kind of directory}
+  base_dn:          {type: string, required: true, label: Search base, hint: "e.g. DC=example,DC=com"}
+  bind_mode:        {type: choice, choices: [search, direct], default: search, label: How Kosha finds people, hint: "search: with a service account (recommended); direct: signs in as the person straight away"}
+  bind_dn:          {type: string, label: Service account, hint: "e.g. CN=svc-kosha,OU=Service Accounts,DC=example,DC=com or svc-kosha@example.com"}
+  bind_password:    {type: secret, label: Service account password}
+  starttls:         {type: bool, default: true, label: "Use StartTLS (for ldap:// addresses)"}
+  verify_tls:       {type: bool, default: true, label: "Verify the directory's certificate"}
+  ca_file:          {type: string, label: CA certificate file, hint: "Path on the Kosha server to a PEM file, when your directory uses an internal CA"}
+  user_filter:      {type: string, label: User filter, hint: "Empty for the default; {username} is replaced by the escaped user name, e.g. (&(objectClass=person)(uid={username}))"}
+  upn_suffix:       {type: string, label: "User name suffix (direct sign-in, Active Directory)", hint: "e.g. example.com, so asha signs in as asha@example.com"}
+  user_dn_template: {type: string, label: "DN template (direct sign-in, OpenLDAP)", hint: "e.g. uid={username},ou=people,dc=example,dc=com"}
+  group_base_dn:    {type: string, label: Groups under, hint: "Empty: the search base"}
+  group_filter:     {type: string, label: Group filter, hint: "Empty for the default; {dn} is the person's DN, {username} the user name"}
+  nested_groups:    {type: bool, default: true, label: "Include nested groups (Active Directory)"}
+  group_format:     {type: choice, choices: [name, dn], default: name, label: Groups are matched by, hint: "name: Kosha Engineers; dn: CN=Kosha Engineers,OU=Groups,DC=example,DC=com"}
+  id_attribute:     {type: string, label: Attribute with the stable id, hint: "Empty: objectGUID (Active Directory) or entryUUID (OpenLDAP)"}
+  label:            {type: string, default: network account, label: Name shown on the sign-in page, hint: "Use your ... user name and password"}
+  timeout_s:        {type: int, default: 8, label: Time-out (seconds)}

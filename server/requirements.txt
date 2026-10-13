@@ -9,5 +9,6 @@ PyYAML>=6.0          # add-in manifests and industry packs
 openpyxl>=3.1        # Excel BOM import/export (CSV works without it)
 pypdfium2>=4.0       # thumbnails for PDF files
 numpy>=1.24          # faster common-part analysis on large installations
+cryptography>=41     # OpenID Connect sign-in: every signature algorithm (RS256 works without it)
 # only for PostgreSQL (KOSHA_DATABASE_URL); SQLite needs nothing extra
 # psycopg[binary]>=3.1

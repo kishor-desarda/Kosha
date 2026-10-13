@@ -6,12 +6,15 @@
     assert check_manifest("path/to/addin") == []
     assert check_erp_connector(MyConnector(ctx)) == []      # against a TEST system, never production
     assert check_notifier(MyNotifier(ctx)) == []            # posts a few test messages to a TEST channel
+    assert check_password_provider(MyLdap(ctx), "test-user", "test-password") == []
+    assert check_redirect_provider(MySso(ctx), browser) == []   # browser(url) -> the parameters it comes back with
 
 Each check returns a list of problems in plain words; an empty list means the add-in passes.
 """
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable, Mapping
 
 from .context import Health
 from .erp import (ErpBom, ErpBomLine, ErpBomRecord, ErpConnector, ErpError, ErpItem, ErpItemRecord, ErpNotSupported,
@@ -19,11 +22,13 @@ from .erp import (ErpBom, ErpBomLine, ErpBomRecord, ErpConnector, ErpError, ErpI
 from .errors import AddinError, ManifestError
 from .manifest import load_manifest
 from .notify import Notice, Notifier, NotifyError, Recipient
+from .signin import Identity, PasswordProvider, RedirectProvider, RedirectStart, SignInError
 
 _NEEDS = {
     "erp-connector": ("server", "erp:sync"),
     "file-type": ("server", "files:read"),
     "notifier": ("server", "notify:send"),
+    "sign-in": ("server", "users:sign-in"),
     "web-extension": ("web", None),
     "cad-addin": ("cad", None),
     "office-addin": ("office", None),
@@ -167,4 +172,111 @@ def check_notifier(notifier: Notifier) -> list[str]:
             problems.append(f"send() refused {label}: {e}")
         except AddinError as e:
             problems.append(f"send() must raise NotifyError, not {e.__class__.__name__} ({label}): {e}")
+    return problems
+
+
+# ------------------------------------------------------------------ sign-in providers
+
+def _check_identity(ident, label: str) -> list[str]:
+    if not isinstance(ident, Identity):
+        return [f"{label} must return an Identity, not {type(ident).__name__}"]
+    problems = []
+    if ident.external_id.strip().casefold() == ident.username.strip().casefold():
+        problems.append(f"{label}: external_id is the user name; use an id the directory never reuses (GUID, UUID, "
+                        "issuer and subject) so a renamed or re-created account is not taken for the old one")
+    if any(c in ident.username for c in "\r\n\x00"):
+        problems.append(f"{label}: the user name contains control characters")
+    return problems
+
+
+def check_password_provider(provider: PasswordProvider, username: str, password: str) -> list[str]:
+    """Check the password-provider contract with one TEST account of the directory (never a real person's).
+
+    Signs in with it twice, then tries a wrong password, an empty password, an unknown user and user names
+    that try to change the directory's search filter; all of those must give None."""
+    problems: list[str] = []
+
+    def expect(cond: bool, msg: str) -> None:
+        if not cond:
+            problems.append(msg)
+
+    h = provider.health()
+    expect(isinstance(h, Health), "health() must return a Health")
+    if not getattr(h, "ok", False):
+        return problems + [f"health() reports a problem, so the other checks were skipped: {getattr(h, 'message', '')}"]
+    d = provider.describe()
+    expect(isinstance(d, dict) and d.get("style") == "password", "describe() must report the style 'password'")
+    expect(bool(str((d or {}).get("label", "")).strip()), "describe() must give a label")
+    try:
+        first = provider.authenticate(username, password)
+    except SignInError as e:
+        return problems + [f"authenticate() refused the test account: {e}"]
+    if first is None:
+        return problems + ["authenticate() returned None for the test account; check the user name and password"]
+    problems += _check_identity(first, "authenticate()")
+    again = provider.authenticate(username, password)
+    expect(isinstance(again, Identity) and isinstance(first, Identity) and again.external_id == first.external_id,
+           "authenticate() must return the same external_id every time for the same person")
+    for label, (u, p) in (("a wrong password", (username, password + "-wrong")),
+                          ("an empty password", (username, "")),
+                          ("an unknown user", ("kosha-conformance-nobody", password)),
+                          ("the user name '*'", ("*", password)),
+                          ("a user name that changes the search filter", (f"{username})(|(objectClass=*", password))):
+        try:
+            r = provider.authenticate(u, p)
+            expect(r is None, f"authenticate() must return None for {label}, not {r!r}")
+        except SignInError as e:
+            problems.append(f"authenticate() must return None for {label}, not raise SignInError: {e}")
+    return problems
+
+
+def check_redirect_provider(provider: RedirectProvider, browser: Callable[[str], Mapping[str, str]],
+                            redirect_uri: str = "https://plm.example.com/api/auth/sso/test/callback") -> list[str]:
+    """Check the redirect-provider contract against a TEST provider.
+
+    ``browser(url)`` plays the person's browser: it opens the provider's page, signs in with a test account and
+    returns the query parameters the provider sends back to ``redirect_uri``."""
+    problems: list[str] = []
+
+    def expect(cond: bool, msg: str) -> None:
+        if not cond:
+            problems.append(msg)
+
+    h = provider.health()
+    expect(isinstance(h, Health), "health() must return a Health")
+    if not getattr(h, "ok", False):
+        return problems + [f"health() reports a problem, so the other checks were skipped: {getattr(h, 'message', '')}"]
+    d = provider.describe()
+    expect(isinstance(d, dict) and d.get("style") == "redirect", "describe() must report the style 'redirect'")
+    expect(bool(str((d or {}).get("label", "")).strip()), "describe() must give a label for the button")
+    one = provider.start(redirect_uri, "kosha-conformance-state-1")
+    two = provider.start(redirect_uri, "kosha-conformance-state-2")
+    for s in (one, two):
+        expect(isinstance(s, RedirectStart) and s.url.startswith(("https://", "http://")),
+               "start() must return a RedirectStart with an http(s) address")
+    if problems:
+        return problems
+    expect("kosha-conformance-state-1" in one.url, "start() must put the state into the address unchanged")
+    expect(one.url != two.url, "two sign-ins must not get the same address (each needs its own nonce)")
+    answer = dict(browser(one.url))
+    expect(answer.get("state") == "kosha-conformance-state-1", "the provider must send the state back unchanged")
+    try:
+        ident = provider.finish(redirect_uri, answer, one.saved)
+        problems += _check_identity(ident, "finish()")
+    except SignInError as e:
+        problems.append(f"finish() refused a correct answer: {e}")
+    other = dict(browser(two.url))
+    try:
+        provider.finish(redirect_uri, other, one.saved)
+        problems.append("finish() accepted an answer that belongs to another sign-in (check the nonce or PKCE verifier)")
+    except SignInError:
+        pass
+    for label, params in (("an error from the provider", {"error": "access_denied", "state": "x"}),
+                          ("an answer without a code", {"state": "x"}),
+                          ("a made-up code", {"code": "kosha-conformance-made-up", "state": "x"})):
+        try:
+            provider.finish(redirect_uri, params, two.saved)
+            problems.append(f"finish() must raise SignInError for {label}")
+        except SignInError:
+            pass
     return problems

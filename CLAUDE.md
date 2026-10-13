@@ -20,7 +20,7 @@ Read `README.md` first; the development rules below are the short form of the de
 cd server && pytest -q                    # unit tests
 cd server && python tests/test_api.py     # end-to-end API workflows (simulated ERPNext)
 cd server && python tests/test_import.py  # legacy import and duplicate checks
-pytest -q sdk/python/tests addins/erpnext/tests addins/odoo/tests addins/teams/tests addins/slack/tests addins/telegram/tests
+pytest -q sdk/python/tests addins/erpnext/tests addins/odoo/tests addins/teams/tests addins/slack/tests addins/telegram/tests addins/ldap/tests addins/oidc/tests
 python scripts/smoke_ui.py                # browser smoke test (Playwright); add new screens to SCREENS
 python scripts/test_office_taskpane.py    # Office task pane (web/office-addin) in test mode and a simulated Word
 ruff check server sdk addins scripts

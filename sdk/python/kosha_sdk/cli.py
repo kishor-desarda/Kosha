@@ -4,6 +4,7 @@
 
     kosha-sdk new erp-connector my-erp --publisher com.example
     kosha-sdk new notifier my-chat --publisher com.example
+    kosha-sdk new sign-in my-directory --publisher com.example
     kosha-sdk check addins/my-erp
 """
 from __future__ import annotations
@@ -171,6 +172,81 @@ dependencies = ["kosha-sdk>=0.5"]
 {slug} = "{pkg}"
 """,
         "README.md": "# {title}\n\nA Kosha notifier add-in. Run `kosha-sdk check .` and `pytest` before publishing.\n",
+    },
+    "sign-in": {
+        "kosha-addin.yaml": """\
+id: {publisher}.{slug}
+name: {title}
+version: 0.1.0
+publisher: {publisher}
+licence: Apache-2.0
+kosha: ">=0.5,<2.0"
+kind: [sign-in]
+description: Lets people sign in to Kosha with their {title} account.
+entry_points:
+  server: {pkg}.provider:Provider
+permissions: [users:sign-in]
+settings:
+  base_url: {{type: url, required: true, label: Address of the directory}}
+  label:    {{type: string, default: "{title}", label: Name shown to users}}
+""",
+        "{pkg}/__init__.py": "# SPDX-License-Identifier: Apache-2.0\n",
+        "{pkg}/provider.py": """\
+# SPDX-License-Identifier: Apache-2.0
+\"\"\"{title} sign-in for Kosha: checks user names and passwords against the directory.\"\"\"
+from kosha_sdk import Health
+from kosha_sdk.http import HttpError
+from kosha_sdk.signin import Identity, PasswordProvider, SignInError
+
+
+class Provider(PasswordProvider):
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.http = ctx.http(ctx.settings.get("base_url", ""), retries=0)
+
+    def health(self) -> Health:
+        return Health.up("Address is set")
+
+    def authenticate(self, username: str, password: str) -> Identity | None:
+        if not username or not password:
+            return None
+        try:
+            r = self.http.post("/check", {{"user": username, "password": password}}, allow_404=True)
+        except HttpError as e:
+            if e.status == 401:
+                return None
+            raise SignInError(f"{title} could not check the password ({{e}}).") from None
+        if r is None:
+            return None
+        j = r.json()
+        return Identity(external_id=j["id"], username=j["user"], full_name=j.get("name", ""),
+                        email=j.get("email", ""), groups=tuple(j.get("groups", ())))
+""",
+        "tests/test_manifest.py": """\
+# SPDX-License-Identifier: Apache-2.0
+from pathlib import Path
+
+from kosha_sdk.testing import check_manifest
+
+
+def test_manifest_is_valid():
+    assert check_manifest(Path(__file__).parent.parent) == []
+""",
+        "pyproject.toml": """\
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "{slug}"
+version = "0.1.0"
+license = {{ text = "Apache-2.0" }}
+dependencies = ["kosha-sdk>=0.5"]
+
+[project.entry-points."kosha.addins"]
+{slug} = "{pkg}"
+""",
+        "README.md": "# {title}\n\nA Kosha sign-in add-in. Run `kosha-sdk check .` and `pytest` before publishing.\n",
     },
 }
 
