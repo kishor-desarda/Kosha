@@ -9,10 +9,12 @@ import { renderChanges, renderChange } from './changes.js';
 import { renderErp } from './erp.js';
 import { renderCommon } from './common.js';
 import { renderAdmin, renderSearch } from './admin.js';
+import { renderInputs, renderInput, renderProjects, renderProject } from './inputs.js';
 
 const NAV = [
   ['home', 'Home', 'home', '#/home'],
   ['kosha', 'Explorer', 'kosha', '#/files'],
+  ['inputs', 'Inputs', 'layers', '#/inputs'],
   ['boms', 'BOMs', 'bom', '#/boms'],
   ['changes', 'Changes', 'change', '#/changes'],
   ['erp', 'ERP sync', 'erp', '#/erp'],
@@ -32,6 +34,10 @@ const ROUTES = [
   [/^#\/common$/, 'common', () => renderCommon],
   [/^#\/admin$/, 'admin', () => renderAdmin],
   [/^#\/search$/, 'search', () => renderSearch],
+  [/^#\/inputs$/, 'inputs', () => renderInputs],
+  [/^#\/input\/(\d+)$/, 'inputs', () => renderInput],
+  [/^#\/projects$/, 'inputs', () => renderProjects],
+  [/^#\/project\/(\d+)$/, 'inputs', () => renderProject],
 ];
 
 const root = document.getElementById('app');

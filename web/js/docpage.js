@@ -231,6 +231,7 @@ export async function renderItem(container, [id], _p, { setTitle }) {
           h('dl', { class: 'props' }, [['Item code', it.erp_item_code || `Not in ${S.erp} yet`], ['Last pushed', it.erp_synced_at ? fmtDate(it.erp_synced_at) : '—'],
             ['Stock on hand', it.erp_stock ?? '—'], ['Valuation rate', it.erp_cost ?? '—']].flatMap(([k, v]) => [h('dt', null, k), h('dd', null, String(v))])),
           r.erp_jobs.length ? h('div', { style: { marginTop: '10px' } }, r.erp_jobs.slice(0, 5).map(j => h('div', { class: 'small row' }, h('span', { class: `chip st-${j.status}` }, j.status), `${j.kind} · ${ago(j.updated_at)}`, j.error ? h('span', { class: 'sev-error' }, j.error) : null))) : null)))));
+    import('./inputs.js').then(m => m.addItemInputs(container, it)).catch(fail);   // Inputs section (inputs library)
   };
   await load();
   void dialog;
