@@ -160,9 +160,11 @@ export class ApiError extends Error {
   constructor(message, status, code, data) { super(message); this.status = status; this.code = code; this.data = data; }
 }
 
-export async function api(method, path, body) {
+// opts.background: a poll the user did not ask for, which must not keep an idle session open
+export async function api(method, path, body, opts = {}) {
   const opt = { method, headers: {} };
   if (S.token) opt.headers.Authorization = `Bearer ${S.token}`;
+  if (opts.background) opt.headers['X-Kosha-Background'] = '1';
   if (body instanceof FormData) opt.body = body;
   else if (body !== undefined) { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
   let r;
@@ -208,6 +210,8 @@ export async function downloadDoc(id, version) {
 }
 
 export function logout(expired) {
+  // end the session on the server too, so the token can't be used again
+  if (!expired && S.token) fetch('/api/auth/logout', { method: 'POST', keepalive: true, headers: { Authorization: `Bearer ${S.token}` } }).catch(() => {});
   S.token = ''; S.user = null;
   localStorage.removeItem('kosha.token');
   if (expired) sessionStorage.setItem('kosha.expired', '1');
@@ -313,6 +317,13 @@ document.addEventListener('mousedown', e => { if (ctx && !ctx.contains(e.target)
 window.addEventListener('blur', closeMenu);
 
 // ------------------------------------------------------------------ misc
+// A random password that meets Kosha's password rules (14 characters, no look-alike letters).
+export function newPassword(length = 14) {
+  const chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const r = new Uint32Array(length);
+  crypto.getRandomValues(r);
+  return Array.from(r, x => chars[x % chars.length]).join('');
+}
 export function debounce(fn, ms = 250) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 export function store(key, val) {
   try {

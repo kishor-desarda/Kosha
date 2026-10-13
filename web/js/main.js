@@ -97,7 +97,7 @@ function buildShell() {
 async function refreshBadges() {
   if (!shell) return;
   try {
-    const d = await get('/api/dashboard');
+    const d = await api('GET', '/api/dashboard', undefined, { background: true });
     const set = (key, n) => { const l = shell.links[key]; if (l && l.badge) { l.badge.hidden = !n; l.badge.textContent = n; } };
     set('changes', d.approvals.length);
     set('erp', d.erp.failed);
@@ -115,8 +115,12 @@ function changePassword() {
     const cur = hh('input', { class: 'input', type: 'password', autocomplete: 'current-password' });
     const nw = hh('input', { class: 'input', type: 'password', autocomplete: 'new-password' });
     dialog({ title: 'Change password', body: [hh('div', { class: 'field' }, hh('label', null, 'Current password'), cur),
-      hh('div', { class: 'field' }, hh('label', null, 'New password'), nw, hh('span', { class: 'hint' }, 'At least 8 characters.'))],
-    actions: [{ label: 'Cancel' }, { label: 'Change', primary: true, onClick: async () => { await pp('/api/auth/password', { current: cur.value, new: nw.value }); tt('Password changed', 'ok'); } }] });
+      hh('div', { class: 'field' }, hh('label', null, 'New password'), nw, hh('span', { class: 'hint' }, 'At least 10 characters. Not your user name and not a common password. You stay signed in here; Kosha signs you out everywhere else.'))],
+    actions: [{ label: 'Cancel' }, { label: 'Change', primary: true, onClick: async () => {
+      const r = await pp('/api/auth/password', { current: cur.value, new: nw.value });
+      if (r.token) { S.token = r.token; localStorage.setItem('kosha.token', r.token); }
+      tt('Password changed. Other sessions were signed out.', 'ok');
+    } }] });
   });
 }
 
@@ -145,7 +149,12 @@ function renderLogin() {
       location.hash = store('lastRoute') && store('lastRoute') !== '#/login' ? store('lastRoute') : '#/home';
       route();
     } catch (ex) {
-      err.hidden = false; mount(err, icon('warn'), h('span', null, ex.message));
+      let msg = ex.message;
+      if (ex.code === 'sign_in_paused' && ex.data && ex.data.retry_at) {
+        const at = new Date(ex.data.retry_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+        msg = `${msg} (You can try again at ${at}.)`;
+      }
+      err.hidden = false; mount(err, icon('warn'), h('span', null, msg));
     } finally { btn.disabled = false; }
   });
   mount(root, h('div', { class: 'login' },

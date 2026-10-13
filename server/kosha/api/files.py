@@ -15,8 +15,10 @@ from .core import DOC_SELECT, _with_preview
 MIME = {"svg": "image/svg+xml", "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif",
         "bmp": "image/bmp", "webp": "image/webp", "pdf": "application/pdf", "stl": "model/stl"}
 
-SAFE_HEADERS = {"X-Content-Type-Options": "nosniff",
-                "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:"}
+# Stored files never run as part of Kosha; Kosha's own pages may show them in a frame (the PDF viewer).
+SAFE_HEADERS = {"X-Content-Type-Options": "nosniff", "X-Frame-Options": "SAMEORIGIN",
+                "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:; "
+                                           "frame-ancestors 'self'"}
 
 
 # ---------------------------------------------------------------- folders --

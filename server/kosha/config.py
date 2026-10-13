@@ -56,7 +56,14 @@ ODA_CONVERTER = os.environ.get("KOSHA_ODA_CONVERTER", "")
 DWG2DXF = os.environ.get("KOSHA_DWG2DXF", "")
 
 TOKEN_HOURS = int(os.environ.get("KOSHA_TOKEN_HOURS", "12"))
-MAX_UPLOAD_MB = int(os.environ.get("KOSHA_MAX_UPLOAD_MB", "1024"))
+# Largest upload in one request (multipart file uploads) and largest JSON body, in MB.
+MAX_UPLOAD_MB = float(os.environ.get("KOSHA_MAX_UPLOAD_MB", "1024"))
+MAX_JSON_MB = float(os.environ.get("KOSHA_MAX_JSON_MB", "32"))
+# Set KOSHA_HTTPS=1 when Kosha is reached only through HTTPS (adds Strict-Transport-Security).
+HTTPS = os.environ.get("KOSHA_HTTPS", "").strip().lower() in ("1", "true", "yes", "on")
+# Optional virus scan of every upload through clamd: "tcp://127.0.0.1:3310" or "unix:///run/clamav/clamd.ctl".
+CLAMD = os.environ.get("KOSHA_CLAMD", "").strip()
+CLAMD_TIMEOUT_SECONDS = float(os.environ.get("KOSHA_CLAMD_TIMEOUT_SECONDS", "120"))
 ERP_WORKER_SECONDS = int(os.environ.get("KOSHA_ERP_WORKER_SECONDS", "20"))
 
 # Add-ins: the official ones shipped in this repository, plus any folders the admin adds.

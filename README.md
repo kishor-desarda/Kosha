@@ -17,8 +17,9 @@ built for design offices that work in SolidWorks, AutoCAD, GStarCAD and other CA
   to disk before Kosha says "checked in", and backed up with a check of every copy.
 - **Easy for everyone.** A Windows-Explorer-like screen, a Guided mode for occasional users and an
   Expert mode with keyboard shortcuts. Every greyed-out button says why.
-- **Open and connectable.** A documented REST API and an add-in framework: ERP connectors, CAD
-  add-ins, file types and industry packs plug in without touching the core.
+- **Open and connectable.** A documented REST API (every server describes itself at `/api/docs` and
+  `/api/openapi.json`) and an add-in framework: ERP connectors, CAD add-ins, file types and industry
+  packs plug in without touching the core.
 - **Free to run.** Runs on one small Linux server. No per-user fees, no cloud lock-in.
 
 ## What it does today
@@ -82,8 +83,8 @@ sudo deploy/linux/install.sh
 ```
 
 The script creates a `kosha` service user, installs Kosha in `/opt/kosha`, keeps data in
-`/var/lib/kosha` and settings in `/etc/kosha/kosha.env`, starts a hardened systemd service and a
-nightly backup timer, and prints the first admin password. Running it again upgrades Kosha, after
+`/var/lib/kosha` and settings in `/etc/kosha/kosha.env`, starts a hardened systemd service, a
+nightly backup timer and a monthly restore test, and prints the first admin password. Running it again upgrades Kosha, after
 taking and checking a backup first. Put HTTPS in front of it with Caddy or nginx
 (`deploy/linux/Caddyfile.example`).
 
@@ -92,8 +93,21 @@ part-number pattern under **Admin › Numbering & revisions**.
 
 **Backups:** `python -m kosha.backup <folder>` copies the database with SQLite's online backup,
 runs an integrity check on the copy, and copies new file versions, checking each against its
-fingerprint. Keep a second copy away from the server (3-2-1 rule) and test a restore every month.
+fingerprint. Keep a second copy away from the server (3-2-1 rule) and test a restore every month:
+`python -m kosha.backup --verify <folder>` restores the backup into a temporary folder and reads back
+every file (the Linux installer runs it monthly). `python -m kosha.restore <folder> <new data folder>`
+restores into an empty folder and checks it. **Admin › Backups** shows the last backup, the last restore
+test, disk space and versions.
 On PostgreSQL the same command saves the database with `pg_dump` and reads the copy back to check it.
+
+**Leaving Kosha:** `python -m kosha.export <file.zip>` writes every table and every file version with
+checksums ([format](docs/export-format.md)); `--verify <file.zip>` checks an export.
+
+**Security:** failed sign-ins pause sign-in for that user name (5 failures, 15 minutes) or address;
+passwords need 10 characters and may not be common ones; sessions end after 30 idle minutes or 12 hours
+(**Admin › Sign-in & sessions**), on sign-out, on a password change and with **Sign out everywhere**.
+Set `KOSHA_HTTPS=1` behind HTTPS, and `KOSHA_CLAMD` to have every upload scanned by ClamAV (uploads are
+refused while the scanner can't be reached). See `server/kosha.env.example`.
 
 ### Moving to PostgreSQL
 

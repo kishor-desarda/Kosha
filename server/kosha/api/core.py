@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from .. import db, security
+from .. import db, security, sessions, signin
 from ..lifecycle import STATE_LABEL, doc_summary, user_names
 from ..web import ROLE_LEVEL, Req, api, as_bool, bad, conflict, not_found
 
@@ -13,14 +13,11 @@ USER_FIELDS = "id, username, full_name, email, role, ui_mode, active, created_at
 
 @api("POST", "/api/auth/login", role=None, auth=False)
 def login(req: Req):
-    username = (req.b("username") or "").strip()
-    password = req.b("password") or ""
-    u = db.one("SELECT * FROM users WHERE username = ? COLLATE NOCASE", (username,))
-    if not u or not u["active"] or not security.verify_password(password, u["password_hash"]):
-        raise bad("Wrong user name or password.", "bad_login")
-    db.audit(u["id"], "login", "user", u["id"], "")
-    user = {k: u[k] for k in ("id", "username", "full_name", "email", "role", "ui_mode")}
-    return {"token": security.make_token(u["id"]), "user": user, "erp_name": erp_name()}
+    """Sign in with user name and password; returns a token to send as `Authorization: Bearer <token>`.
+
+    Failed sign-ins are throttled per user name and per address (see Admin › Sign-in & sessions)."""
+    r = signin.sign_in(req)
+    return {"token": r["token"], "user": r["user"], "erp_name": erp_name()}
 
 
 def erp_name() -> str:
@@ -50,14 +47,8 @@ def set_mode(req: Req):
 
 @api("POST", "/api/auth/password")
 def change_password(req: Req):
-    u = db.one("SELECT * FROM users WHERE id = ?", (req.uid,))
-    if not security.verify_password(req.b("current") or "", u["password_hash"]):
-        raise bad("Your current password is not correct.")
-    new = req.b("new") or ""
-    if len(new) < 8:
-        raise bad("Use at least 8 characters.")
-    db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (security.hash_password(new), req.uid))
-    return {"ok": True}
+    """Change your own password (`current`, `new`). Ends all your sessions and returns a new `token` for this one."""
+    return signin.change_own_password(req)
 
 
 # ------------------------------------------------------------------ users --
@@ -75,9 +66,7 @@ def create_user(req: Req):
     role = req.b("role") or "engineer"
     if role not in ROLE_LEVEL:
         raise bad("Unknown role")
-    pw = req.b("password") or ""
-    if len(pw) < 8:
-        raise bad("Initial password needs at least 8 characters.")
+    pw = signin.check_new_password(req.b("password"), username)
     if db.one("SELECT id FROM users WHERE username = ? COLLATE NOCASE", (username,)):
         raise conflict("That user name is taken.")
     uid = db.insert("users", {"username": username, "full_name": (req.b("full_name") or username).strip(),
@@ -104,11 +93,16 @@ def update_user(req: Req):
             raise bad("You can't deactivate yourself.")
         upd["active"] = 1 if as_bool(req.b("active")) else 0
     if req.b("password"):
-        if len(req.b("password")) < 8:
-            raise bad("Password needs at least 8 characters.")
-        upd["password_hash"] = security.hash_password(req.b("password"))
-    db.update("users", uid, upd)
-    db.audit(req.uid, "user_update", "user", uid, ",".join(k for k in upd if k != "password_hash"))
+        name = db.scalar("SELECT username FROM users WHERE id = ?", (uid,))
+        upd["password_hash"] = security.hash_password(signin.check_new_password(req.b("password"), name))
+    # a new password or a deactivation ends every session of that user at once
+    reason = ("password reset by an admin" if "password_hash" in upd else
+              "deactivated" if upd.get("active") == 0 else "")
+    with db.tx():
+        db.update("users", uid, upd)
+        ended = sessions.end_all(uid, reason) if reason else 0
+        db.audit(req.uid, "user_update", "user", uid, ",".join(k if k != "password_hash" else "password" for k in upd)
+                 + (f"; {ended} session(s) ended" if ended else ""))
     return {"user": db.one(f"SELECT {USER_FIELDS} FROM users WHERE id = ?", (uid,))}
 
 
