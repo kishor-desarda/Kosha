@@ -229,6 +229,9 @@ def main():
     # --- change order
     co = eng.call("POST", "/api/changes", {"title": "Wider housing base", "reason": "Foundation bolts clash",
                                           "document_ids": [doc["id"]], "approver_ids": [appr_u["id"]]})
+    err = eng.call("POST", f"/api/changes/{co['id']}/submit", expect=409)
+    assert "interchangeability" in err["error"], err
+    eng.call("PATCH", f"/api/changes/{co['id']}", {"ic_fit": "yes", "ic_mix": "yes", "ic_function": "yes"})
     eng.call("POST", f"/api/changes/{co['id']}/submit")
     appr.call("POST", f"/api/changes/{co['id']}/decide", {"decision": "rejected"}, expect=400)
     c = appr.call("POST", f"/api/changes/{co['id']}/decide", {"decision": "approved", "comment": "OK"})

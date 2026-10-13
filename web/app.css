@@ -323,7 +323,7 @@ textarea.input { min-height: 80px; resize: vertical; }
 .st-open { background: var(--rev-bg); color: var(--rev); }
 .st-resolved, .st-done { background: var(--ok-bg); color: var(--ok); }
 .st-interrupted { background: var(--err-bg); color: var(--err); }
-.st-cancelled, .st-dry_run, .st-later { background: var(--obs-bg); color: var(--obs); }
+.st-cancelled, .st-dry_run, .st-later, .st-waiting { background: var(--obs-bg); color: var(--obs); }
 .chip.out { background: var(--warn-bg); color: var(--warn); }
 .chip.type { background: var(--chip-type-bg); color: var(--chip-type-ink); font-family: var(--mono); font-size: 10.5px; letter-spacing: .02em; }
 .badge { display: inline-flex; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--badge); color: var(--on-badge); font-size: 11px; font-weight: 700; align-items: center; justify-content: center; }

@@ -33,8 +33,9 @@ def on_change_submitted(event: dict) -> None:
     co = db.one("SELECT * FROM change_orders WHERE id = ?", (event.get("change_id"),))
     if not co or co["state"] != "submitted":
         return
-    approvers = [r["user_id"] for r in db.rows("SELECT user_id FROM co_approvers WHERE co_id = ? AND decision = 'pending'",
-                                               (co["id"],))]
+    from .approval import with_delegates
+    approvers = with_delegates([r["user_id"] for r in db.rows(
+        "SELECT user_id FROM co_approvers WHERE co_id = ? AND decision = 'pending'", (co["id"],))])
     if not approvers:
         return
     names = lifecycle.user_names()
