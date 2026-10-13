@@ -365,6 +365,39 @@ export function store(key, val) {
   } catch (e) { return undefined; }
   return val;
 }
+// Unsaved edits kept in this browser (properties, BOMs, change logs) and offered again after a crash or a closed tab.
+export const drafts = {
+  key: k => `draft.${S.user ? S.user.id : 0}.${k}`,
+  get: k => store(drafts.key(k)) || null,
+  set: (k, values) => store(drafts.key(k), { at: new Date().toISOString(), values }),
+  clear: k => { try { localStorage.removeItem('kosha.' + drafts.key(k)); } catch (e) { /* storage blocked */ } },
+};
+
+// "Unsaved changes from 5 min ago were kept in this browser. Restore them / Discard", or null when there are none.
+export function draftBanner(k, onRestore) {
+  const d = drafts.get(k);
+  if (!d) return null;
+  const el = h('div', { class: 'banner info draft-banner' }, icon('info'),
+    h('div', { style: { flex: 1 } }, `Unsaved changes from ${ago(d.at)} were kept in this browser.`),
+    h('button', { class: 'btn sm', onclick: () => { el.remove(); onRestore(d.values); } }, 'Restore them'),
+    h('button', { class: 'btn sm ghost', onclick: () => { drafts.clear(k); el.remove(); } }, 'Discard'));
+  return el;
+}
+
+// Keep the values of some inputs as a draft while they are edited. Returns { banner, clear }: show the banner
+// (null when there is nothing to offer) and call clear() once the edits are saved.
+export function keepDraft(k, fields) {
+  const values = () => Object.fromEntries(Object.entries(fields).map(([n, el]) => [n, el.value]));
+  const initial = JSON.stringify(values());
+  const save = debounce(() => { const v = values(); if (JSON.stringify(v) === initial) drafts.clear(k); else drafts.set(k, v); }, 400);
+  Object.values(fields).forEach(el => el.addEventListener('input', save));
+  const d = drafts.get(k);
+  const fresh = d && JSON.stringify(d.values) !== initial;
+  if (d && !fresh) drafts.clear(k);
+  const banner = fresh ? draftBanner(k, v => { for (const [n, el] of Object.entries(fields)) if (n in v) el.value = v[n]; save(); }) : null;
+  return { banner, clear: () => drafts.clear(k) };
+}
+
 // roles stack on the ladder; extra roles (data_steward, spares, quality) are held beside it, and admins hold them all
 const LADDER = { viewer: 0, engineer: 1, checker: 2, approver: 3, admin: 4 };
 // a vendor account only reads, whatever its role

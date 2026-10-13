@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Measured change list: the "Changes" side list in the viewer overlay, and the change-log editor
 // shown on the document page and in a change order.
-import { h, mount, icon, get, post, put, toast, fail, ago } from './core.js';
+import { h, mount, icon, get, post, put, toast, fail, ago, keepDraft } from './core.js';
 import { aiDraftButton } from './ai.js';
 
 const SEV = {
@@ -93,6 +93,7 @@ async function editor(box, opts) {
       return h('div', { class: 'field' }, h('label', { for: ta.id }, s.label), ta);
     });
     const fill = sec => { for (const [k, ta] of Object.entries(fields)) ta.value = sec[k] || ''; };
+    const kept = ro ? { banner: null, clear() {} } : keepDraft(`changelog${uid}.${r.revision || rev || ''}`, { note, ...fields });
     let aiSuggestion = null;              // the AI draft the text started from, named when saving (audit log)
     const aiArea = h('div', { class: 'ask-slot', style: { marginBottom: '10px' } });
     const buildDraft = async btn => {
@@ -108,7 +109,7 @@ async function editor(box, opts) {
       try {
         const sec = {}; for (const [k, ta] of Object.entries(fields)) sec[k] = ta.value;
         const x = await put(opts.base, { note: note.value, sections: sec, revision: rev || undefined, ai_suggestion_id: aiSuggestion || undefined });
-        toast('Change log saved', 'ok'); draw(x);
+        kept.clear(); toast('Change log saved', 'ok'); draw(x);
       } catch (e) { fail(e); } finally { btn.disabled = false; }
     };
     const why = r.can_edit.why;
@@ -141,6 +142,7 @@ async function editor(box, opts) {
     mount(box,
       h('div', { class: 'row wrap', style: { marginBottom: '12px' } }, revSel, status, h('span', { class: 'spacer' }), draftBtn, aiSlot, saveBtn),
       aiArea,
+      kept.banner ? h('div', { style: { marginBottom: '12px' } }, kept.banner) : null,
       ro ? h('p', { class: 'muted small', style: { margin: '0 0 10px' } }, why) : null,
       r.saved && r.saved.stale ? h('div', { class: 'banner info small', style: { marginBottom: '12px' } }, icon('info'),
         h('div', null, 'The measured changes are different from when this change log was saved (a new version was checked in). Press ', h('b', null, 'Build draft'), ' to update the text, or keep yours.')) : null,

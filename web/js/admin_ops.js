@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Administration: Backups (with server health) and Sign-in & sessions settings (directory sign-in: directory.js).
-import { h, mount, icon, get, put, toast, fail, fmtDate, ago, fmtSize } from './core.js';
+import { h, mount, icon, get, put, post, toast, fail, fmtDate, ago, fmtSize } from './core.js';
 import { directorySection } from './directory.js';
 import { twoStepSettings } from './twostep.js';
 
@@ -76,6 +76,49 @@ export async function backupsTab(body) {
         ['HTTPS', d.https ? 'On (browsers are told to use HTTPS only)' : 'Not declared (set KOSHA_HTTPS=1 when Kosha is reached through HTTPS)'],
         ['Largest upload', `${d.limits.max_upload_mb} MB per request`],
       ]))));
+  await healthSection(body);
+}
+
+// File fingerprints read back every month, the nightly consistency check and what is wrong right now.
+async function healthSection(body) {
+  const box = h('div', { class: 'col', style: { gap: '18px', maxWidth: '1100px', marginTop: '18px' } });
+  body.append(box);
+  const draw = s => {
+    const f = s.fingerprints;
+    const c = s.consistency;
+    const pct = f.files ? Math.round(100 * f.checked_last_30_days / f.files) : 100;
+    const run = (path, payload, label) => h('button', { class: 'btn', onclick: async e => {
+      e.target.disabled = true;
+      try { const r = await post(path, payload); draw(r.status); toast('Check finished', 'ok'); } catch (ex) { fail(ex); e.target.disabled = false; }
+    } }, label);
+    mount(box,
+      panel('Health now', s.problems.length
+        ? s.problems.map(p => h('div', { class: `banner ${p.severity === 'error' ? 'err' : ''}` }, icon('warn'), h('div', null, h('b', null, p.title), '. ', p.text)))
+        : banner('ok', 'Nothing needs attention. Admins are told here, under the bell and on their chosen channels when something does.'),
+        h('p', { class: 'muted small', style: { margin: 0 } }, 'Kosha checks the disk, backups, restore tests, the ERP and notification queues, stored files and the HTTPS certificate (KOSHA_TLS_CERT) every hour, and tells admins at most once a day per problem.')),
+      h('div', { class: 'grid-cards' },
+        panel('Stored file check',
+          f.damaged.length ? banner('err', `${f.damaged.length} stored file(s) no longer match their fingerprint and could not be repaired from the backup folder. Restore them from an older backup.`)
+            : banner('ok', 'Every file read back so far matches its fingerprint.'),
+          props([
+            ['Stored files', `${f.files} (${fmtSize(f.bytes)})`],
+            ['Read back in the last 30 days', `${f.checked_last_30_days} (${pct}%)`],
+            ['Last run', f.last ? `${when(f.last)}: ${f.last.checked} checked, ${f.last.damaged} damaged, ${f.last.repaired} repaired` : 'Never'],
+            f.repaired.length ? ['Repaired from the backup', f.repaired.map(r => `${r.sha.slice(0, 12)}… ${ago(r.repaired_at)}`).join(', ')] : null,
+          ]),
+          h('p', { class: 'muted small', style: { margin: 0 } }, 'Every stored file is read back once a month, a little every hour. A damaged file is replaced by the good copy in the backup folder; the damaged one is kept in the data folder under damaged.'),
+          h('div', null, run('/api/admin/health/fingerprints', { everything: true }, 'Check every file now'))),
+        panel('Nightly consistency check',
+          !c ? banner('', 'Not run yet. It runs every night.') : c.ok ? banner('ok', 'Every file version has its stored file and every BOM line its item.')
+            : banner('err', `${c.count} problem(s) found. Restore the missing files from a backup, or ask for help with the records listed.`),
+          c && c.problems.length ? h('ul', { class: 'small', style: { margin: 0, paddingLeft: '18px' } }, c.problems.slice(0, 20).map(p => h('li', null, p.link ? h('a', { href: p.link }, p.text) : p.text))) : null,
+          props([
+            ['Last run', c ? when(c) : 'Never'],
+            c ? ['Checked', `${c.versions} file versions, ${c.bom_lines} BOM lines`] : null,
+          ]),
+          h('div', null, run('/api/admin/health/consistency', {}, 'Check now')))));
+  };
+  draw(await get('/api/admin/health'));
 }
 
 const FIELDS = [

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Engineering BOMs: list, indented editor, validation, import, compare, ERP push.
-import { S, h, mount, clear, icon, get, post, put, toast, fail, dialog, confirmDlg, stateChip, ago, upload, can, debounce } from './core.js';
+import { S, h, mount, clear, icon, get, post, put, toast, fail, dialog, confirmDlg, stateChip, ago, upload, can, debounce, drafts, draftBanner } from './core.js';
 import { bomDeviations, lineDeviationChips, mountRecordPanels } from './deviations.js';
 
 const changed = () => window.dispatchEvent(new Event('kosha:changed'));
@@ -66,6 +66,7 @@ function newBomDialog() {
 
 export async function renderBom(container, [id], _p, { setTitle }) {
   let data, edits = null, view = 'indented';
+  const draftKey = `bom.${id}`;            // unsaved line edits, kept in this browser until saved or discarded
   const collapsed = new Set();
   const load = async () => { data = await get(`/api/boms/${id}`); data.devs = await bomDeviations(id); edits = null; setTitle(`BOM ${data.bom.part_number}`); draw(); };
 
@@ -73,6 +74,7 @@ export async function renderBom(container, [id], _p, { setTitle }) {
     const b = data.bom;
     const draft = b.state !== 'released';
     const eng = can('engineer') && draft;
+    if (edits && eng) drafts.set(draftKey, edits);
     const errors = data.issues.filter(i => i.severity === 'error').length;
     const warns = data.issues.filter(i => i.severity === 'warning').length;
     const revSel = h('select', { class: 'input', style: { width: 'auto' }, 'aria-label': 'BOM revision', onchange: e => { location.hash = `#/bom/${e.target.value}`; } },
@@ -98,9 +100,11 @@ export async function renderBom(container, [id], _p, { setTitle }) {
       h('button', { 'aria-pressed': String(view === k), onclick: () => { view = k; draw(); } }, l)));
     const toolbar = h('div', { class: 'panel-h' }, viewSeg, h('span', { class: 'muted small' }, `${data.lines.length} lines on this level · ${data.tree.length} rows in total`), h('span', { class: 'spacer' }),
       eng ? h('button', { class: 'btn sm', onclick: () => addLineDlg(lines) }, icon('plus', 14), 'Add part') : null,
-      edits ? h('button', { class: 'btn sm', onclick: () => { edits = null; draw(); } }, 'Discard changes') : null,
+      edits ? h('button', { class: 'btn sm', onclick: () => { edits = null; drafts.clear(draftKey); draw(); } }, 'Discard changes') : null,
       edits ? h('button', { class: 'btn sm primary', onclick: () => save(lines) }, icon('check', 14), 'Save changes') : null);
     tableWrap.appendChild(toolbar);
+    const kept = eng && !edits ? draftBanner(draftKey, v => { edits = v; draw(); }) : null;
+    if (kept) tableWrap.appendChild(h('div', { style: { padding: '10px 12px 0' } }, kept));
 
     const issuesBy = {};
     for (const i of data.issues) (issuesBy[i.part_number] = issuesBy[i.part_number] || []).push(i);
@@ -146,7 +150,7 @@ export async function renderBom(container, [id], _p, { setTitle }) {
       icon(collapsed.has(key) ? 'chevR' : 'chevD', 14)) : h('span', { style: { display: 'inline-block', width: '18px' } });
     const qty = editable && idx >= 0
       ? h('input', { class: 'qty', type: 'number', min: '0', step: 'any', value: lines[idx].qty, 'aria-label': `Quantity of ${r.part_number}`,
-        oninput: e => { if (!edits) edits = lines; edits[idx].qty = parseFloat(e.target.value) || 0; markDirty(); } })
+        oninput: e => { if (!edits) edits = lines; edits[idx].qty = parseFloat(e.target.value) || 0; drafts.set(draftKey, edits); markDirty(); } })
       : h('span', null, r.qty);
     const iss = issuesBy[r.part_number] || [];
     return h('tr', null,
@@ -169,7 +173,7 @@ export async function renderBom(container, [id], _p, { setTitle }) {
   const markDirty = () => {
     const bar = container.querySelector('.panel-h');
     if (bar && !bar.querySelector('.dirty')) {
-      bar.append(h('button', { class: 'btn sm dirty', onclick: () => { edits = null; draw(); } }, 'Discard'),
+      bar.append(h('button', { class: 'btn sm dirty', onclick: () => { edits = null; drafts.clear(draftKey); draw(); } }, 'Discard'),
         h('button', { class: 'btn sm primary dirty', onclick: () => save(edits) }, icon('check', 14), 'Save changes'));
     }
   };
@@ -177,7 +181,7 @@ export async function renderBom(container, [id], _p, { setTitle }) {
   const save = async lines => {
     try {
       data = await put(`/api/boms/${id}/lines`, { lines: lines.map(l => ({ item_id: l.item_id, part_number: l.part_number, description: l.description, qty: l.qty, uom: l.uom, find_number: l.find_number })) });
-      edits = null; toast('BOM saved', 'ok'); draw();
+      edits = null; drafts.clear(draftKey); toast('BOM saved', 'ok'); draw();
     } catch (e) { fail(e); }
   };
 

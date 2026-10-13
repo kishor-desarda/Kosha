@@ -134,6 +134,29 @@ def check_share_page(browser, page, errors: list[str]) -> None:
     outside.close()
 
 
+def check_drafts(page, errors: list[str]) -> None:
+    """Unsaved property edits survive a reload and are offered again."""
+    doc_id = page.evaluate("""async () => {
+  const core = await import('/static/js/core.js');
+  const doc = (await core.get('/api/documents?state=in_work&limit=50')).documents.find(d => !d.checked_out_by);
+  await core.post(`/api/documents/${doc.id}/checkout`);
+  return doc.id;
+}""")
+    page.goto(f"{BASE}/#/doc/{doc_id}")
+    page.wait_for_selector("#f-desc:not([disabled])", timeout=15000)
+    page.fill("#f-desc", "SMOKE DRAFT DESCRIPTION")
+    time.sleep(0.8)                                   # the draft is kept 0.4 s after the last key
+    page.reload()
+    try:
+        page.wait_for_selector(".draft-banner >> text=Restore them", timeout=15000)
+        page.click(".draft-banner >> text=Restore them")
+        if page.input_value("#f-desc") != "SMOKE DRAFT DESCRIPTION":
+            errors.append("restoring the kept draft did not put the description back")
+    except Exception:
+        errors.append("unsaved property edits were not offered again after reloading the page")
+    page.evaluate("Object.keys(localStorage).filter(k => k.startsWith('kosha.draft.')).forEach(k => localStorage.removeItem(k))")
+
+
 def check_resumable_upload(page, errors: list[str]) -> None:
     """A file larger than one piece goes up in pieces, with the browser's SHA-256, and comes back byte for byte."""
     r = page.evaluate(RESUMABLE)
@@ -210,6 +233,7 @@ def main() -> int:
                 if user == "admin":
                     check_resumable_upload(page, errors)
                     check_share_page(browser, page, errors)
+                    check_drafts(page, errors)
                 if user == "asha":
                     choose_theme(page, "system", errors)
                 page.emulate_media(color_scheme="light")
