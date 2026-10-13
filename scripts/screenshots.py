@@ -3,7 +3,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Regenerate docs/screenshots from the Demo Engineering data set (needs Playwright with Chromium).
 
-    python scripts/screenshots.py
+    python scripts/screenshots.py                      # all of them
+    python scripts/screenshots.py 05-explorer-dark     # only the named ones
 """
 from __future__ import annotations
 
@@ -44,6 +45,7 @@ def wait_up():
 
 
 def main() -> int:
+    only = set(sys.argv[1:])
     data = tempfile.mkdtemp(prefix="kosha-shots-")
     env = dict(os.environ, KOSHA_DATA_DIR=data, KOSHA_ADMIN_PASSWORD="admin-demo-1", KOSHA_PORT=str(PORT),
                KOSHA_HOST="127.0.0.1")
@@ -58,6 +60,8 @@ def main() -> int:
             page = ctx.new_page()
 
             def shot(name, settle=900):
+                if only and name not in only:
+                    return
                 page.wait_for_timeout(settle)
                 page.screenshot(path=str(OUT / f"{name}.png"))
                 print("saved", name)
@@ -101,6 +105,10 @@ def main() -> int:
             page.wait_for_timeout(400)
             page.dblclick("text=MX-VA-1200 Vertical Agitator")
             shot("04-explorer-expert", 1500)
+            page.emulate_media(color_scheme="dark")     # theme "Same as my computer" on a computer set to dark
+            page.locator("text=MX-100-020 Agitator Shaft.dxf").first.click()
+            shot("05-explorer-dark", 1200)
+            page.emulate_media(color_scheme="light")
             page.goto(BASE + "/#/boms")
             page.wait_for_timeout(800)
             page.locator("text=MX-100-000").first.click()

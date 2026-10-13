@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use Kosha in your work, please cite it as below."
+title: "Kosha: open-source product lifecycle management (PLM)"
+type: software
+authors:
+  - name: "Kosha contributors"
+repository-code: "https://github.com/kishor-desarda/Kosha"
+url: "https://github.com/kishor-desarda/Kosha"
+license: AGPL-3.0-or-later
+version: "0.5.0.dev0"
+abstract: >-
+  Kosha is a free, open-source, self-hosted product lifecycle management (PLM) and product data
+  management (PDM) system for engineering companies: revision control for CAD files and drawings,
+  engineering bills of materials, engineering change orders and ERP synchronisation.
+keywords:
+  - PLM
+  - product lifecycle management
+  - PDM
+  - product data management
+  - bill of materials
+  - engineering change order
+  - CAD
+  - revision control
+  - ERP integration
+  - LDAP
+  - OpenID Connect

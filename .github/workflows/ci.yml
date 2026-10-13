@@ -37,7 +37,7 @@ jobs:
       - name: Unit tests
         run: |
           cd server && pytest -q
-          cd .. && pytest -q sdk/python/tests addins/erpnext/tests addins/odoo/tests addins/teams/tests addins/slack/tests addins/telegram/tests
+          cd .. && pytest -q sdk/python/tests addins/erpnext/tests addins/odoo/tests addins/dolibarr/tests addins/file-exchange/tests addins/teams/tests addins/slack/tests addins/telegram/tests addins/ldap/tests addins/oidc/tests addins/openai-compatible/tests
       - name: End-to-end API workflows (with a simulated ERPNext)
         run: cd server && python tests/test_api.py
       - name: Legacy import and duplicate checks

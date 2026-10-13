@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Administration: Backups (with server health) and Sign-in & sessions settings.
+// Administration: Backups (with server health) and Sign-in & sessions settings (directory sign-in: directory.js).
 import { h, mount, icon, get, put, toast, fail, fmtDate, ago, fmtSize } from './core.js';
+import { directorySection } from './directory.js';
 
 const when = x => (x && x.at ? `${fmtDate(x.at)} (${ago(x.at)})` : 'Never');
 
@@ -99,4 +100,5 @@ export async function securityTab(body) {
         toast('Saved. The new limits apply to open sessions at once.', 'ok');
       } catch (ex) { fail(ex); } finally { e.target.disabled = false; }
     } }, 'Save'))));
+  await directorySection(body);
 }

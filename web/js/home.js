@@ -19,7 +19,7 @@ export async function renderHome(container, _m, _p, { setTitle }) {
   const guided = S.mode === 'guided';
 
   const panel = (title, count, body, link) => h('section', { class: 'panel' },
-    h('div', { class: 'panel-h' }, h('h2', null, title), count ? h('span', { class: 'badge', style: { background: '#2A3A55' } }, count) : null, h('span', { class: 'spacer' }), link || null),
+    h('div', { class: 'panel-h' }, h('h2', null, title), count ? h('span', { class: 'badge quiet' }, count) : null, h('span', { class: 'spacer' }), link || null),
     body);
   const empty = t => h('div', { class: 'empty' }, t);
 

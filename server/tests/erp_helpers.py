@@ -10,7 +10,7 @@ from pathlib import Path
 from harness import free_port
 
 REPO = Path(__file__).resolve().parents[2]
-for sub in ("erpnext", "odoo", "slack", "teams", "telegram"):
+for sub in ("erpnext", "odoo", "dolibarr", "file-exchange", "slack", "teams", "telegram"):
     p = str(REPO / "addins" / sub / "tests")
     if p not in sys.path:
         sys.path.append(p)

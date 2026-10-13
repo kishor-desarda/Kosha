@@ -5,6 +5,11 @@ After too many failed sign-ins for one user name (default 5) or from one network
 the pause time (default 15 minutes), sign-in is paused for that user name or address until the pause has run
 out. The answer is the same whether or not the user name exists, and a password check is always made, so
 neither the message nor the answer time tells an attacker which accounts exist.
+
+With directory sign-in add-ins set up (``kosha.directory``), a local account (not linked to a directory, such
+as the built-in ``admin``) is checked against its Kosha password first, so it works even when the directory is
+down; every other user name, and a local name whose Kosha password did not match, is then checked against the
+directory add-ins that take passwords. Failed attempts count towards the same pause either way.
 """
 from __future__ import annotations
 
@@ -13,12 +18,12 @@ import math
 import re
 from datetime import datetime, timedelta, timezone
 
-from . import db, security, sessions
+from . import db, directory, security, sessions
 from .web import ApiError, Req, bad
 
 log = logging.getLogger("kosha.signin")
 
-USER_FIELDS = ("id", "username", "full_name", "email", "role", "ui_mode")
+USER_FIELDS = ("id", "username", "full_name", "email", "role", "ui_mode", "ui_theme")
 
 
 def _now() -> datetime:
@@ -85,22 +90,49 @@ def sign_in(req: Req) -> dict:
     if until:
         raise _paused(until)
     u = db.one("SELECT * FROM users WHERE username = ? COLLATE NOCASE", (username,)) if username else None
+    local = u is not None and not directory.is_linked(u["id"])
     if u is None:
         security.waste_verify(password)
-        ok, why = False, "unknown user name"
-    else:
-        ok = security.verify_password(password, u["password_hash"])
+        why = "unknown user name"
+    elif local:
+        if security.verify_password(password, u["password_hash"]):
+            if u["active"]:
+                return _signed_in(req, u, ip, name, "")
+            paused = record_failure(username, ip, u["id"], "account deactivated")
+            if paused:
+                raise paused
+            raise bad("Wrong user name or password.", "bad_login")
         why = "wrong password"
-        if ok and not u["active"]:
-            ok, why = False, "account deactivated"
-    if not ok:
-        paused = record_failure(username, ip, u["id"] if u else None, why)
-        if paused:
-            raise paused
-        raise bad("Wrong user name or password.", "bad_login")
+    else:
+        security.waste_verify(password)      # signs in through the directory; the Kosha password is not used
+        why = "wrong directory password"
+    found = directory.check_password(username, password)
+    if found.identity is not None:
+        try:
+            user = directory.complete_sign_in(found.provider.id, found.identity, ip)
+        except directory.Refused:
+            db.execute("DELETE FROM sign_in_failures WHERE username = ?", (name,))   # the password was right
+            raise
+        return _signed_in(req, user, ip, name, f" through {found.provider.name}")
+    if found.unavailable and not found.asked and not local:
+        # no password was checked at all, so this does not count towards the pause (people retry during an outage)
+        db.audit(u["id"] if u else None, "login_failed", "user", u["id"] if u else None,
+                 f"user name '{name}' from {ip}: the directory could not be reached ({'; '.join(found.unavailable)[:300]})")
+        raise ApiError(503, "Kosha could not reach the directory to check your password. Your work is safe. Try "
+                            "again in a few minutes; if it keeps happening, tell your Kosha administrator.",
+                       "directory_unavailable")
+    paused = record_failure(username, ip, u["id"] if u else None, why)
+    if paused:
+        raise paused
+    raise bad("Wrong user name or password.", "bad_login")
+
+
+def _signed_in(req: Req, u: dict, ip: str, name: str, how: str) -> dict:
     db.execute("DELETE FROM sign_in_failures WHERE username = ?", (name,))
+    if how:     # a directory may know the person under another name than the one typed
+        db.execute("DELETE FROM sign_in_failures WHERE username = ?", (_clean_name(u["username"]),))
     token = sessions.create(u["id"], ip, req.request.headers.get("user-agent", ""))
-    db.audit(u["id"], "login", "user", u["id"], f"from {ip}")
+    db.audit(u["id"], "login", "user", u["id"], f"from {ip}{how}")
     return {"token": token, "user": {k: u[k] for k in USER_FIELDS}}
 
 
@@ -117,6 +149,9 @@ def check_new_password(password, username: str) -> str:
 def change_own_password(req: Req) -> dict:
     """Change the signed-in user's password; ends all their sessions and returns a new token for this one."""
     u = db.one("SELECT * FROM users WHERE id = ?", (req.uid,))
+    if directory.is_linked(u["id"]):
+        raise bad("You sign in with your directory account, so your password is kept there. Change it where you "
+                  "usually change your network password; Kosha uses the new one at once.", "directory_password")
     ip = client_ip(req)
     until = _locked_until(_clean_name(u["username"]), ip)
     if until:

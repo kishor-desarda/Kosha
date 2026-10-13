@@ -1,8 +1,25 @@
-# Kosha
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/kosha-logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/brand/kosha-logo-primary.svg">
+    <img src="docs/brand/kosha-logo-primary.svg" alt="Kosha: open-source PLM" width="400">
+  </picture>
+</p>
+
+<p align="center">
+  <a href="https://github.com/kishor-desarda/Kosha/actions/workflows/ci.yml"><img src="https://github.com/kishor-desarda/Kosha/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licence-AGPL--3.0--or--later-262522" alt="Licence: AGPL-3.0-or-later"></a>
+  <img src="https://img.shields.io/badge/python-3.10%2B-262522" alt="Python 3.10 or newer">
+  <img src="https://img.shields.io/badge/status-0.5%20preview-EF5A28" alt="Status: 0.5 preview">
+</p>
+
+# Kosha: open-source PLM
 
 **Open-source product lifecycle management (PLM) for engineering companies.**
 Drawings, 3D models, revisions, bills of materials, change orders and ERP sync in one place,
 built for design offices that work in SolidWorks, AutoCAD, GStarCAD and other CAD programs.
+Kosha is a self-hosted PLM and PDM (product data management) system: one small Linux server,
+a browser client, CAD and Office add-ins, and no per-user fees.
 
 *Kosha* (कोश) means a treasury, a place where valuable things are kept safe.
 
@@ -29,12 +46,15 @@ built for design offices that work in SolidWorks, AutoCAD, GStarCAD and other CA
 | **Revision control** | Check-out locks a file; check-in creates a version. Revisions run A, B, C… (skipping I, O, Q, S, X, Z as ASME Y14.35 recommends). Lifecycle *In work → In review → Released → Obsolete*, with role checks. Released revisions are locked; **Revise** starts the next one. Everything is in the audit log. |
 | **All engineering data** | Folders by product line hold SolidWorks, DWG, DXF, PDF, STEP, STL, Office files and images. Files link to **items** (the part master) by part number, read from the file name, the DWG/DXF title block or SolidWorks custom properties. |
 | **Engineering BOMs** | Built from CAD assembly structure at check-in, imported from a BOM table (indented numbers create sub-assemblies), or edited by hand. Validation (unreleased parts, missing material, duplicates, loops), comparison between revisions, Excel export, copy forward on revise. |
-| **ERP sync** | On release, items and BOMs are queued and sent to the ERP through a connector add-in (ERPNext and Odoo today): children first, unchanged BOMs not sent again, dry-run by default, failures kept with the ERP's own message and a **Retry** button. Stock and cost are read back. **Reconciliation** compares released items and BOMs with the ERP and lists the differences in plain words, with **Send again** and an Excel export. |
+| **ERP sync** | On release, items and BOMs are queued and sent to the ERP through a connector add-in (ERPNext, Odoo and Dolibarr today, and a file-exchange connector that writes CSV/JSON files for any other ERP): children first, unchanged BOMs not sent again, dry-run by default, failures kept with the ERP's own message and a **Retry** button. Stock and cost are read back. **Reconciliation** compares released items and BOMs with the ERP and lists the differences in plain words, with **Send again** and an Excel export. |
 | **Notifications** | Change orders waiting for approval, failed ERP transfers and (for those who ask) new releases reach people by e-mail or in Teams, Slack or Telegram. Each person chooses under **My notifications**; an outbox delivers in the background and retries, so a broken mail server never holds up work. |
 | **Change orders** | ECOs collect the affected files, start new revisions, route to named approvers, and **Implement** releases everything and triggers the ERP push. |
 | **Duplicate finder** | Four checks across legacy data: identical files, same part number, similar geometry (DXF/DWG shape signatures; 3D size and volume) and similar descriptions ("BLT HEX M16 X 60 8.8" = "HEX BOLT M16X60 GR8.8"). Review side by side, choose a standard part, export to Excel. |
 | **Legacy import** | Imports a file share with a dry run and an Excel report, skips copies and junk files, keeps legacy revisions, and can be re-run safely. |
 | **Viewer** | DXF/DWG drawn in the browser with pan, zoom, measure and red/blue revision overlay; 3D models in a WebGL viewer; PDFs and images. |
+| **Sign-in** | Local accounts with paused sign-in after repeated failures, or company accounts through **LDAP / Active Directory** and **OpenID Connect** (Keycloak and other providers) add-ins. Directory groups map to Kosha roles; the local `admin` keeps working when the directory is down. See [directory sign-in](docs/directory-sign-in.md). |
+| **AI assistance (optional)** | Off until an admin switches it on. Suggests categories, materials and standard parts, drafts change logs from the measured changes, and answers questions from Kosha's own records with links (**Ask Kosha**), only from what the asking person may see. Nothing is saved until a person accepts it. Works with any OpenAI-compatible server, including local runners, through an add-in. See [AI assistance](docs/ai.md). |
+| **Themes** | Light, Dark, High contrast or *Same as my computer*, chosen by each person; text meets WCAG AA contrast in every theme. See [themes](docs/themes.md). |
 | **Add-ins** | Manifest, permissions approved by the admin, automatic switch-off of failing add-ins, settings forms generated from the manifest, Python SDK with conformance tests. |
 
 <details>
@@ -269,12 +289,56 @@ The same suites run on every pull request in GitHub Actions.
 
 The full specification and the development guide are maintained alongside the project. In short:
 
-- **0.5 preview:** this release, plus the remaining open-source groundwork.
-- **1.0:** PostgreSQL, directory sign-in (LDAP / Active Directory, OpenID Connect), inputs library,
-  measured change logs, deviations, copy design, standard-parts library, AutoCAD add-in, themes
-  including dark mode.
-- **1.1 and later:** AI assistance that stays optional (classification, change-log drafts, ask-Kosha),
-  more ERP connectors, Office add-in, industry packs.
+- **0.5 preview (now):** everything in the table above. PostgreSQL, directory sign-in, the inputs library,
+  measured change logs, deviations, copy design, the standard-parts library, themes with dark mode, optional
+  AI assistance, the Office add-in, industry packs and the ERPNext, Odoo, Dolibarr and file-exchange
+  connectors are all in the code and tested.
+- **1.0:** pilots at real design offices, then hardening: the newer features proven on PostgreSQL in daily
+  use, the Dolibarr connector checked against live Dolibarr versions, the AI prompts tuned on real models,
+  and the AutoCAD and GStarCAD add-ins out of preview.
+- **Later:** more ERP connectors and CAD add-ins, AI features that use embeddings (similar-part search),
+  and a documentation site.
+
+## Frequently asked questions
+
+**What is Kosha?**
+Kosha is a free, open-source product lifecycle management (PLM) and product data management (PDM)
+system for engineering and manufacturing companies. It keeps CAD files, drawings and documents under
+revision control, manages engineering bills of materials (BOMs) and engineering change orders (ECOs),
+and sends released items and BOMs to an ERP.
+
+**Who is it for?**
+Design offices and small to mid-sized manufacturers that keep drawings on a
+file share today and want revision control, releases and BOMs without a per-user licence.
+
+**Which CAD programs and file types does it support?**
+SolidWorks (parts, assemblies, drawings and custom properties), AutoCAD and GStarCAD (DWG and DXF with
+title-block reading), STEP and STL models, PDFs, Office files and images. DXF and DWG drawings and 3D
+models are viewed in the browser.
+
+**Which ERP systems does it connect to?**
+ERPNext, Odoo and Dolibarr through official connector add-ins, and any other ERP through the file-exchange
+connector (CSV or JSON files in a shared folder). More ERPs plug into the same connector interface.
+
+**Is it really free? What is the licence?**
+Yes. The server and web client are AGPL-3.0-or-later; the SDKs and official add-ins are Apache-2.0, so
+you can write your own add-ins under any licence; packs and documentation are CC BY 4.0.
+
+**Where does my data live?**
+On your own server. Files are stored once by their SHA-256 fingerprint, records in SQLite or PostgreSQL,
+with verified backups and a documented [export format](docs/export-format.md) so you can always leave.
+
+**Can people sign in with their company accounts?**
+Yes. The LDAP add-in works with Active Directory and OpenLDAP, the OpenID Connect add-in with Keycloak and other
+standard providers. Directory groups decide each person's role.
+
+**Does Kosha need AI or the cloud?**
+No. AI assistance is optional and off by default. When it is on, it can use a model running on your own
+server, and the admin chooses exactly what may be sent.
+
+**Is there an API?**
+Yes. Every Kosha server describes its REST API at `/api/docs` (OpenAPI at `/api/openapi.json`), and the
+Python SDK builds add-ins that react to Kosha events.
 
 ## Contributing
 
@@ -290,4 +354,5 @@ privately as described in [SECURITY.md](SECURITY.md).
   so companies can build and keep their own add-ins under any licence.
 - Packs, standard-parts data and documentation: **CC BY 4.0**.
 
-"Kosha" and the Kosha logo are covered by the [trademark policy](TRADEMARKS.md).
+"Kosha" and the Kosha logo are covered by the [trademark policy](TRADEMARKS.md); logo files and colours are in
+[docs/brand](docs/brand/README.md).

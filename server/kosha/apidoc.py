@@ -19,6 +19,7 @@ AREAS = {
     "boms": "Bills of materials", "changes": "Change orders", "erp": "ERP sync", "common-parts": "Duplicate finder",
     "import": "Legacy import", "addins": "Add-ins (admin)", "addin": "CAD add-ins", "meta": "Reference data",
     "health": "Server status", "openapi.json": "API description", "docs": "API description",
+    "ai": "AI assistance (optional)",
 }
 ROLE_TEXT = {None: "public, no sign-in", "viewer": "any signed-in user", "engineer": "engineer or higher",
              "approver": "approver or higher", "admin": "admin"}

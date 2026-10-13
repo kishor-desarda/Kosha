@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: Apache-2.0
+id: org.kosha.oidc
+name: OpenID Connect sign-in
+version: 0.5.0
+publisher: Kosha project
+licence: Apache-2.0
+kosha: ">=0.5,<2.0"
+kind: [sign-in]
+description: >
+  Adds a "Sign in with ..." button to Kosha's sign-in page for any OpenID Connect provider
+  (Keycloak, Authentik, Zitadel, Dex or a cloud identity service). People sign in there; Kosha
+  checks the signed answer and maps their groups to Kosha roles.
+help: >
+  At the provider, create a client (application) for Kosha: confidential, standard flow
+  (authorization code), with PKCE allowed. Enter the redirect address shown under Admin › Sign-in &
+  sessions as its only valid redirect address. Add the groups to the ID token (Keycloak: a "Group
+  Membership" mapper with the claim name groups). Then copy the issuer address, client ID and
+  client secret here, and map groups to roles under Admin › Sign-in & sessions.
+entry_points:
+  server: kosha_oidc.provider:OidcProvider
+permissions: [users:sign-in]
+events: []
+settings:
+  issuer:         {type: url, required: true, label: Issuer address, hint: "e.g. https://sso.example.com/realms/demo (Keycloak) — the address before /.well-known/openid-configuration"}
+  client_id:      {type: string, required: true, label: Client ID}
+  client_secret:  {type: secret, label: Client secret, hint: "Leave empty for a public client (PKCE only)"}
+  label:          {type: string, default: "single sign-on", label: "Button text: Sign in with …", hint: "e.g. your company account"}
+  scopes:         {type: string, default: "openid profile email", label: Scopes, hint: "Add groups if your provider needs it to send groups"}
+  username_claim: {type: string, default: preferred_username, label: Claim with the user name}
+  groups_claim:   {type: string, default: groups, label: Claim with the groups}
+  verify_tls:     {type: bool, default: true, label: Verify the HTTPS certificate}
+  timeout_s:      {type: int, default: 10, label: Time-out (seconds)}

@@ -4,6 +4,8 @@
 
     kosha-sdk new erp-connector my-erp --publisher com.example
     kosha-sdk new notifier my-chat --publisher com.example
+    kosha-sdk new sign-in my-directory --publisher com.example
+    kosha-sdk new ai-provider my-model --publisher com.example
     kosha-sdk check addins/my-erp
 """
 from __future__ import annotations
@@ -171,6 +173,159 @@ dependencies = ["kosha-sdk>=0.5"]
 {slug} = "{pkg}"
 """,
         "README.md": "# {title}\n\nA Kosha notifier add-in. Run `kosha-sdk check .` and `pytest` before publishing.\n",
+    },
+    "sign-in": {
+        "kosha-addin.yaml": """\
+id: {publisher}.{slug}
+name: {title}
+version: 0.1.0
+publisher: {publisher}
+licence: Apache-2.0
+kosha: ">=0.5,<2.0"
+kind: [sign-in]
+description: Lets people sign in to Kosha with their {title} account.
+entry_points:
+  server: {pkg}.provider:Provider
+permissions: [users:sign-in]
+settings:
+  base_url: {{type: url, required: true, label: Address of the directory}}
+  label:    {{type: string, default: "{title}", label: Name shown to users}}
+""",
+        "{pkg}/__init__.py": "# SPDX-License-Identifier: Apache-2.0\n",
+        "{pkg}/provider.py": """\
+# SPDX-License-Identifier: Apache-2.0
+\"\"\"{title} sign-in for Kosha: checks user names and passwords against the directory.\"\"\"
+from kosha_sdk import Health
+from kosha_sdk.http import HttpError
+from kosha_sdk.signin import Identity, PasswordProvider, SignInError
+
+
+class Provider(PasswordProvider):
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self.http = ctx.http(ctx.settings.get("base_url", ""), retries=0)
+
+    def health(self) -> Health:
+        return Health.up("Address is set")
+
+    def authenticate(self, username: str, password: str) -> Identity | None:
+        if not username or not password:
+            return None
+        try:
+            r = self.http.post("/check", {{"user": username, "password": password}}, allow_404=True)
+        except HttpError as e:
+            if e.status == 401:
+                return None
+            raise SignInError(f"{title} could not check the password ({{e}}).") from None
+        if r is None:
+            return None
+        j = r.json()
+        return Identity(external_id=j["id"], username=j["user"], full_name=j.get("name", ""),
+                        email=j.get("email", ""), groups=tuple(j.get("groups", ())))
+""",
+        "tests/test_manifest.py": """\
+# SPDX-License-Identifier: Apache-2.0
+from pathlib import Path
+
+from kosha_sdk.testing import check_manifest
+
+
+def test_manifest_is_valid():
+    assert check_manifest(Path(__file__).parent.parent) == []
+""",
+        "pyproject.toml": """\
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "{slug}"
+version = "0.1.0"
+license = {{ text = "Apache-2.0" }}
+dependencies = ["kosha-sdk>=0.5"]
+
+[project.entry-points."kosha.addins"]
+{slug} = "{pkg}"
+""",
+        "README.md": "# {title}\n\nA Kosha sign-in add-in. Run `kosha-sdk check .` and `pytest` before publishing.\n",
+    },
+    "ai-provider": {
+        "kosha-addin.yaml": """\
+id: {publisher}.{slug}
+name: {title}
+version: 0.1.0
+publisher: {publisher}
+licence: Apache-2.0
+kosha: ">=0.5,<2.0"
+kind: [ai-provider]
+description: Answers Kosha's AI assistance requests with {title}.
+entry_points:
+  server: {pkg}.provider:Provider
+permissions: [ai:provide]
+settings:
+  base_url: {{type: url, required: true, label: Address, hint: "e.g. http://localhost:8000"}}
+  model:    {{type: string, required: true, label: Model name}}
+  api_key:  {{type: secret, label: API key}}
+""",
+        "{pkg}/__init__.py": "# SPDX-License-Identifier: Apache-2.0\n",
+        "{pkg}/provider.py": """\
+# SPDX-License-Identifier: Apache-2.0
+\"\"\"{title} AI provider for Kosha. Never log the messages or the answers.\"\"\"
+from kosha_sdk import Health
+from kosha_sdk.ai import AiError, AiProvider, Completion
+from kosha_sdk.http import HttpError
+
+
+class Provider(AiProvider):
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        s = ctx.settings
+        key = s.get("api_key") or ""
+        self.model = s.get("model") or ""
+        self.http = ctx.http(s.get("base_url") or "", headers={{"Authorization": f"Bearer {{key}}"}} if key else None,
+                             timeout_s=60, retries=1) if s.get("base_url") else None
+
+    def health(self) -> Health:
+        if self.http is None or not self.model:
+            return Health.down("Set the address and the model name first.")
+        return Health.up(f"Model {{self.model}} is set. Press Test to send a short request.")
+
+    def complete(self, messages, *, max_tokens=512, temperature=0.2, json_mode=False) -> Completion:
+        if self.http is None:
+            raise AiError("The address of the AI service is not set.")
+        try:
+            r = self.http.post("/complete", {{"model": self.model, "messages": [m.to_dict() for m in messages],
+                                              "max_tokens": max_tokens, "temperature": temperature}})
+        except HttpError as e:
+            raise AiError(f"{title} refused the request ({{e}}).", status=e.status) from None
+        j = r.json()
+        return Completion(text=str(j.get("text") or ""), model=self.model, finish_reason=j.get("finish_reason") or "stop")
+""",
+        "tests/test_manifest.py": """\
+# SPDX-License-Identifier: Apache-2.0
+from pathlib import Path
+
+from kosha_sdk.testing import check_manifest
+
+
+def test_manifest_is_valid():
+    assert check_manifest(Path(__file__).parent.parent) == []
+""",
+        "pyproject.toml": """\
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "{slug}"
+version = "0.1.0"
+license = {{ text = "Apache-2.0" }}
+dependencies = ["kosha-sdk>=0.5"]
+
+[project.entry-points."kosha.addins"]
+{slug} = "{pkg}"
+""",
+        "README.md": "# {title}\n\nA Kosha AI provider add-in. Run `kosha-sdk check .` and `pytest` before publishing.\n",
     },
 }
 

@@ -17,13 +17,33 @@
   --warn-bg: #FFF5DA;
   --warn-ink: #5C4300;
   --focus: #0B5CAD;
-  color-scheme: light dark;
+  color-scheme: light;
+}
+
+/* Dark: chosen by Office's theme (taskpane.js sets data-theme), or by the computer when Office gives none.
+   Keep the two blocks the same. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --accent: #2A6FBF;
+  --accent-hover: #245FA6;
+  --link: #7DB6F2;
+  --bg: #1F2328;
+  --panel: #2A2F36;
+  --ink: #E8EAED;
+  --muted: #A9B1BB;
+  --line: #3D444D;
+  --ok: #7FD39A;
+  --error: #FF8A80;
+  --warn-bg: #3B3220;
+  --warn-ink: #F3DA9C;
+  --focus: #7DB6F2;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --accent: #2F7BD0;
-    --accent-hover: #4A90DE;
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --accent: #2A6FBF;
+    --accent-hover: #245FA6;
     --link: #7DB6F2;
     --bg: #1F2328;
     --panel: #2A2F36;

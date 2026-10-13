@@ -5,6 +5,9 @@ import { addinsTab } from './addins.js';
 import { backupsTab, securityTab } from './admin_ops.js';
 import { packsTab } from './packs.js';
 import { notifyAdminTab } from './notify.js';
+import { THEMES, themeLabel, applyTheme, currentTheme } from './theme.js';
+import { userDirectoryDialog } from './directory.js';
+import { aiAdminTab, askLink } from './ai.js';
 
 export async function renderAdmin(container, _m, params, { setTitle }) {
   setTitle('Administration');
@@ -12,7 +15,7 @@ export async function renderAdmin(container, _m, params, { setTitle }) {
   const cleanups = [];
   const draw = async () => {
     while (cleanups.length) { try { cleanups.pop()(); } catch (e) { /* ignore */ } }
-    const items = S.user.role === 'admin' ? [['users', 'Users'], ['import', 'Import legacy data'], ['rules', 'Numbering & revisions'], ['cad', 'CAD conversion'], ['addins', 'Add-ins'], ['security', 'Sign-in & sessions'], ['backups', 'Backups'], ['packs', 'Packs'], ['notify', 'Notifications'], ['audit', 'Audit log']] : [['audit', 'Audit log']];
+    const items = S.user.role === 'admin' ? [['users', 'Users'], ['import', 'Import legacy data'], ['rules', 'Numbering & revisions'], ['cad', 'CAD conversion'], ['addins', 'Add-ins'], ['security', 'Sign-in & sessions'], ['backups', 'Backups'], ['packs', 'Packs'], ['notify', 'Notifications'], ['ai', 'AI assistant'], ['audit', 'Audit log']] : [['audit', 'Audit log']];
     const body = h('div', { class: 'panel-b' });
     mount(container, h('div', { class: 'page-pad' }, h('div', { class: 'page-head' }, h('h1', null, 'Administration')),
       h('div', { class: 'panel' }, tabs(items, tab, k => { tab = k; draw(); }), body)));
@@ -25,6 +28,7 @@ export async function renderAdmin(container, _m, params, { setTitle }) {
     if (tab === 'backups') await backupsTab(body);
     if (tab === 'packs') await packsTab(body);
     if (tab === 'notify') await notifyAdminTab(body);
+    if (tab === 'ai') await aiAdminTab(body);
     if (tab === 'audit') await audit(body);
   };
   await draw();
@@ -124,7 +128,16 @@ async function legacyImport(body) {
 }
 
 async function users(body, draw) {
-  const r = await get('/api/users');
+  const [r, settings] = await Promise.all([get('/api/users'), get('/api/settings')]);
+  const themeSel = h('select', { class: 'input', id: 'st-theme', style: { width: 'auto', minHeight: '32px' } },
+    THEMES.map(([k, label]) => h('option', { value: k, selected: settings.default_theme === k }, label)));
+  themeSel.addEventListener('change', async () => {
+    try {
+      await put('/api/settings', { default_theme: themeSel.value });
+      S.defaultTheme = themeSel.value; applyTheme(currentTheme());
+      toast(`Saved. Everyone who has not chosen a theme sees ${themeLabel(themeSel.value)} the next time they open Kosha.`, 'ok');
+    } catch (e) { fail(e); }
+  });
   const roleSel = (u) => {
     const s = h('select', { class: 'input', style: { minHeight: '30px', width: 'auto' }, 'aria-label': `Role of ${u.full_name}` },
       ['viewer', 'engineer', 'approver', 'admin'].map(x => h('option', { value: x, selected: u.role === x }, x)));
@@ -135,12 +148,16 @@ async function users(body, draw) {
     h('div', { class: 'row', style: { marginBottom: '12px' } }, h('div', { class: 'muted small', style: { flex: 1 } },
       'Viewer: see and download. Engineer: add, check in/out, revise, build BOMs, raise changes. Approver: also release, approve changes, push to ERP. Admin: everything.'),
     h('button', { class: 'btn primary', onclick: () => addUser(draw) }, icon('plus', 16), 'Add user')),
-    h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ['Name', 'User name', 'Role', 'Mode', 'Status', ''].map(t => h('th', null, t)))),
+    h('div', { class: 'row wrap', style: { marginBottom: '12px' } }, h('label', { for: 'st-theme', style: { fontWeight: 600 } }, 'Theme for everyone who has not chosen one'), themeSel,
+      h('span', { class: 'muted small' }, 'Each person can choose their own theme in the menu behind their initials.')),
+    h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ['Name', 'User name', 'Role', 'Mode', 'Theme', 'Status', ''].map(t => h('th', null, t)))),
       h('tbody', null, r.users.map(u => h('tr', null, h('td', null, u.full_name), h('td', { class: 'mono' }, u.username), h('td', null, roleSel(u)), h('td', null, u.ui_mode),
+        h('td', { class: u.ui_theme ? '' : 'muted' }, u.ui_theme ? themeLabel(u.ui_theme) : 'Installation default'),
         h('td', null, h('span', { class: `chip ${u.active ? 'st-released' : 'st-obsolete'}` }, u.active ? 'Active' : 'Disabled')),
         h('td', { class: 'nowrap' }, h('div', { class: 'row' },
           h('button', { class: 'btn sm', onclick: () => resetPw(u) }, 'Reset password'),
           h('button', { class: 'btn sm', title: 'End all sessions of this user, in browsers and CAD add-ins. They can sign in again at once.', onclick: () => signOutEverywhere(u) }, 'Sign out everywhere'),
+          h('button', { class: 'btn sm', title: 'Link this user to an account in Active Directory, LDAP or an OpenID Connect provider', onclick: () => userDirectoryDialog(u) }, 'Directory'),
           u.id !== S.user.id ? h('button', { class: 'btn sm', onclick: async () => { try { await patch(`/api/users/${u.id}`, { active: !u.active }); draw(); } catch (e) { fail(e); } } }, u.active ? 'Disable' : 'Enable') : null)))))));
 }
 
@@ -230,7 +247,7 @@ export async function renderSearch(container, _m, params, { setTitle }) {
   if (input) input.value = q;
   mount(container, h('div', { class: 'page-pad' },
     h('div', { class: 'page-head' }, h('div', null, h('h1', null, `Results for "${q}"`), h('div', { class: 'sub' }, `${r.documents.length} files · ${r.items.length} parts · ${r.changes.length} change orders`)),
-      h('span', { class: 'spacer' }), h('a', { class: 'btn', href: `#/inputs?q=${encodeURIComponent(q)}` }, icon('layers', 16), 'Search inputs too')),
+      h('span', { class: 'spacer' }), askLink(q), h('a', { class: 'btn', href: `#/inputs?q=${encodeURIComponent(q)}` }, icon('layers', 16), 'Search inputs too')),
     h('div', { class: 'col', style: { gap: '16px' } },
       h('section', { class: 'panel' }, h('div', { class: 'panel-h' }, h('h2', null, 'Files')),
         r.documents.length ? h('table', { class: 'tbl' }, h('tbody', null, r.documents.map(d => h('tr', { class: 'clickable', onclick: () => { location.hash = `#/files/${d.folder_id}?select=${d.id}`; } },

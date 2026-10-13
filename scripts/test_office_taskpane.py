@@ -51,9 +51,13 @@ FAKE_WORD = """
     CoercionType: { Text: 'text' },
     AsyncResultStatus: { Succeeded: 'succeeded', Failed: 'failed' },
     onReady: function () { return Promise.resolve({ host: 'Word', platform: 'PC' }); },
+    EventType: { OfficeThemeChanged: 'officeThemeChanged' },
     context: {
+      officeTheme: { bodyBackgroundColor: '#262626', bodyForegroundColor: '#FFFFFF',
+                     controlBackgroundColor: '#404040', controlForegroundColor: '#FFFFFF' },   // Office "Black"
       ui: { openBrowserWindow: function (url) { log.browser.push(url); } },
       document: {
+        addHandlerAsync: function (type, handler) { log.themeHandler = type; window.__officeThemeChanged = handler; },
         url: 'C:\\\\Users\\\\asha\\\\Documents\\\\MX-100 Mixer manual.doc',
         getFileAsync: function (type, options, cb) {
           log.opened++;
@@ -119,13 +123,31 @@ def search_and_insert(page) -> str:
     return first_pn
 
 
+# The pane's background, and whether it is dark (the colour Kosha shows, not the one Office reports).
+PANE_LOOK = """(() => {
+  const c = (getComputedStyle(document.body).backgroundColor.match(/[\\d.]+/g) || []).map(Number);
+  return { theme: document.documentElement.getAttribute('data-theme'), dark: c[0] + c[1] + c[2] < 200 };
+})()"""
+
+
 def test_mode(browser, kosha: KoshaServer, errors: list[str]) -> None:
+    dark = browser.new_context(color_scheme="dark")      # without Office the pane follows the computer
+    dark.route(OFFICE_JS, lambda route: route.fulfill(status=200, content_type="text/javascript", body="/* no Office */"))
+    page = dark.new_page()
+    watch(page, errors)
+    page.goto(kosha.base + PANE)
+    expect(page.locator("#testmode")).to_be_visible()
+    look = page.evaluate(PANE_LOOK)
+    assert look == {"theme": None, "dark": True}, f"test mode on a dark computer: {look}"
+    dark.close()
+
     context = browser.new_context()
     context.route(OFFICE_JS, lambda route: route.fulfill(status=200, content_type="text/javascript", body="/* no Office here */"))
     page = context.new_page()
     watch(page, errors)
     page.goto(kosha.base + PANE)
     expect(page.locator("#testmode")).to_be_visible()
+    assert page.evaluate(PANE_LOOK)["dark"] is False, "test mode on a light computer is light"
 
     sign_in(page, "asha", "not-the-password")
     expect(page.locator("#signin-message")).to_contain_text("Wrong user name or password")
@@ -180,6 +202,12 @@ def word(browser, kosha: KoshaServer, errors: list[str]) -> None:
     if page.locator("#testmode").is_visible():
         raise AssertionError("The pane did not see Office: office.js did not load. Does the Content-Security-Policy of "
                              "/static/office-addin/ allow https://appsforoffice.microsoft.com?")
+    # Office's theme wins over the computer's (this browser is light): Black makes the pane dark ...
+    assert page.evaluate(PANE_LOOK) == {"theme": "dark", "dark": True}, page.evaluate(PANE_LOOK)
+    assert page.evaluate("window.__fakeOffice.themeHandler") == "officeThemeChanged"
+    # ... and switching Office to a light theme follows at once
+    page.evaluate("Office.context.officeTheme.bodyBackgroundColor = '#FFFFFF'; window.__officeThemeChanged()")
+    assert page.evaluate(PANE_LOOK) == {"theme": "light", "dark": False}, page.evaluate(PANE_LOOK)
     expect(page.locator("#filename")).to_have_value("MX-100 Mixer manual.docx")   # an old .doc goes in as .docx
 
     page.select_option("#folder", FOLDER)
@@ -205,7 +233,8 @@ def word(browser, kosha: KoshaServer, errors: list[str]) -> None:
     page.click("#open-button")
     log = page.evaluate("window.__fakeOffice")
     assert log["browser"] and log["browser"][-1].endswith(f"/#/doc/{st['id']}"), log["browser"]
-    print("ok: in Word the document is read in slices, checked in byte for byte, and parts are inserted at the cursor")
+    print("ok: in Word the pane follows Office's theme, the document is read in slices, checked in byte for byte, "
+          "and parts are inserted at the cursor")
     context.close()
 
 

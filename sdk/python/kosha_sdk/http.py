@@ -6,7 +6,8 @@
 * only temporary failures are retried (network errors, HTTP 429 and 5xx), with growing,
   randomised waits and a limited number of tries;
 * a validation error (other 4xx) is never retried;
-* changing calls can carry an idempotency key, so a retry never creates a second record.
+* changing calls can carry an idempotency key, so a retry never creates a second record;
+* forms (``form=``, as OAuth and OpenID Connect token endpoints expect) and per-call headers.
 
 Uses only the Python standard library, so add-ins stay light.
 """
@@ -59,21 +60,27 @@ class HttpClient:
             self._ctx = ssl._create_unverified_context()  # only when the admin switched verification off
 
     def request(self, method: str, path: str, *, json_body: Any = None, params: dict[str, Any] | None = None,
-                idempotency_key: str | None = None, allow_404: bool = False) -> Response | None:
+                idempotency_key: str | None = None, allow_404: bool = False, form: dict[str, Any] | None = None,
+                headers: dict[str, str] | None = None) -> Response | None:
         url = self.base + path
         if params:
-            url += "?" + urllib.parse.urlencode(
+            url += ("&" if "?" in path else "?") + urllib.parse.urlencode(
                 {k: json.dumps(v) if isinstance(v, (list, dict)) else v for k, v in params.items()})
-        data = json.dumps(json_body).encode("utf-8") if json_body is not None else None
+        if form is not None:
+            data = urllib.parse.urlencode(form).encode("utf-8")
+            content_type = "application/x-www-form-urlencoded"
+        else:
+            data = json.dumps(json_body).encode("utf-8") if json_body is not None else None
+            content_type = "application/json"
         attempt = 0
         while True:
             attempt += 1
             req = urllib.request.Request(url, data=data, method=method)
             req.add_header("Accept", "application/json")
-            for k, v in self.headers.items():
+            for k, v in {**self.headers, **(headers or {})}.items():
                 req.add_header(k, v)
             if data is not None:
-                req.add_header("Content-Type", "application/json")
+                req.add_header("Content-Type", content_type)
             if idempotency_key:
                 req.add_header("Idempotency-Key", idempotency_key)
             try:
