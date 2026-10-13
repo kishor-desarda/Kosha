@@ -455,6 +455,9 @@ def set_state(user: dict, doc_id: int, to: str, comment: str = "", co_id: int | 
         registry.emit("revision.released", {"document_id": doc_id, "item_id": released_doc["item_id"],
                                             "filename": released_doc["filename"], "revision": released_doc["revision"],
                                             "part_number": released_doc.get("part_number"), "user_id": user["id"]})
+    if released_doc:
+        from . import outputs
+        outputs.on_release(doc_id, user)      # stamped PDF and release sheet; never undoes the release
     if to in ("obsolete", "spares_only"):
         from .addins import registry
         registry.emit("revision.obsoleted", {"document_id": doc_id, "item_id": d["item_id"], "state": to,

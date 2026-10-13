@@ -63,7 +63,7 @@ export async function renderDoc(container, [id], params, { setTitle }) {
 
     const tabItems = [['overview', 'Overview'], ['versions', `Versions (${d.versions.length})`], ['history', 'History'],
       ['where', `Where used (${d.where_used.length})`], ['related', `Related files (${d.related.length})`], ['changes', `Changes (${d.changes.length})`],
-      ['changelog', 'Change log']];
+      ['changelog', 'Change log'], ['outputs', 'Release outputs']];
     if (d.item) tabItems.push(['erp', 'ERP']);
     const body = h('div', { class: 'panel', style: { marginTop: '6px' } });
     const setTab = t => { tab = t; drawTab(); };
@@ -80,6 +80,7 @@ export async function renderDoc(container, [id], params, { setTitle }) {
       if (tab === 'changes') changesTab(c, d);
       if (tab === 'changelog') import('./diffview.js').then(m => m.changeLogTab(c, d)).catch(fail);
       if (tab === 'erp') erpTab(c, d.item, load);
+      if (tab === 'outputs') outputsTab(c, d).catch(fail);
     };
     drawTab();
     mount(container, h('div', { class: 'page-pad' }, head, body));
@@ -152,6 +153,35 @@ function versionsTab(c, d) {
       h('td', { class: 'nowrap' }, h('div', { class: 'row' },
         v.viewer_kind ? h('button', { class: 'btn sm', onclick: () => openViewer(d, { version: v.version }) }, 'View') : null,
         h('button', { class: 'btn sm', onclick: () => downloadDoc(d.id, v.version) }, 'Download'))))))));
+}
+
+// The stamped PDF and release sheet made at each release, linked to the revision and version they came from.
+async function outputsTab(c, d) {
+  const draw = list => {
+    const remake = can('approver') && ['released', 'spares_only'].includes(d.state)
+      ? h('button', { class: 'btn sm', onclick: async e => {
+        e.target.disabled = true;
+        try { draw((await post(`/api/documents/${d.id}/outputs`)).outputs); toast('Outputs made again', 'ok'); } catch (ex) { fail(ex); e.target.disabled = false; }
+      } }, icon('refresh', 14), `Make again for Rev ${d.revision}`) : null;
+    mount(c,
+      h('div', { class: 'row wrap', style: { marginBottom: '10px' } },
+        h('p', { class: 'muted small', style: { margin: 0, flex: 1 } }, 'Made at every release: the PDF stamped "Released — Rev — date — approver", and a release sheet with the files and their fingerprints. Downloads carry "Uncontrolled when printed" and the date; older revisions carry a red Superseded band.'),
+        remake),
+      list.length ? h('table', { class: 'tbl' },
+        h('thead', null, h('tr', null, ['Output', 'Revision', 'Version', 'Made', 'Size', ''].map(t => h('th', null, t)))),
+        h('tbody', null, list.map(o => h('tr', null,
+          h('td', null, h('b', null, o.label), h('div', { class: 'small muted' }, o.filename)),
+          h('td', null, o.revision, o.superseded_by ? [' ', h('span', { class: 'chip st-superseded' }, `Superseded — use Rev ${o.superseded_by}`)] : null),
+          h('td', null, `v${o.version}`), h('td', { class: 'nowrap' }, `${fmtDate(o.created_at)}${o.created_by_name ? ' · ' + o.created_by_name : ''}`),
+          h('td', null, o.status === 'ok' ? fmtSize(o.size) : h('span', { class: 'sev-warning small' }, o.note)),
+          h('td', { class: 'nowrap' }, o.status === 'ok' ? h('div', { class: 'row' },
+            h('a', { class: 'btn sm', href: `/api/outputs/${o.id}/file?inline=1&access_token=${encodeURIComponent(S.token)}`, target: '_blank', rel: 'noopener' }, 'Open'),
+            h('a', { class: 'btn sm', href: `/api/outputs/${o.id}/file?access_token=${encodeURIComponent(S.token)}`, download: '' }, 'Download')) : null)))))
+        : h('div', { class: 'empty' }, ['released', 'spares_only'].includes(d.state) || d.versions.some(v => v.superseded_by)
+          ? 'No outputs yet. This file was released before outputs were made; an approver can make them now.'
+          : 'Outputs are made when this file is released.'));
+  };
+  draw((await get(`/api/documents/${d.id}/outputs`)).outputs);
 }
 
 function historyTab(c, d) {

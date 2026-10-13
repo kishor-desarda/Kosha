@@ -19,6 +19,7 @@
 - [`security.md`](security.md): two-step sign-in, new-place alerts, the bulk-download alarm, the audit chain, personal data, watermarks, share links, encrypted secrets.
 - [`file-safety.md`](file-safety.md): resumable uploads, blocked program files, the recycle bin, purging and clean-up.
 - [`health-checks.md`](health-checks.md): stored files read back and repaired, the nightly consistency check, alerts to admins, drafts kept in the browser.
+- [`release-outputs.md`](release-outputs.md): the stamped PDF and release sheet made at each release, printed and superseded marks.
 - [`programs-and-events.md`](programs-and-events.md): API keys for programs, webhooks, and live updates on open screens.
 - [`ai.md`](ai.md): optional AI assistance (classification, change-log drafts, Ask Kosha): what is sent, privacy, running it fully local.
 
