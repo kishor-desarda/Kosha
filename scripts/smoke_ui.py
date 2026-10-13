@@ -134,6 +134,29 @@ def check_share_page(browser, page, errors: list[str]) -> None:
     outside.close()
 
 
+def check_drafts(page, errors: list[str]) -> None:
+    """Unsaved property edits survive a reload and are offered again."""
+    doc_id = page.evaluate("""async () => {
+  const core = await import('/static/js/core.js');
+  const doc = (await core.get('/api/documents?state=in_work&limit=50')).documents.find(d => !d.checked_out_by);
+  await core.post(`/api/documents/${doc.id}/checkout`);
+  return doc.id;
+}""")
+    page.goto(f"{BASE}/#/doc/{doc_id}")
+    page.wait_for_selector("#f-desc:not([disabled])", timeout=15000)
+    page.fill("#f-desc", "SMOKE DRAFT DESCRIPTION")
+    time.sleep(0.8)                                   # the draft is kept 0.4 s after the last key
+    page.reload()
+    try:
+        page.wait_for_selector(".draft-banner >> text=Restore them", timeout=15000)
+        page.click(".draft-banner >> text=Restore them")
+        if page.input_value("#f-desc") != "SMOKE DRAFT DESCRIPTION":
+            errors.append("restoring the kept draft did not put the description back")
+    except Exception:
+        errors.append("unsaved property edits were not offered again after reloading the page")
+    page.evaluate("Object.keys(localStorage).filter(k => k.startsWith('kosha.draft.')).forEach(k => localStorage.removeItem(k))")
+
+
 def check_resumable_upload(page, errors: list[str]) -> None:
     """A file larger than one piece goes up in pieces, with the browser's SHA-256, and comes back byte for byte."""
     r = page.evaluate(RESUMABLE)
@@ -149,6 +172,10 @@ def choose_theme(page, theme: str, errors: list[str]) -> None:
     page.click("dialog[open] .dlg-f >> text=Done")
     if not wait_until(page, f"document.documentElement.dataset.theme === '{theme}'"):
         errors.append(f"choosing the {theme} theme in the account menu did not apply it")
+    # the choice is saved with the account in the background; a reload before that answer arrives would read the
+    # old choice back from the server
+    if not wait_until(page, "window.__koshaPending === 0"):
+        errors.append(f"saving the {theme} theme with the account did not finish")
 
 
 def main() -> int:
@@ -174,6 +201,7 @@ def main() -> int:
                 resp = page.goto(BASE + "/#/login")   # None when only the #hash changed
                 if resp is not None and "script-src 'self'" not in (resp.headers.get("content-security-policy") or ""):
                     errors.append("the page has no Content-Security-Policy; CSP violations would go unnoticed")
+                wait_until(page, "window.__koshaPending === 0")     # nothing of the last person still on its way
                 page.evaluate("localStorage.clear(); sessionStorage.clear()")
                 page.reload()
                 page.wait_for_selector("input[type=password]", timeout=15000)
@@ -210,6 +238,7 @@ def main() -> int:
                 if user == "admin":
                     check_resumable_upload(page, errors)
                     check_share_page(browser, page, errors)
+                    check_drafts(page, errors)
                 if user == "asha":
                     choose_theme(page, "system", errors)
                 page.emulate_media(color_scheme="light")

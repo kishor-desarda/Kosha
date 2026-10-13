@@ -75,6 +75,8 @@ async def lifespan(app):
     if os.environ.get("KOSHA_DISABLE_WORKER") != "1":
         erp.start_worker()
         notify_outbox.start_worker()
+        from .health import start_worker as start_health_checks   # file fingerprints, nightly check, alerts
+        start_health_checks()
     from .inputs import start_worker as start_text_reader   # inputs library: reads file text in the background
     start_text_reader()
     yield

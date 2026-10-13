@@ -2,7 +2,7 @@
 // File details page and item (part master) page.
 import {
   S, h, mount, clear, icon, get, post, patch, toast, fail, dialog, confirmDlg, stateChip, typeChip, fmtDate, ago, fmtSize,
-  fileUrl, downloadDoc, tabs, can, thumb, STATE_PLAIN,
+  fileUrl, downloadDoc, tabs, can, thumb, STATE_PLAIN, keepDraft,
 } from './core.js';
 import { openViewer } from './viewer.js';
 import { mountRecordPanels } from './deviations.js';
@@ -94,14 +94,16 @@ function overview(c, d, reload) {
   const editable = d.actions.edit.ok;
   const desc = h('input', { class: 'input', value: d.description, disabled: !editable, id: 'f-desc' });
   const pn = h('input', { class: 'input mono', value: d.part_number, disabled: !editable, id: 'f-pn' });
+  const kept = editable ? keepDraft(`doc.${d.id}.props`, { part_number: pn, description: desc }) : { banner: null, clear() {} };
   const left = h('div', { class: 'col', style: { flex: '1 1 380px', gap: '14px' } },
     h('h2', null, 'File properties'),
     !editable ? h('p', { class: 'muted small', style: { margin: 0 } }, d.actions.edit.why) : null,
+    kept.banner,
     h('div', { class: 'form-grid' },
       h('div', { class: 'field' }, h('label', { for: 'f-pn' }, 'Part number'), pn),
       h('div', { class: 'field' }, h('label', { for: 'f-desc' }, 'Description'), desc)),
     editable ? h('div', null, h('button', { class: 'btn primary', onclick: async () => {
-      try { await patch(`/api/documents/${d.id}`, { part_number: pn.value, description: desc.value }); toast('Saved', 'ok'); reload(); } catch (e) { fail(e); }
+      try { await patch(`/api/documents/${d.id}`, { part_number: pn.value, description: desc.value }); kept.clear(); toast('Saved', 'ok'); reload(); } catch (e) { fail(e); }
     } }, 'Save properties')) : null,
     h('dl', { class: 'props' }, [
       ['Type', d.type_label], ['Revision', d.revision], ['Version', d.version], ['Created', fmtDate(d.created_at)], ['Modified', fmtDate(d.updated_at)],
