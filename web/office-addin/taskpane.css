@@ -1,0 +1,142 @@
+/* SPDX-FileCopyrightText: Kosha contributors */
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Kosha task pane for Office: narrow, plain, keyboard- and screen-reader-friendly. Colours only through these variables. */
+
+:root {
+  --accent: #0B5CAD;          /* Kosha Blue */
+  --accent-ink: #FFFFFF;
+  --accent-hover: #094C8F;
+  --link: #0B5CAD;
+  --bg: #FFFFFF;
+  --panel: #F4F6F8;
+  --ink: #16191D;
+  --muted: #5B6470;
+  --line: #D5DAE0;
+  --ok: #1E6B3A;
+  --error: #A01E1E;
+  --warn-bg: #FFF5DA;
+  --warn-ink: #5C4300;
+  --focus: #0B5CAD;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --accent: #2F7BD0;
+    --accent-hover: #4A90DE;
+    --link: #7DB6F2;
+    --bg: #1F2328;
+    --panel: #2A2F36;
+    --ink: #E8EAED;
+    --muted: #A9B1BB;
+    --line: #3D444D;
+    --ok: #7FD39A;
+    --error: #FF8A80;
+    --warn-bg: #3B3220;
+    --warn-ink: #F3DA9C;
+    --focus: #7DB6F2;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.45 "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+}
+
+[hidden] { display: none !important; }
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.bar h1 { font-size: 16px; margin: 0; font-weight: 600; }
+.bar .who { margin-left: auto; color: var(--muted); font-size: 12px; text-align: right; }
+
+main { padding: 4px 14px 24px; }
+.pad { padding: 10px 14px; }
+
+section { padding: 10px 0 14px; border-bottom: 1px solid var(--line); }
+section:last-child { border-bottom: 0; }
+h2 { font-size: 15px; margin: 6px 0 8px; font-weight: 600; }
+
+label { display: block; margin: 10px 0 4px; font-weight: 600; font-size: 13px; }
+label.check { display: flex; align-items: center; gap: 6px; font-weight: 400; margin: 6px 0; }
+
+input[type="text"], input:not([type]), input[type="search"], input[type="password"], select, textarea {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+}
+select { padding: 2px; }
+textarea { resize: vertical; }
+
+.row { display: flex; gap: 6px; align-items: stretch; }
+.row input { flex: 1 1 auto; min-width: 0; }
+.buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+
+button {
+  font: inherit;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--ink);
+  cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+button.primary:hover:not(:disabled) { background: var(--accent-hover); }
+button.small { padding: 3px 10px; font-size: 13px; }
+button.link { background: none; border: 0; color: var(--link); padding: 2px 4px; text-decoration: underline; }
+button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.fields { border: 0; padding: 0; margin: 10px 0 0; display: flex; flex-wrap: wrap; column-gap: 14px; }
+.fields legend { font-weight: 600; font-size: 13px; padding: 0; margin-bottom: 2px; }
+
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+
+.banner {
+  margin: 10px 14px 0;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+  font-size: 13px;
+}
+
+.message { min-height: 1.2em; margin: 8px 0 0; }
+.message.ok { color: var(--ok); }
+.message.error { color: var(--error); }
+.why { color: var(--muted); font-size: 12px; margin: 6px 0 0; min-height: 1em; }
+.status-line { margin: 8px 0 0; padding: 6px 8px; background: var(--panel); border-radius: 4px; font-size: 13px; }
+.status-line:empty { display: none; }
+
+.results { list-style: none; margin: 8px 0 0; padding: 0; }
+.results li { padding: 8px 0; border-top: 1px solid var(--line); }
+.results li:first-child { border-top: 0; }
+.results .pn { font-weight: 600; }
+.results .meta { color: var(--muted); font-size: 12px; }
+.results .buttons { margin-top: 6px; }
+
+.progress-box { margin-top: 10px; }
+.progress-box label { font-weight: 400; margin: 0 0 4px; }
+progress { width: 100%; height: 10px; accent-color: var(--accent); }
+
+@media (forced-colors: active) {
+  button.primary { border: 1px solid ButtonText; }
+  .status-line, .banner { border: 1px solid CanvasText; }
+}

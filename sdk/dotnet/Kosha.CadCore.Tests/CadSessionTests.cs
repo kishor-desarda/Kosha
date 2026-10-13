@@ -240,5 +240,16 @@ namespace Kosha.CadCore.Tests
             Assert.That(File.Exists(f + ".kosha-new"), Is.False);
             Directory.Delete(dir, true);
         }
+
+        [Test]
+        public void ReplaceKeepingOld_LeavesNoHalfFile_WhenTheSwapFails()
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "kosha-rep-" + Guid.NewGuid().ToString("N"));
+            var target = Path.Combine(dir, "a.docx");
+            Directory.CreateDirectory(target);          // a folder in the way: the new file cannot be moved there
+            Assert.Catch(() => { LocalFiles.ReplaceKeepingOld(target, System.Text.Encoding.UTF8.GetBytes("new"), Path.Combine(dir, "kept")); });
+            Assert.That(File.Exists(target + ".kosha-new"), Is.False, "the temporary file is removed");
+            Directory.Delete(dir, true);
+        }
     }
 }

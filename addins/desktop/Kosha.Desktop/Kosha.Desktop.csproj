@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- SPDX-License-Identifier: Apache-2.0 -->
+  <!--
+    Kosha Desktop: a small Windows tray application and Explorer right-click verbs for files that are not CAD
+    files (Office documents, PDFs, images). The windows live here; everything else is in Kosha.Desktop.Core,
+    which is tested in CI. Build:  dotnet publish addins\desktop\Kosha.Desktop -c Release -r win-x64 --self-contained false
+    It needs the .NET 8 Desktop Runtime on the PC (or publish with  self-contained true). Install with install.ps1.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>Kosha.Desktop</RootNamespace>
+    <AssemblyName>Kosha.Desktop</AssemblyName>
+    <ApplicationIcon>kosha.ico</ApplicationIcon>
+    <!-- CI builds this on Linux only to check that it compiles: no Windows program starter is made there -->
+    <UseAppHost Condition="'$(OS)' != 'Windows_NT'">false</UseAppHost>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Kosha.Desktop.Core\Kosha.Desktop.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="kosha.ico" LogicalName="Kosha.Desktop.kosha.ico" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,107 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!--
+  Kosha task pane for Word, Excel and PowerPoint, served by the Kosha server at /static/office-addin/taskpane.html.
+  Every script is in a file of its own (no inline script or style), so a strict Content-Security-Policy can be used:
+  this page needs script-src 'self' https://appsforoffice.microsoft.com (Office requires office.js from there).
+  Opened in a plain browser, without Office, it runs in test mode.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kosha</title>
+<link rel="icon" href="assets/icon-32.png">
+<link rel="stylesheet" href="taskpane.css">
+<script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+<script src="taskpane.js" defer></script>
+</head>
+<body>
+<header class="bar">
+  <img src="assets/icon-32.png" alt="" width="24" height="24">
+  <h1>Kosha</h1>
+  <span id="who" class="who"></span>
+  <button type="button" id="signout-button" class="link" hidden>Sign out</button>
+</header>
+
+<p id="loading" class="muted pad">Starting Kosha…</p>
+
+<p id="testmode" class="banner" hidden>
+  <strong>Test mode.</strong> Office is not here, so <em>Insert</em> writes into the test document at the
+  bottom and <em>Check in</em> sends a file you choose. Open Kosha from Word, Excel or PowerPoint to work on a real document.
+</p>
+
+<main>
+  <section id="signin-view" aria-labelledby="signin-title" hidden>
+    <h2 id="signin-title">Sign in to Kosha</h2>
+    <p class="muted">Use your Kosha account on <span id="server-name"></span>.</p>
+    <form id="signin-form" novalidate>
+      <label for="username">User name</label>
+      <input id="username" name="username" autocomplete="username" autocapitalize="off" spellcheck="false">
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password">
+      <div class="buttons">
+        <button type="submit" class="primary" id="signin-button">Sign in</button>
+      </div>
+      <p id="signin-message" class="message" role="status" aria-live="polite"></p>
+    </form>
+  </section>
+
+  <div id="main-view" hidden>
+    <section aria-labelledby="parts-title">
+      <h2 id="parts-title">Insert a part</h2>
+      <form id="search-form" role="search">
+        <label for="search">Find parts by number, description or material</label>
+        <div class="row">
+          <input id="search" type="search" placeholder="For example MX-100" autocomplete="off" spellcheck="false">
+          <button type="submit" id="search-button">Search</button>
+        </div>
+      </form>
+      <fieldset id="fields" class="fields">
+        <legend>What to insert</legend>
+        <label class="check"><input type="checkbox" name="field" value="part_number" checked> Part number</label>
+        <label class="check"><input type="checkbox" name="field" value="description" checked> Description</label>
+        <label class="check"><input type="checkbox" name="field" value="revision" checked> Revision</label>
+        <label class="check"><input type="checkbox" name="field" value="material" checked> Material</label>
+      </fieldset>
+      <p id="insert-hint" class="muted"></p>
+      <p id="parts-message" class="message" role="status" aria-live="polite"></p>
+      <ul id="results" class="results" aria-label="Parts found"></ul>
+    </section>
+
+    <section aria-labelledby="checkin-title">
+      <h2 id="checkin-title">Check in this document</h2>
+      <label for="filename">File name in Kosha</label>
+      <input id="filename" autocomplete="off" spellcheck="false">
+      <label for="folder-filter">Kosha folder</label>
+      <input id="folder-filter" type="search" placeholder="Type to narrow the list" autocomplete="off" aria-controls="folder">
+      <select id="folder" size="6" aria-label="Kosha folder (list)"></select>
+      <p id="doc-status" class="status-line" aria-live="polite"></p>
+      <label for="comment">Comment for this version (what changed and why)</label>
+      <textarea id="comment" rows="2"></textarea>
+      <label class="check"><input type="checkbox" id="keep"> Keep it checked out, to go on editing</label>
+      <div class="buttons">
+        <button type="button" class="primary" id="checkin-button" aria-describedby="checkin-why">Check in this document</button>
+        <button type="button" id="checkout-button" hidden>Check out</button>
+        <button type="button" id="open-button" hidden>Open in Kosha</button>
+      </div>
+      <p id="checkin-why" class="why"></p>
+      <div id="progress-box" class="progress-box" hidden>
+        <label for="progress" id="progress-label">Working…</label>
+        <progress id="progress" max="100" value="0"></progress>
+      </div>
+      <p id="checkin-message" class="message" role="status" aria-live="polite"></p>
+      <p class="muted small">Checking in never changes your document: Kosha stores a copy of it as it is now, saved or not.</p>
+    </section>
+
+    <section id="testdoc" aria-labelledby="testdoc-title" hidden>
+      <h2 id="testdoc-title">Test document</h2>
+      <label for="test-file">File to check in</label>
+      <input id="test-file" type="file">
+      <label for="test-text">Text of the test document (Insert writes here)</label>
+      <textarea id="test-text" rows="4"></textarea>
+    </section>
+  </div>
+</main>
+</body>
+</html>

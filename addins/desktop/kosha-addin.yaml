@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: Apache-2.0
+id: org.kosha.desktop
+name: Kosha Desktop
+version: 0.5.0
+publisher: Kosha project
+licence: Apache-2.0
+kosha: ">=0.5,<2.0"
+kind: [office-addin]
+description: >
+  A small Windows tray program for files that are not CAD files (Office documents, PDFs,
+  images): Check in to Kosha, Check out from Kosha, Show in Kosha and Get latest version from
+  Kosha in the Explorer right-click menu, and a sync status list. Uses the same local workspace
+  folder and sign-in as the CAD add-ins. Installed per user, without administrator rights.
+entry_points:
+  office: Kosha.Desktop.exe
+permissions: [files:read, files:write]

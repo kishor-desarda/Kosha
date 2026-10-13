@@ -5,6 +5,8 @@
 - [`adr/`](adr/): architecture decision records, one page per decision.
 - [`../sdk/python/README.md`](../sdk/python/README.md): building server add-ins.
 - [`../addins/`](../addins/): each official add-in has its own README.
+- [`desktop.md`](desktop.md): Kosha Desktop, Explorer commands and a tray icon for Office files, PDFs and images.
+- [`office-addin.md`](office-addin.md): the Kosha task pane in Word, Excel and PowerPoint.
 
 The full specification and development guide will be published here as the documentation site
 (MkDocs) is set up.

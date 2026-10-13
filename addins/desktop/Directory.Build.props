@@ -1,0 +1,5 @@
+<Project>
+  <!-- SPDX-License-Identifier: Apache-2.0 -->
+  <!-- Kosha Desktop uses the same build settings as the shared C# libraries (language version, version number, Windows targeting on Linux). -->
+  <Import Project="..\..\sdk\dotnet\Directory.Build.props" />
+</Project>

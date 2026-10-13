@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- SPDX-License-Identifier: Apache-2.0 -->
+  <!-- Everything Kosha Desktop does that is not a window: command line, Explorer verbs, check-in/out of plain
+       files, get latest, the sync status list and the activity log. Tested in CI (Kosha.Desktop.Core.Tests). -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <RootNamespace>Kosha.Desktop.Core</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\sdk\dotnet\Kosha.CadCore\Kosha.CadCore.csproj" />
+  </ItemGroup>
+</Project>

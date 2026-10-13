@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!--
+  Kosha add-in for Word, Excel and PowerPoint (Office add-in XML manifest, task pane).
+
+  FOR THE KOSHA ADMINISTRATOR: before deploying, replace every  https://kosha.example.com  in this file with the
+  address of your Kosha server, for example https://plm.yourcompany.local (Office requires HTTPS with a certificate
+  the PCs trust). The pages themselves are served by Kosha at /static/office-addin/. Then deploy the edited file
+  (Microsoft 365 admin center, Integrated apps, Upload custom apps; or a shared-folder catalog). See docs/office-addin.md.
+  If you run more than one Kosha server, give each copy of this file its own <Id> (a new GUID).
+-->
+<OfficeApp
+    xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+    xsi:type="TaskPaneApp">
+  <Id>de67ed48-dd2b-405a-b6e6-279e6e9ca6dd</Id>
+  <Version>0.5.0.0</Version>
+  <ProviderName>Kosha project</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="Kosha"/>
+  <Description DefaultValue="Insert part numbers from Kosha and check this document in to Kosha, the open-source PLM."/>
+  <IconUrl DefaultValue="https://kosha.example.com/static/office-addin/assets/icon-32.png"/>
+  <HighResolutionIconUrl DefaultValue="https://kosha.example.com/static/office-addin/assets/icon-64.png"/>
+  <SupportUrl DefaultValue="https://github.com/kishor-desarda/Kosha/blob/main/docs/office-addin.md"/>
+  <AppDomains>
+    <AppDomain>https://kosha.example.com</AppDomain>
+  </AppDomains>
+  <Hosts>
+    <Host Name="Document"/>
+    <Host Name="Workbook"/>
+    <Host Name="Presentation"/>
+  </Hosts>
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://kosha.example.com/static/office-addin/taskpane.html"/>
+  </DefaultSettings>
+  <Permissions>ReadWriteDocument</Permissions>
+
+  <!-- A "Kosha" button on the Home tab of each program opens the task pane. -->
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Hosts>
+      <Host xsi:type="Document">
+        <DesktopFormFactor>
+          <GetStarted>
+            <Title resid="Kosha.Start.Title"/>
+            <Description resid="Kosha.Start.Text"/>
+            <LearnMoreUrl resid="Kosha.Help.Url"/>
+          </GetStarted>
+          <FunctionFile resid="Kosha.Commands.Url"/>
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="Kosha.Word.Group">
+                <Label resid="Kosha.Group.Label"/>
+                <Icon>
+                  <bt:Image size="16" resid="Kosha.Icon.16"/>
+                  <bt:Image size="32" resid="Kosha.Icon.32"/>
+                  <bt:Image size="80" resid="Kosha.Icon.80"/>
+                </Icon>
+                <Control xsi:type="Button" id="Kosha.Word.Show">
+                  <Label resid="Kosha.Button.Label"/>
+                  <Supertip>
+                    <Title resid="Kosha.Button.Label"/>
+                    <Description resid="Kosha.Button.Tip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Kosha.Icon.16"/>
+                    <bt:Image size="32" resid="Kosha.Icon.32"/>
+                    <bt:Image size="80" resid="Kosha.Icon.80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>Kosha.TaskPane</TaskpaneId>
+                    <SourceLocation resid="Kosha.Taskpane.Url"/>
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+      <Host xsi:type="Workbook">
+        <DesktopFormFactor>
+          <GetStarted>
+            <Title resid="Kosha.Start.Title"/>
+            <Description resid="Kosha.Start.Text"/>
+            <LearnMoreUrl resid="Kosha.Help.Url"/>
+          </GetStarted>
+          <FunctionFile resid="Kosha.Commands.Url"/>
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="Kosha.Excel.Group">
+                <Label resid="Kosha.Group.Label"/>
+                <Icon>
+                  <bt:Image size="16" resid="Kosha.Icon.16"/>
+                  <bt:Image size="32" resid="Kosha.Icon.32"/>
+                  <bt:Image size="80" resid="Kosha.Icon.80"/>
+                </Icon>
+                <Control xsi:type="Button" id="Kosha.Excel.Show">
+                  <Label resid="Kosha.Button.Label"/>
+                  <Supertip>
+                    <Title resid="Kosha.Button.Label"/>
+                    <Description resid="Kosha.Button.Tip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Kosha.Icon.16"/>
+                    <bt:Image size="32" resid="Kosha.Icon.32"/>
+                    <bt:Image size="80" resid="Kosha.Icon.80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>Kosha.TaskPane</TaskpaneId>
+                    <SourceLocation resid="Kosha.Taskpane.Url"/>
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+      <Host xsi:type="Presentation">
+        <DesktopFormFactor>
+          <GetStarted>
+            <Title resid="Kosha.Start.Title"/>
+            <Description resid="Kosha.Start.Text"/>
+            <LearnMoreUrl resid="Kosha.Help.Url"/>
+          </GetStarted>
+          <FunctionFile resid="Kosha.Commands.Url"/>
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="Kosha.Pp.Group">
+                <Label resid="Kosha.Group.Label"/>
+                <Icon>
+                  <bt:Image size="16" resid="Kosha.Icon.16"/>
+                  <bt:Image size="32" resid="Kosha.Icon.32"/>
+                  <bt:Image size="80" resid="Kosha.Icon.80"/>
+                </Icon>
+                <Control xsi:type="Button" id="Kosha.Pp.Show">
+                  <Label resid="Kosha.Button.Label"/>
+                  <Supertip>
+                    <Title resid="Kosha.Button.Label"/>
+                    <Description resid="Kosha.Button.Tip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Kosha.Icon.16"/>
+                    <bt:Image size="32" resid="Kosha.Icon.32"/>
+                    <bt:Image size="80" resid="Kosha.Icon.80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>Kosha.TaskPane</TaskpaneId>
+                    <SourceLocation resid="Kosha.Taskpane.Url"/>
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+    <Resources>
+      <bt:Images>
+        <bt:Image id="Kosha.Icon.16" DefaultValue="https://kosha.example.com/static/office-addin/assets/icon-16.png"/>
+        <bt:Image id="Kosha.Icon.32" DefaultValue="https://kosha.example.com/static/office-addin/assets/icon-32.png"/>
+        <bt:Image id="Kosha.Icon.80" DefaultValue="https://kosha.example.com/static/office-addin/assets/icon-80.png"/>
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="Kosha.Commands.Url" DefaultValue="https://kosha.example.com/static/office-addin/commands.html"/>
+        <bt:Url id="Kosha.Taskpane.Url" DefaultValue="https://kosha.example.com/static/office-addin/taskpane.html"/>
+        <bt:Url id="Kosha.Help.Url" DefaultValue="https://github.com/kishor-desarda/Kosha/blob/main/docs/office-addin.md"/>
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="Kosha.Group.Label" DefaultValue="Kosha"/>
+        <bt:String id="Kosha.Button.Label" DefaultValue="Kosha"/>
+        <bt:String id="Kosha.Start.Title" DefaultValue="Kosha is ready"/>
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="Kosha.Button.Tip" DefaultValue="Open the Kosha pane: insert part numbers and check this document in to Kosha."/>
+        <bt:String id="Kosha.Start.Text" DefaultValue="Press Kosha on the Home tab to insert part numbers and check this document in to Kosha."/>
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>

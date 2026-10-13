@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!--
+  AutoCAD autoloader bundle for the Kosha add-in. Copy the whole Kosha.bundle folder to
+      %APPDATA%\Autodesk\ApplicationPlugins\Kosha.bundle            (this Windows user only)
+  or  %PROGRAMDATA%\Autodesk\ApplicationPlugins\Kosha.bundle        (every user; needs administrator rights)
+  with the build output in Contents\net8 (AutoCAD 2025 and later) and Contents\net48 (AutoCAD 2021 to 2024).
+  See addins/autocad/README.md. AutoCAD loads the right one at start-up; type KOSHA to open the palette.
+-->
+<ApplicationPackage
+    SchemaVersion="1.0"
+    AutodeskProduct="AutoCAD"
+    ProductType="Application"
+    Name="Kosha"
+    Description="Kosha PLM palette: check drawings in and out, part numbers from title blocks, get the latest version."
+    AppVersion="0.5.0"
+    Author="Kosha contributors"
+    ProductCode="{AE390E66-5884-4D41-A91B-67655C032346}"
+    UpgradeCode="{B24D6A96-E55C-47D4-B061-0965090C61B0}">
+  <CompanyDetails Name="Kosha contributors" Url="https://github.com/kishor-desarda/Kosha" />
+  <RuntimeRequirements OS="Win64" Platform="AutoCAD*" SeriesMin="R24.0" />
+
+  <!-- AutoCAD 2025 and later run .NET 8 add-ins -->
+  <Components Description="AutoCAD 2025 and later">
+    <RuntimeRequirements OS="Win64" Platform="AutoCAD*" SeriesMin="R25.0" />
+    <ComponentEntry
+        AppName="Kosha"
+        Version="0.5.0"
+        ModuleName="./Contents/net8/Kosha.AutoCad.dll"
+        AppDescription="Kosha palette (type KOSHA)"
+        AppType=".Net"
+        LoadOnAutoCADStartup="True"
+        LoadOnCommandInvocation="False">
+      <Commands GroupName="KOSHA">
+        <Command Global="KOSHA" Local="KOSHA" />
+      </Commands>
+    </ComponentEntry>
+  </Components>
+
+  <!-- AutoCAD 2021 to 2024 run .NET Framework 4.8 add-ins -->
+  <Components Description="AutoCAD 2021 to 2024">
+    <RuntimeRequirements OS="Win64" Platform="AutoCAD*" SeriesMin="R24.0" SeriesMax="R24.3" />
+    <ComponentEntry
+        AppName="Kosha"
+        Version="0.5.0"
+        ModuleName="./Contents/net48/Kosha.AutoCad.dll"
+        AppDescription="Kosha palette (type KOSHA)"
+        AppType=".Net"
+        LoadOnAutoCADStartup="True"
+        LoadOnCommandInvocation="False">
+      <Commands GroupName="KOSHA">
+        <Command Global="KOSHA" Local="KOSHA" />
+      </Commands>
+    </ComponentEntry>
+  </Components>
+</ApplicationPackage>

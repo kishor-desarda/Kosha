@@ -23,6 +23,7 @@ namespace Kosha.Client
     {
         [JsonProperty("exists")] public bool Exists { get; set; } = true;
         [JsonProperty("id")] public int Id { get; set; }
+        [JsonProperty("folder_id")] public int FolderId { get; set; }
         [JsonProperty("filename")] public string FileName { get; set; }
         [JsonProperty("part_number")] public string PartNumber { get; set; }
         [JsonProperty("description")] public string Description { get; set; }
@@ -38,6 +39,14 @@ namespace Kosha.Client
 
         public ActionCheck Action(string name) =>
             Actions != null && Actions.TryGetValue(name, out var a) && a != null ? a : new ActionCheck { Ok = false, Why = "" };
+    }
+
+    /// <summary>One Kosha folder (GET /api/folders). The root folder, "Kosha", has no parent.</summary>
+    public sealed class FolderInfo
+    {
+        [JsonProperty("id")] public int Id { get; set; }
+        [JsonProperty("parent_id")] public int? ParentId { get; set; }
+        [JsonProperty("name")] public string Name { get; set; }
     }
 
     public sealed class SimilarPart
