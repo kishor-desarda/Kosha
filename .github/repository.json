@@ -1,0 +1,9 @@
+{
+  "description": "Open-source PLM/PDM for engineering companies: CAD file revision control, BOMs, change orders and ERP sync (ERPNext, Odoo, Dolibarr). Self-hosted, Python.",
+  "homepage": "",
+  "topics": [
+    "plm", "pdm", "product-lifecycle-management", "product-data-management", "bom", "bill-of-materials",
+    "engineering-change-order", "cad", "solidworks", "autocad", "dwg", "dxf", "erp", "erpnext", "odoo",
+    "dolibarr", "ldap", "manufacturing", "self-hosted", "python"
+  ]
+}

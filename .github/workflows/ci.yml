@@ -114,6 +114,8 @@ jobs:
           exit $bad
       - name: Shell scripts
         run: bash -n deploy/linux/install.sh
+      - name: Repository description and topics (.github/repository.json)
+        run: python scripts/repo_settings.py --check
 
   ui:
     name: Browser smoke test
