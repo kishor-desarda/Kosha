@@ -54,7 +54,7 @@ Regenerate them with `python scripts/screenshots.py` (needs Playwright).
 You need Python 3.10 or newer.
 
 ```bash
-git clone https://github.com/kosha-plm/kosha.git && cd kosha
+git clone https://github.com/kishor-desarda/Kosha.git kosha && cd kosha
 python3 -m venv .venv && . .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r server/requirements.txt
 cd server && KOSHA_DATA_DIR=../demo-data python -m kosha --demo

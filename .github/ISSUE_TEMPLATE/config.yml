@@ -2,8 +2,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Question or idea to discuss
-    url: https://github.com/kosha-plm/kosha/discussions
+    url: https://github.com/kishor-desarda/Kosha/discussions
     about: Ask and discuss in GitHub Discussions.
   - name: Security problem
-    url: https://github.com/kosha-plm/kosha/security/advisories/new
+    url: https://github.com/kishor-desarda/Kosha/security/advisories/new
     about: Report security problems privately.

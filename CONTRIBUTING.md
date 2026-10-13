@@ -14,7 +14,7 @@ Thank you for helping. Every kind of contribution counts, and most of it is not 
 ## Set up a development copy
 
 ```bash
-git clone https://github.com/kosha-plm/kosha.git && cd kosha
+git clone https://github.com/kishor-desarda/Kosha.git kosha && cd kosha
 python3 -m venv .venv && . .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r server/requirements.txt pytest ruff
 pip install -e sdk/python

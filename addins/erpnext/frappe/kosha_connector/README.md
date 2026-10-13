@@ -11,8 +11,13 @@ and BOMs to ERPNext through ERPNext's REST API; this small Frappe app adds the E
 
 ## Install
 
+`bench get-app` expects an app at the root of a repository. Until the app is published in a
+repository of its own, copy this folder into your bench and install it from there:
+
 ```bash
-bench get-app https://github.com/kosha-plm/kosha-erpnext-connector    # published from addins/erpnext/frappe in the Kosha repository
+git clone --depth 1 https://github.com/kishor-desarda/Kosha.git /tmp/kosha
+cp -r /tmp/kosha/addins/erpnext/frappe/kosha_connector ~/frappe-bench/apps/
+cd ~/frappe-bench && bench pip install -e apps/kosha_connector
 bench --site your.site install-app kosha_connector
 ```
 
