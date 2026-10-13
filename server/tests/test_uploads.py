@@ -184,3 +184,13 @@ def test_hsts_only_when_https_is_declared():
         assert resp.getheader("Strict-Transport-Security") == "max-age=31536000; includeSubDomains"
     finally:
         s.stop()
+
+
+def test_a_folder_that_is_not_a_number_is_refused_in_plain_words(kosha):
+    """A browser once sent its click event as the folder ("[object PointerEvent]"): plain words, nothing added."""
+    eng = kosha.add_user("frank", "engineer")
+    r = eng.call("POST", "/api/documents/upload", files={"file": ("MX-300-004 Cover.dxf", b"0\nEOF\n")},
+                 fields={"folder_id": "[object PointerEvent]"}, expect=400)
+    assert "could not tell which folder" in r["error"] and "nothing was added" in r["error"]
+    assert "invalid literal" not in r["error"]
+    assert not eng.call("GET", "/api/search?q=MX-300-004")["documents"]
