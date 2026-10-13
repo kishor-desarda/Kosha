@@ -181,6 +181,13 @@ def main() -> int:
                 except Exception:
                     errors.append(f"{user}: My notifications did not open")
                 page.keyboard.press("Escape")
+                page.click("button.avatar")                       # the account menu sets up two-step sign-in
+                page.click(".ctxmenu >> text=Two-step sign-in")
+                try:
+                    page.wait_for_selector("dialog[open] input[autocomplete=one-time-code]", timeout=10000)
+                except Exception:
+                    errors.append(f"{user}: the two-step sign-in set-up did not open")
+                page.keyboard.press("Escape")
                 if user == "admin":
                     check_resumable_upload(page, errors)
                 if user == "asha":

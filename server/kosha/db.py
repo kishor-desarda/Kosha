@@ -8,6 +8,7 @@ One connection per thread. Modules write SQL the SQLite way (``?`` place holders
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sqlite3
@@ -493,8 +494,29 @@ def set_setting(key: str, value: Any) -> None:
     )
 
 
+AUDIT_GENESIS = "0" * 64
+
+
+def audit_hash(prev: str, at, user_id, action, entity, entity_id, details) -> str:
+    """The fingerprint of one audit entry, chained to the one before it (specification 15.5)."""
+    body = json.dumps([at, user_id, action, entity, entity_id, details], ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256((prev + "|" + body).encode("utf-8")).hexdigest()
+
+
 def audit(user_id: int | None, action: str, entity: str, entity_id: int | None, details: str = "") -> None:
-    insert("audit", {
-        "at": now(), "user_id": user_id, "action": action,
-        "entity": entity, "entity_id": entity_id, "details": details,
-    })
+    """Append to the audit log. Each entry carries the fingerprint of the one before it, so a changed or removed
+    entry breaks the chain (``kosha.auditchain.verify``). Written inside a write transaction: one writer at a time
+    keeps the chain in order."""
+    if entity_id is not None and str(entity_id).lstrip("-").isdigit():
+        entity_id = int(entity_id)          # as the INTEGER column gives it back, so the fingerprint matches
+    if user_id is not None and str(user_id).isdigit():
+        user_id = int(user_id)
+    details = "" if details is None else str(details)
+    with tx():
+        prev = scalar("SELECT hash FROM audit ORDER BY id DESC LIMIT 1") or AUDIT_GENESIS
+        at = now()
+        insert("audit", {
+            "at": at, "user_id": user_id, "action": action,
+            "entity": entity, "entity_id": entity_id, "details": details,
+            "prev_hash": prev, "hash": audit_hash(prev, at, user_id, action, entity, entity_id, details),
+        })

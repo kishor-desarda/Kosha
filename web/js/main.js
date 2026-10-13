@@ -111,6 +111,7 @@ function buildShell() {
       ...(can('approver') || can('quality') ? [{ label: 'Stand-in while I am away', icon: 'users', run: delegateDialog }] : []),
       { label: `Theme: ${themeLabel(currentTheme())}`, icon: 'theme', run: themeDialog },
       { label: 'Change password', icon: 'checkout', run: changePassword },
+      { label: 'Two-step sign-in', icon: 'checkin', run: () => import('./twostep.js').then(m => m.twoStepDialog()).catch(fail) },
       { label: 'Sign out', icon: 'logout', run: () => logout() },
     ]);
   });
@@ -242,7 +243,13 @@ function renderLogin(message = '') {
     e.preventDefault();
     btn.disabled = true;
     try {
-      signedIn(await api('POST', '/api/auth/login', { username: user.value.trim(), password: pw.value }));
+      const r = await api('POST', '/api/auth/login', { username: user.value.trim(), password: pw.value });
+      if (r.two_step) {          // the password was right; now the code from the phone
+        const m = await import('./twostep.js');
+        m.secondStep(form.parentElement, r, ans => { signedIn(ans); if (ans.recovery_codes) m.recoveryDialog(ans.recovery_codes); });
+        return;
+      }
+      signedIn(r);
     } catch (ex) {
       let msg = ex.message;
       if (ex.code === 'sign_in_paused' && ex.data && ex.data.retry_at) {

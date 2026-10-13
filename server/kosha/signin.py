@@ -128,7 +128,7 @@ def sign_in(req: Req) -> dict:
 
 
 def _signed_in(req: Req, u: dict, ip: str, name: str, how: str) -> dict:
-    from .access import extra_roles, sign_in_problem
+    from .access import sign_in_problem
     db.execute("DELETE FROM sign_in_failures WHERE username = ?", (name,))
     problem = sign_in_problem(u)
     if problem:         # the password was right, so this is not a failed attempt
@@ -136,9 +136,74 @@ def _signed_in(req: Req, u: dict, ip: str, name: str, how: str) -> dict:
         raise ApiError(403, problem, "account_not_usable")
     if how:     # a directory may know the person under another name than the one typed
         db.execute("DELETE FROM sign_in_failures WHERE username = ?", (_clean_name(u["username"]),))
-    token = sessions.create(u["id"], ip, req.request.headers.get("user-agent", ""))
+    from . import twostep
+    need = twostep.needed(u, ip)
+    if need:        # the password was right; the second step comes next (twostep.py)
+        db.audit(u["id"], "login_password_ok", "user", u["id"], f"from {ip}{how}; two-step sign-in next")
+        return {"two_step": need, "challenge": twostep.make_challenge(u["id"], ip, how),
+                "full_name": u["full_name"]}
+    return open_session(req, u, ip, how)
+
+
+def open_session(req: Req, u: dict, ip: str, how: str) -> dict:
+    from . import twostep
+    from .access import extra_roles
+    agent = req.request.headers.get("user-agent", "")
+    token = sessions.create(u["id"], ip, agent)
     db.audit(u["id"], "login", "user", u["id"], f"from {ip}{how}")
+    twostep.note_place(u, ip, agent)
     return {"token": token, "user": {**{k: u[k] for k in USER_FIELDS}, "roles": extra_roles(u["id"])}}
+
+
+def _challenged_user(req: Req) -> tuple[dict, dict, str]:
+    from . import twostep
+    from .access import sign_in_problem
+    ip = client_ip(req)
+    c = twostep.read_challenge(req.b("challenge"), ip)
+    u = db.one("SELECT * FROM users WHERE id = ?", (c["uid"],))
+    if not u or not u["active"] or sign_in_problem(u):
+        raise ApiError(401, "Sign in again with your password.", "challenge_expired")
+    until = _locked_until(_clean_name(u["username"]), ip)
+    if until:
+        raise _paused(until)
+    return u, c, ip
+
+
+def second_step(req: Req) -> dict:
+    """The code from the authenticator app (or a recovery code) after the password."""
+    from . import twostep
+    u, c, ip = _challenged_user(req)
+    why = twostep.check_code(u, req.b("code"))
+    if why:
+        paused = record_failure(u["username"], ip, u["id"], "wrong two-step code")
+        if paused:
+            raise paused
+        raise bad(why, "bad_code")
+    db.execute("DELETE FROM sign_in_failures WHERE username = ?", (_clean_name(u["username"]),))
+    return open_session(req, u, ip, c.get("how", "") + " with two-step sign-in")
+
+
+def setup_during_sign_in(req: Req) -> dict:
+    """A person who must use two-step sign-in but has not set it up: the key for their app."""
+    from . import twostep
+    u, _c, _ip = _challenged_user(req)
+    if u["totp_secret"]:
+        raise bad("Two-step sign-in is already set up; type the code from your app.", "already_on")
+    return twostep.start_setup(u["id"])
+
+
+def confirm_during_sign_in(req: Req) -> dict:
+    from . import twostep
+    u, c, ip = _challenged_user(req)
+    try:
+        codes = twostep.confirm_setup(u["id"], req.b("code"))
+    except ApiError:
+        paused = record_failure(u["username"], ip, u["id"], "wrong code while setting up two-step sign-in")
+        if paused:
+            raise paused from None
+        raise
+    return {**open_session(req, u, ip, c.get("how", "") + " after setting up two-step sign-in"),
+            "recovery_codes": codes}
 
 
 def check_new_password(password, username: str) -> str:

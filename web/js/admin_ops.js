@@ -2,6 +2,7 @@
 // Administration: Backups (with server health) and Sign-in & sessions settings (directory sign-in: directory.js).
 import { h, mount, icon, get, put, toast, fail, fmtDate, ago, fmtSize } from './core.js';
 import { directorySection } from './directory.js';
+import { twoStepSettings } from './twostep.js';
 
 const when = x => (x && x.at ? `${fmtDate(x.at)} (${ago(x.at)})` : 'Never');
 
@@ -83,6 +84,7 @@ const FIELDS = [
   ['sign_in_max_failures', 'Failed sign-ins for one user name before sign-in pauses', 'The same message is shown whether or not the user name exists.'],
   ['sign_in_lock_minutes', 'Pause after too many failed sign-ins (minutes)', 'Failed sign-ins older than this are forgotten.'],
   ['sign_in_ip_max_failures', 'Failed sign-ins from one network address before sign-in pauses', 'Keep it higher than the per-user limit: many people can share one address.'],
+  ['bulk_download_per_hour', 'Downloads per person per hour before the bulk-download alarm', 'Past it, the person\'s downloads pause and admins are told; viewing still works. 0 switches the alarm off.'],
 ];
 
 export async function securityTab(body) {
@@ -100,6 +102,7 @@ export async function securityTab(body) {
         toast('Saved. The new limits apply to open sessions at once.', 'ok');
       } catch (ex) { fail(ex); } finally { e.target.disabled = false; }
     } }, 'Save'))));
+  twoStepSettings(body, r.settings);
   await apiLimitSection(body);
   await directorySection(body);
 }

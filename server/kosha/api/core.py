@@ -9,7 +9,7 @@ from ..lifecycle import STATE_LABEL, doc_summary, user_names
 from ..web import ROLE_LEVEL, Req, api, as_bool, bad, conflict, not_found
 
 USER_FIELDS = ("id, username, full_name, email, role, ui_mode, ui_theme, active, created_at, kind, view_only, expires_on, "
-               "company")
+               "company, CASE WHEN totp_secret IS NULL THEN 0 ELSE 1 END AS two_step_on, downloads_paused_at")
 # Themes of the web client (docs/themes.md). A user's ui_theme may also be "": the installation's default_theme.
 THEMES = ("system", "light", "dark", "contrast")
 
@@ -20,7 +20,35 @@ def login(req: Req):
 
     Failed sign-ins are throttled per user name and per address (see Admin › Sign-in & sessions)."""
     r = signin.sign_in(req)
-    return {"token": r["token"], "user": r["user"], "erp_name": erp_name(), "default_theme": default_theme()}
+    if "two_step" in r:     # the password was right; send the code next (POST /api/auth/two-step)
+        return r
+    return _signed_in_answer(r)
+
+
+def _signed_in_answer(r: dict) -> dict:
+    out = {"token": r["token"], "user": r["user"], "erp_name": erp_name(), "default_theme": default_theme()}
+    if "recovery_codes" in r:
+        out["recovery_codes"] = r["recovery_codes"]
+    return out
+
+
+@api("POST", "/api/auth/two-step", role=None, auth=False)
+def login_two_step(req: Req):
+    """Second step of signing in: ``challenge`` from the first answer and ``code`` from the authenticator app (or a
+    recovery code)."""
+    return _signed_in_answer(signin.second_step(req))
+
+
+@api("POST", "/api/auth/two-step/setup", role=None, auth=False)
+def login_two_step_setup(req: Req):
+    """For a person who must use two-step sign-in but has not set it up: the key to add to their app."""
+    return signin.setup_during_sign_in(req)
+
+
+@api("POST", "/api/auth/two-step/setup/confirm", role=None, auth=False)
+def login_two_step_confirm(req: Req):
+    """The first code from the app switches two-step sign-in on and signs in; ``recovery_codes`` are shown once."""
+    return _signed_in_answer(signin.confirm_during_sign_in(req))
 
 
 def erp_name() -> str:
