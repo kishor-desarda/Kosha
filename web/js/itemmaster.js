@@ -56,7 +56,7 @@ export function masterPanel(r, reload) {
       r.reuse_allowed.length ? h('div', { class: 'small' }, h('b', null, 'Reuse allowed in: '),
         r.reuse_allowed.map(a => h('div', null, h('a', { href: `#/item/${a.parent_item_id}` }, a.parent_part_number),
           ` by ${a.approved_by_name}, ${fmtDate(a.approved_at)}: ${a.reason}`))) : null,
-      it.no_reuse && can('admin') ? h('div', null, h('button', { class: 'btn sm', onclick: () => allowReuse(it, reload) }, 'Allow reuse in an assembly…')) : null));
+      it.no_reuse && can('data_steward') ? h('div', null, h('button', { class: 'btn sm', onclick: () => allowReuse(it, reload) }, 'Allow reuse in an assembly…')) : null));
 }
 
 function allowReuse(it, reload) {

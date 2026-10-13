@@ -24,14 +24,21 @@ def test_families_flags_and_customer_fields(kosha):
     eng.call("PATCH", path, {"customer": "Demo Customer C"}, expect=409)
     eng.call("PATCH", path, {"customer_part_number": "CP-77-01"})
     assert "Name the customer first" in appr.call("PATCH", path, {"restricted": True}, expect=400)["error"]
+    assert "Nobody has access to Demo Customer A" in appr.call(
+        "PATCH", path, {"customer": "Demo Customer A", "restricted": True}, expect=400)["error"]
+    abel = next(u for u in admin.call("GET", "/api/users")["users"] if u["username"] == "abel")
+    admin.call("POST", "/api/access/rules", {"scope": "customer", "value": "Demo Customer A",
+                                             "members": [f"user:{abel['id']}"]})
     appr.call("PATCH", path, {"customer": "Demo Customer A", "restricted": True, "no_reuse": True})
     assert "Name the customer first" in appr.call("PATCH", path, {"customer": ""}, expect=400)["error"]
-    # unchanged guarded values are fine for an engineer
-    eng.call("PATCH", path, {"customer": "Demo Customer A", "description": "Pump shaft, keyed"})
+    # the part is now restricted: the engineer, not on the customer's team, no longer finds it
+    eng.call("PATCH", path, {"customer": "Demo Customer A", "description": "Pump shaft, keyed"}, expect=404)
+    appr.call("PATCH", path, {"customer": "Demo Customer A", "description": "Pump shaft, keyed"})
 
-    # the customer's own part number finds the part
-    assert [i["part_number"] for i in eng.call("GET", "/api/items?q=CP-77")["items"]] == ["SHF-000101"]
-    assert [i["part_number"] for i in eng.call("GET", "/api/search?q=CP-77")["items"]] == ["SHF-000101"]
+    # the customer's own part number finds the part, for those who may see it
+    assert [i["part_number"] for i in appr.call("GET", "/api/items?q=CP-77")["items"]] == ["SHF-000101"]
+    assert [i["part_number"] for i in appr.call("GET", "/api/search?q=CP-77")["items"]] == ["SHF-000101"]
+    assert eng.call("GET", "/api/items?q=CP-77")["items"] == []
 
 
 def test_oem_cross_references_and_search(kosha):

@@ -42,7 +42,7 @@ def find_oem(req: Req):
     return {"matches": itemmaster.find_by_oem(req.q("q") or "")}
 
 
-@api("POST", "/api/items/{id:int}/allow-reuse", role="admin")
+@api("POST", "/api/items/{id:int}/allow-reuse", role="data_steward")
 def allow_reuse(req: Req):
     parent = req.b("parent_item_id")
     pn = (req.b("parent_part_number") or "").strip()

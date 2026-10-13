@@ -7,7 +7,7 @@ import urllib.parse
 
 from starlette.responses import Response
 
-from .. import boms, db, lifecycle, store
+from .. import access, boms, db, lifecycle, store
 from ..cad import process as cadproc
 from ..web import ROLE_LEVEL, Req, api, as_bool, bad, conflict, not_found
 from .core import DOC_SELECT, _with_preview
@@ -25,8 +25,10 @@ SAFE_HEADERS = {"X-Content-Type-Options": "nosniff", "X-Frame-Options": "SAMEORI
 
 @api("GET", "/api/folders")
 def folders(req: Req):
+    sc = access.scope()
     rows = db.rows("SELECT f.id, f.parent_id, f.name, (SELECT COUNT(*) FROM documents d WHERE d.folder_id = f.id "
-                   "AND d.deleted = 0) AS files FROM folders f ORDER BY f.name COLLATE NOCASE")
+                   "AND d.deleted = 0" + sc.documents() + ") AS files FROM folders f WHERE 1 = 1" + sc.folders() +
+                   " ORDER BY f.name COLLATE NOCASE")
     return {"folders": rows}
 
 
@@ -87,9 +89,12 @@ def delete_folder(req: Req):
 def folder_contents(req: Req):
     fid = req.int_param("id")
     f = lifecycle.folder_or_404(fid)
+    sc = access.scope()
     subs = db.rows("SELECT f.id, f.name, f.created_at, (SELECT COUNT(*) FROM documents d WHERE d.folder_id = f.id AND "
-                   "d.deleted = 0) AS files FROM folders f WHERE f.parent_id = ? ORDER BY f.name COLLATE NOCASE", (fid,))
-    docs = db.rows(DOC_SELECT + "WHERE d.folder_id = ? AND d.deleted = 0 ORDER BY d.filename COLLATE NOCASE", (fid,))
+                   "d.deleted = 0" + sc.documents() + ") AS files FROM folders f WHERE f.parent_id = ?" + sc.folders() +
+                   " ORDER BY f.name COLLATE NOCASE", (fid,))
+    docs = db.rows(DOC_SELECT + "WHERE d.folder_id = ? AND d.deleted = 0" + access.scope().documents() +
+                   " ORDER BY d.filename COLLATE NOCASE", (fid,))
     names = lifecycle.user_names()
     out = _with_preview(docs, names)
     std = {r["id"]: r["part_number"] for r in db.rows(
@@ -102,7 +107,7 @@ def folder_contents(req: Req):
 
 @api("GET", "/api/documents")
 def list_documents(req: Req):
-    where = ["d.deleted = 0"]
+    where = ["d.deleted = 0" + access.scope().documents()]
     params: list = []
     if req.q("checked_out") == "me":
         where.append("d.checked_out_by = ?")
@@ -143,16 +148,16 @@ def actions_for(d: dict, user: dict) -> dict:
                                    "Waiting for review; send it back to In work first." if st == "in_review" else
                                    "Obsolete files can't be changed.")),
         "checkin": a(mine, "Check the file out first." if not other else "Checked out by someone else."),
-        "undo_checkout": a(mine or (d["checked_out_by"] and lvl >= 3), "It isn't checked out to you."),
+        "undo_checkout": a(mine or (d["checked_out_by"] and lvl >= ROLE_LEVEL["admin"]), "It isn't checked out to you."),
         "submit": a(lvl >= 1 and st == "in_work" and not d["checked_out_by"],
                     need_eng or ("Check it in first." if d["checked_out_by"] else "Only files in work can be submitted.")),
         "send_back": a(st == "in_review" and lvl >= 1, "Only files in review can be sent back."),
-        "release": a(lvl >= 2 and st in ("in_work", "in_review") and not d["checked_out_by"] and not eco_req,
-                     "Releasing needs the approver role." if lvl < 2 else
+        "release": a(lvl >= ROLE_LEVEL["approver"] and st in ("in_work", "in_review") and not d["checked_out_by"] and not eco_req,
+                     "Releasing needs the approver role." if lvl < ROLE_LEVEL["approver"] else
                      "Check it in first." if d["checked_out_by"] else
                      "Release through a change order." if eco_req else "Already released or obsolete."),
         "revise": a(lvl >= 1 and st == "released", need_eng or "Only released files are revised; this one can be edited directly."),
-        "obsolete": a(lvl >= 2 and st == "released", "Needs the approver role and a released file."),
+        "obsolete": a(lvl >= ROLE_LEVEL["approver"] and st == "released", "Needs the approver role and a released file."),
         "delete": a(lvl >= 1 and not other and not db.scalar(
             "SELECT 1 FROM lifecycle_events WHERE document_id = ? AND to_state = 'released'", (d["id"],)),
             "Released files can't be deleted; make them obsolete." if lvl >= 1 else need_eng),
@@ -189,7 +194,8 @@ def document(req: Req):
             if item["standard_item_id"]:
                 item["standard_part"] = db.one("SELECT id, part_number, description FROM items WHERE id = ?",
                                                (item["standard_item_id"],))
-        related = _with_preview(db.rows(DOC_SELECT + "WHERE d.item_id = ? AND d.id != ? AND d.deleted = 0",
+        related = _with_preview(db.rows(DOC_SELECT + "WHERE d.item_id = ? AND d.id != ? AND d.deleted = 0" +
+                                        access.scope().documents(),
                                         (d["item_id"], did)), names)
         where_used = boms.where_used(d["item_id"])
         b = boms.bom_for_item(d["item_id"], d["revision"])
@@ -365,6 +371,7 @@ def _disposition(kind: str, filename: str) -> str:
 @api("GET", "/api/documents/{id:int}/file")
 def download(req: Req):
     v = _version(req.int_param("id"), req)
+    access.check_download()
     if not store.exists(v["blob_sha"]):
         raise not_found("The stored file is missing on the server.")
     data = store.read_bytes(v["blob_sha"])

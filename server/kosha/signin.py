@@ -23,7 +23,7 @@ from .web import ApiError, Req, bad
 
 log = logging.getLogger("kosha.signin")
 
-USER_FIELDS = ("id", "username", "full_name", "email", "role", "ui_mode", "ui_theme")
+USER_FIELDS = ("id", "username", "full_name", "email", "role", "ui_mode", "ui_theme", "kind", "view_only", "expires_on")
 
 
 def _now() -> datetime:
@@ -128,12 +128,17 @@ def sign_in(req: Req) -> dict:
 
 
 def _signed_in(req: Req, u: dict, ip: str, name: str, how: str) -> dict:
+    from .access import extra_roles, sign_in_problem
     db.execute("DELETE FROM sign_in_failures WHERE username = ?", (name,))
+    problem = sign_in_problem(u)
+    if problem:         # the password was right, so this is not a failed attempt
+        db.audit(u["id"], "login_refused", "user", u["id"], f"from {ip}: {problem}")
+        raise ApiError(403, problem, "account_not_usable")
     if how:     # a directory may know the person under another name than the one typed
         db.execute("DELETE FROM sign_in_failures WHERE username = ?", (_clean_name(u["username"]),))
     token = sessions.create(u["id"], ip, req.request.headers.get("user-agent", ""))
     db.audit(u["id"], "login", "user", u["id"], f"from {ip}{how}")
-    return {"token": token, "user": {k: u[k] for k in USER_FIELDS}}
+    return {"token": token, "user": {**{k: u[k] for k in USER_FIELDS}, "roles": extra_roles(u["id"])}}
 
 
 def check_new_password(password, username: str) -> str:

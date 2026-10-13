@@ -24,7 +24,8 @@ from . import db, sessions, uploads
 
 log = logging.getLogger("kosha")
 
-ROLE_LEVEL = {"viewer": 0, "engineer": 1, "approver": 2, "admin": 3}
+# the main roles, each able to do everything the ones below can; extra roles are in access.EXTRA_ROLES
+ROLE_LEVEL = {"viewer": 0, "engineer": 1, "checker": 2, "approver": 3, "admin": 4}
 
 routes: list[Route] = []
 
@@ -69,11 +70,12 @@ class Req:
         return self.user["id"] if self.user else None
 
     def require(self, role: str) -> None:
-        if not self.user or ROLE_LEVEL[self.user["role"]] < ROLE_LEVEL[role]:
-            raise forbidden(f"This needs the '{role}' role or higher.")
+        if not self.has(role):
+            raise forbidden(_needs(role))
 
     def has(self, role: str) -> bool:
-        return bool(self.user) and ROLE_LEVEL[self.user["role"]] >= ROLE_LEVEL[role]
+        from .access import has_role
+        return has_role(self.user, role)
 
     def int_param(self, name: str) -> int:
         try:
@@ -93,6 +95,14 @@ class Req:
         return default
 
 
+def _needs(role: str) -> str:
+    from .access import ROLE_NAMES
+    name = ROLE_NAMES.get(role, role)
+    if role in ROLE_LEVEL:
+        return f"This needs the {name} role or higher."
+    return f"This needs the {name} role. Ask your admin to add it to your account."
+
+
 def _authenticate(request: Request) -> dict | None:
     """The signed-in user for a request (Bearer header, or access_token for links), when the session is open."""
     token = None
@@ -108,10 +118,14 @@ def _authenticate(request: Request) -> dict | None:
     if found is None:
         return None
     user_id, request.state.session_id = found
-    user = db.one("SELECT id, username, full_name, email, role, ui_mode, ui_theme, active FROM users WHERE id = ?",
-                  (user_id,))
+    user = db.one("SELECT id, username, full_name, email, role, ui_mode, ui_theme, active, kind, view_only, "
+                  "expires_on FROM users WHERE id = ?", (user_id,))
     if not user or not user["active"]:
         return None
+    from . import access
+    if access.sign_in_problem(user):      # an account past its end date stops working at once
+        return None
+    user["roles"] = access.extra_roles(user["id"])
     return user
 
 
@@ -126,8 +140,10 @@ def api(method: str, path: str, role: str | None = "viewer", auth: bool = True):
                 user = await run_in_threadpool(_authenticate, request) if auth else None
                 if auth and user is None:
                     raise ApiError(401, "Please sign in.", "unauthorized")
-                if role and auth and ROLE_LEVEL[user["role"]] < ROLE_LEVEL[role]:   # before reading any upload
-                    raise forbidden(f"This needs the '{role}' role or higher.")
+                if user is not None and user.get("kind") == "vendor" and not _vendor_may(method, path):
+                    raise forbidden("A vendor account can only open the parts and files of its projects.")
+                if role and auth and not Req(request, user, {}, {}).has(role):   # before reading any upload
+                    raise forbidden(_needs(role))
                 body = None
                 files: dict = {}
                 ctype = request.headers.get("content-type", "")
@@ -154,7 +170,12 @@ def api(method: str, path: str, role: str | None = "viewer", auth: bool = True):
                 if role and auth:
                     req.require(role)
                 if inspect.iscoroutinefunction(fn):
-                    result = await fn(req)
+                    from .access import current
+                    tok = current.set(user)
+                    try:
+                        result = await fn(req)
+                    finally:
+                        current.reset(tok)
                 else:
                     result = await run_in_threadpool(_run_sync, fn, req)
                 if isinstance(result, Response):
@@ -183,7 +204,28 @@ def api(method: str, path: str, role: str | None = "viewer", auth: bool = True):
 
 
 def _run_sync(fn, req):
-    return fn(req)
+    from .access import current
+    tok = current.set(req.user)      # what this person may see (access.scope) follows them into the handler
+    try:
+        return fn(req)
+    finally:
+        current.reset(tok)
+
+
+# what a vendor account may call: read its projects' parts and files, and its own account
+VENDOR_PATHS = {
+    ("GET", "/api/auth/me"), ("POST", "/api/auth/mode"), ("POST", "/api/auth/theme"), ("POST", "/api/auth/password"),
+    ("POST", "/api/auth/logout"), ("GET", "/api/settings"), ("GET", "/api/search"), ("GET", "/api/documents"),
+    ("GET", "/api/documents/{id:int}"), ("GET", "/api/documents/{id:int}/file"),
+    ("GET", "/api/documents/{id:int}/preview"), ("GET", "/api/documents/{id:int}/viewer"), ("GET", "/api/items"),
+    ("GET", "/api/items/{id:int}"), ("GET", "/api/projects"), ("GET", "/api/projects/{id:int}"),
+    ("GET", "/api/notifications"), ("GET", "/api/notifications/count"), ("POST", "/api/notifications/{id:int}/read"),
+    ("POST", "/api/notifications/read-all"), ("GET", "/api/auth/password-rules"),
+}
+
+
+def _vendor_may(method: str, path: str) -> bool:
+    return (method, path) in VENDOR_PATHS
 
 
 def as_bool(v: Any) -> bool:

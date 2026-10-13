@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import re
 
-from .. import db, security, sessions, signin
+from .. import access, db, security, sessions, signin
 from ..lifecycle import STATE_LABEL, doc_summary, user_names
 from ..web import ROLE_LEVEL, Req, api, as_bool, bad, conflict, not_found
 
-USER_FIELDS = "id, username, full_name, email, role, ui_mode, ui_theme, active, created_at"
+USER_FIELDS = ("id, username, full_name, email, role, ui_mode, ui_theme, active, created_at, kind, view_only, expires_on, "
+               "company")
 # Themes of the web client (docs/themes.md). A user's ui_theme may also be "": the installation's default_theme.
 THEMES = ("system", "light", "dark", "contrast")
 
@@ -81,7 +82,38 @@ def change_password(req: Req):
 
 @api("GET", "/api/users")
 def list_users(req: Req):
-    return {"users": db.rows(f"SELECT {USER_FIELDS} FROM users ORDER BY full_name")}
+    users = db.rows(f"SELECT {USER_FIELDS} FROM users ORDER BY full_name")
+    _with_access(users)
+    return {"users": users}
+
+
+def _with_access(users: list[dict]) -> list[dict]:
+    roles: dict[int, list[str]] = {}
+    for r in db.rows("SELECT user_id, role FROM user_roles ORDER BY role"):
+        roles.setdefault(r["user_id"], []).append(r["role"])
+    projs: dict[int, list[int]] = {}
+    for r in db.rows("SELECT user_id, project_id FROM user_projects ORDER BY project_id"):
+        projs.setdefault(r["user_id"], []).append(r["project_id"])
+    for u in users:
+        u["roles"] = roles.get(u["id"], [])
+        u["projects"] = projs.get(u["id"], [])
+    return users
+
+
+def _one_user(uid: int) -> dict:
+    return _with_access([db.one(f"SELECT {USER_FIELDS} FROM users WHERE id = ?", (uid,))])[0]
+
+
+def _set_access(uid: int, body: dict) -> list[str]:
+    """Extra roles and vendor projects from the admin's form; returns what changed, for the audit log."""
+    changed = []
+    if isinstance(body.get("roles"), list) or "roles" in body:
+        access.set_roles(uid, body.get("roles"))
+        changed.append("roles")
+    if isinstance(body.get("projects"), list) or "projects" in body:
+        access.set_projects(uid, body.get("projects"))
+        changed.append("projects")
+    return changed
 
 
 @api("POST", "/api/users", role="admin")
@@ -95,13 +127,17 @@ def create_user(req: Req):
     pw = signin.check_new_password(req.b("password"), username)
     if db.one("SELECT id FROM users WHERE username = ? COLLATE NOCASE", (username,)):
         raise conflict("That user name is taken.")
-    uid = db.insert("users", {"username": username, "full_name": (req.b("full_name") or username).strip(),
-                              "email": req.b("email") or "", "role": role, "password_hash": security.hash_password(pw),
-                              "ui_mode": req.b("ui_mode") or "guided",
-                              "ui_theme": _check_theme(req.b("ui_theme") or "", allow_default=True),
-                              "created_at": db.now()})
-    db.audit(req.uid, "user_create", "user", uid, username)
-    return {"user": db.one(f"SELECT {USER_FIELDS} FROM users WHERE id = ?", (uid,))}
+    body = req.body if isinstance(req.body, dict) else {}
+    extra = access.check_account_fields(body)
+    with db.tx():
+        uid = db.insert("users", {"username": username, "full_name": (req.b("full_name") or username).strip(),
+                                  "email": req.b("email") or "", "role": role,
+                                  "password_hash": security.hash_password(pw), "ui_mode": req.b("ui_mode") or "guided",
+                                  "ui_theme": _check_theme(req.b("ui_theme") or "", allow_default=True),
+                                  "created_at": db.now(), **extra})
+        _set_access(uid, body)
+        db.audit(req.uid, "user_create", "user", uid, f"{username} ({role}{', ' + extra['kind'] if 'kind' in extra else ''})")
+    return {"user": _one_user(uid)}
 
 
 @api("PATCH", "/api/users/{id:int}", role="admin")
@@ -118,6 +154,11 @@ def update_user(req: Req):
             if k == "ui_theme":
                 _check_theme(v, allow_default=True)
             upd[k] = v
+    body = req.body if isinstance(req.body, dict) else {}
+    upd.update(access.check_account_fields(body))
+    if uid == req.uid and (upd.get("role", "admin") != "admin" or upd.get("kind", "person") != "person"
+                           or upd.get("view_only") or upd.get("expires_on")):
+        raise bad("You can't take away your own admin access; ask another admin.")
     if req.b("active") is not None:
         if uid == req.uid and not as_bool(req.b("active")):
             raise bad("You can't deactivate yourself.")
@@ -129,11 +170,12 @@ def update_user(req: Req):
     reason = ("password reset by an admin" if "password_hash" in upd else
               "deactivated" if upd.get("active") == 0 else "")
     with db.tx():
-        db.update("users", uid, upd)
+        if upd:
+            db.update("users", uid, upd)
+        changed = [k if k != "password_hash" else "password" for k in upd] + _set_access(uid, body)
         ended = sessions.end_all(uid, reason) if reason else 0
-        db.audit(req.uid, "user_update", "user", uid, ",".join(k if k != "password_hash" else "password" for k in upd)
-                 + (f"; {ended} session(s) ended" if ended else ""))
-    return {"user": db.one(f"SELECT {USER_FIELDS} FROM users WHERE id = ?", (uid,))}
+        db.audit(req.uid, "user_update", "user", uid, ",".join(changed) + (f"; {ended} session(s) ended" if ended else ""))
+    return {"user": _one_user(uid)}
 
 
 # --------------------------------------------------------------- settings --
@@ -233,7 +275,7 @@ def search(req: Req):
     for t in terms:
         where.append("(d.filename LIKE ? OR d.part_number LIKE ? OR d.description LIKE ?)")
         params += [f"%{t}%"] * 3
-    docs = db.rows(DOC_SELECT + "WHERE d.deleted = 0 AND " + " AND ".join(where) +
+    docs = db.rows(DOC_SELECT + "WHERE d.deleted = 0" + access.scope().documents() + " AND " + " AND ".join(where) +
                    " ORDER BY d.updated_at DESC LIMIT ?", [*params, limit])
     iw, ip = [], []
     for t in terms:
@@ -242,8 +284,9 @@ def search(req: Req):
                   "OR id IN (SELECT item_id FROM item_oem_refs WHERE deleted = 0 AND (oem_part_number LIKE ? "
                   "OR oem_model LIKE ?)))")
         ip += [f"%{t}%"] * 6
-    items = db.rows("SELECT * FROM items WHERE " + " AND ".join(iw) + " ORDER BY part_number LIMIT ?", [*ip, limit])
-    changes = db.rows("SELECT id, number, title, state FROM change_orders WHERE number LIKE ? OR title LIKE ? "
+    items = db.rows("SELECT * FROM items i WHERE " + " AND ".join(iw) + access.scope().items() +
+                    " ORDER BY part_number LIMIT ?", [*ip, limit])
+    changes = [] if access.scope().vendor else db.rows("SELECT id, number, title, state FROM change_orders WHERE number LIKE ? OR title LIKE ? "
                       "ORDER BY id DESC LIMIT 20", (f"%{q}%", f"%{q}%"))
     return {"documents": _with_preview(docs, user_names()), "items": items, "changes": changes}
 
@@ -254,7 +297,7 @@ def search(req: Req):
 def dashboard(req: Req):
     names = user_names()
     uid = req.uid
-    mine = db.rows(DOC_SELECT + "WHERE d.deleted = 0 AND d.checked_out_by = ? ORDER BY d.checked_out_at DESC", (uid,))
+    mine = db.rows(DOC_SELECT + "WHERE d.deleted = 0" + access.scope().documents() + " AND d.checked_out_by = ? ORDER BY d.checked_out_at DESC", (uid,))
     approvals = db.rows(
         "SELECT c.id, c.number, c.title, c.priority, c.submitted_at, c.requested_by FROM change_orders c "
         "JOIN co_approvers a ON a.co_id = c.id WHERE a.user_id = ? AND a.decision = 'pending' AND c.state = 'submitted' "
@@ -263,7 +306,8 @@ def dashboard(req: Req):
         a["requested_by_name"] = names.get(a["requested_by"], "?")
     in_review = []
     if ROLE_LEVEL[req.user["role"]] >= ROLE_LEVEL["approver"]:
-        in_review = _with_preview(db.rows(DOC_SELECT + "WHERE d.deleted = 0 AND d.state = 'in_review' "
+        in_review = _with_preview(db.rows(DOC_SELECT + "WHERE d.deleted = 0" + access.scope().documents() +
+                                          " AND d.state = 'in_review' "
                                           "AND d.id NOT IN (SELECT document_id FROM co_items ci JOIN change_orders c "
                                           "ON c.id = ci.co_id WHERE c.state = 'submitted') "
                                           "ORDER BY d.updated_at LIMIT 20"), names)

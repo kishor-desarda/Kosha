@@ -28,7 +28,7 @@ add-ins of the same kind.
   ask you: link the account under **Admin › Users › Directory** (enter their directory user name; the link is
   completed at their next directory sign-in). Their history, files and work stay with the account.
 - **Groups decide roles.** Under **Admin › Sign-in & sessions › Groups and Kosha roles** you list directory
-  groups and the role each gives (viewer, engineer, approver, admin); someone in several groups gets the
+  groups and the role each gives (viewer, engineer, checker, approver, admin); someone in several groups gets the
   highest. People in none of the groups cannot sign in, unless you choose a role for everyone else. With
   "Update the role from the groups at every sign-in" on, a change in the directory applies at the next
   sign-in.

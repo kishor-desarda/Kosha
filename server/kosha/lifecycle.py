@@ -6,7 +6,7 @@ import json
 import re
 from typing import BinaryIO
 
-from . import db, store, uploads
+from . import access, db, store, uploads
 from .cad import process as cadproc
 from .web import bad, conflict, forbidden, not_found
 
@@ -101,7 +101,7 @@ def ensure_subfolder(parent_id: int, rel_path: str, user_id: int | None) -> int:
 
 def folder_or_404(folder_id: int) -> dict:
     f = db.one("SELECT * FROM folders WHERE id = ?", (folder_id,))
-    if not f:
+    if not f or not access.scope().can_see_folder(folder_id):
         raise not_found("Folder not found")
     return f
 
@@ -151,6 +151,7 @@ def doc_or_404(doc_id: int) -> dict:
     d = db.one("SELECT * FROM documents WHERE id = ? AND deleted = 0", (doc_id,))
     if not d:
         raise not_found("File not found")
+    access.check_document(d)
     return d
 
 
