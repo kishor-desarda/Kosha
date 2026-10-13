@@ -20,6 +20,24 @@ def _auth(request: Request):
     return None
 
 
+def _matches(row: dict, filters: list) -> bool:
+    """Frappe filters as lists: [field, op, value] or [doctype, field, op, value]."""
+    for f in filters:
+        field, op, value = f[-3], f[-2], f[-1]
+        have = row.get(field)
+        if op == "=" and have != value:
+            return False
+        if op == "!=" and have == value:
+            return False
+        if op == "in" and have not in value:
+            return False
+        if op == "<" and not (have or 0) < value:
+            return False
+        if op == "is" and (value == "set") != bool(have):
+            return False
+    return True
+
+
 def _err(msg, status=417):
     return JSONResponse({"exc_type": "ValidationError",
                          "_server_messages": json.dumps([json.dumps({"message": msg})])}, status_code=status)
@@ -50,6 +68,14 @@ async def item(request: Request):
 async def items(request: Request):
     if (r := _auth(request)):
         return r
+    if request.method == "GET":
+        flt = json.loads(request.query_params.get("filters", "[]"))
+        fields = json.loads(request.query_params.get("fields", '["name"]'))
+        start = int(request.query_params.get("limit_start", 0))
+        size = int(request.query_params.get("limit_page_length", 20))
+        STATE["calls"].append(("GET", "Item", "list"))
+        rows = [it for it in STATE["items"].values() if _matches(it, flt)][start:start + size]
+        return JSONResponse({"data": [{k: it.get(k) for k in fields} for it in rows]})
     body = await request.json()
     STATE["calls"].append(("POST", "Item", body.get("item_code")))
     for k in ("item_code", "item_group", "stock_uom"):
@@ -58,6 +84,7 @@ async def items(request: Request):
     if body["stock_uom"] not in ("Nos", "Kg", "Meter", "Millimeter"):
         return _err(f"UOM {body['stock_uom']} not found")
     body.setdefault("valuation_rate", 0)
+    body.setdefault("disabled", 0)
     STATE["items"][body["item_code"]] = body
     return JSONResponse({"data": body})
 
@@ -69,7 +96,8 @@ async def boms(request: Request):
         flt = json.loads(request.query_params.get("filters", "[]"))
         code = next((f[2] for f in flt if f[0] == "item"), None)
         data = [{"name": b["name"], "is_default": b["is_default"], "docstatus": b["docstatus"]}
-                for b in STATE["boms"].values() if b["item"] == code and b["docstatus"] < 2]
+                for b in STATE["boms"].values() if b["item"] == code and b["docstatus"] < 2
+                and b.get("is_active", 1)]
         return JSONResponse({"data": data})
     body = await request.json()
     STATE["calls"].append(("POST", "BOM", body.get("item")))
@@ -111,7 +139,7 @@ async def bins(request: Request):
 
 app = Starlette(routes=[
     Route("/api/method/frappe.auth.get_logged_user", whoami),
-    Route("/api/resource/Item", items, methods=["POST"]),
+    Route("/api/resource/Item", items, methods=["GET", "POST"]),
     Route("/api/resource/Item/{code:path}", item, methods=["GET", "PUT"]),
     Route("/api/resource/BOM", boms, methods=["GET", "POST"]),
     Route("/api/resource/BOM/{name:path}", bom, methods=["GET", "PUT"]),

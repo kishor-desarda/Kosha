@@ -17,9 +17,9 @@ sys.path[:0] = [str(HERE), str(HERE.parent), str(ROOT / "sdk" / "python")]
 uvicorn = pytest.importorskip("uvicorn")
 
 import fake_erpnext as FE  # noqa: E402
-from kosha_erpnext.connector import ERPNextConnector, frappe_message  # noqa: E402
+from kosha_erpnext.connector import ERPNextConnector, frappe_message, plain_text  # noqa: E402
 from kosha_sdk import AddinContext  # noqa: E402
-from kosha_sdk.erp import ErpBom, ErpBomLine, ErpError, ErpItem  # noqa: E402
+from kosha_sdk.erp import ErpBom, ErpBomLine, ErpError, ErpItem, ErpNotSupported  # noqa: E402
 from kosha_sdk.testing import check_erp_connector, check_manifest  # noqa: E402
 
 
@@ -54,6 +54,47 @@ def test_manifest_is_valid():
 
 def test_conformance(erp_url):
     assert check_erp_connector(connector(erp_url)) == []
+
+
+def test_conformance_with_kosha_fields(erp_url):
+    c = connector(erp_url, revision_field="custom_kosha_revision", material_field="custom_kosha_material")
+    assert check_erp_connector(c, prefix="KOSHA-TEST2") == []
+
+
+def test_reading_items_back_for_reconciliation(erp_url):
+    c = connector(erp_url, revision_field="custom_kosha_revision", material_field="custom_kosha_material")
+    c.upsert_item(ErpItem(code="DE-300", description="GEAR HOUSING", revision="B", uom="Nos", material="EN-GJL-250"))
+    connector(erp_url).upsert_item(ErpItem(code="DE-301", description="NOT FROM KOSHA", uom="Nos"))
+    FE.STATE["items"]["DE-300"]["description"] = "<div><p>GEAR&nbsp;HOUSING</p></div>"   # edited in ERPNext's editor
+    FE.STATE["items"]["DE-300"]["disabled"] = 1
+    got = c.fetch_items(["DE-300", "DE-301", "DE-NOPE", "DE-300"])
+    assert set(got) == {"DE-300", "DE-301"}
+    r = got["DE-300"]
+    assert (r.description, r.uom, r.revision, r.material, r.active, r.from_kosha) == \
+        ("GEAR HOUSING", "Nos", "B", "EN-GJL-250", False, True)
+    assert got["DE-301"].from_kosha is False and got["DE-301"].revision == ""
+    plain = connector(erp_url).fetch_items(["DE-300"])["DE-300"]
+    assert plain.revision is None and plain.material is None and plain.from_kosha is None   # not set up: not compared
+    listed = c.list_items_from_kosha()
+    assert "DE-300" in listed and "DE-301" not in listed
+    with pytest.raises(ErpNotSupported, match="revision custom field"):
+        connector(erp_url).list_items_from_kosha()
+
+
+def test_reading_boms_back_for_reconciliation(erp_url):
+    c = connector(erp_url, revision_field="custom_kosha_revision")
+    for code in ("DE-400", "DE-401", "DE-402"):
+        c.upsert_item(ErpItem(code=code, description=f"PART {code}", uom="Nos"))
+    assert c.fetch_bom("DE-400") is None
+    c.upsert_bom(ErpBom(ErpItem("DE-400", "ASSY"), "C", (ErpBomLine("DE-401", 2, "Nos"), ErpBomLine("DE-402", 1.5, "Nos"))))
+    b = c.fetch_bom("DE-400")
+    assert b.revision == "C" and b.reference.startswith("BOM-DE-400")
+    assert [(ln.code, ln.qty) for ln in b.lines] == [("DE-401", 2.0), ("DE-402", 1.5)]
+    assert connector(erp_url).fetch_bom("DE-400").revision is None
+
+
+def test_plain_text():
+    assert plain_text("<div>HEX &amp; BOLT\n  M16</div>") == "HEX & BOLT M16"
 
 
 def test_bom_is_submitted_and_children_listed(erp_url):

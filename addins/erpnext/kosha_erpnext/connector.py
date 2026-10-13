@@ -5,17 +5,21 @@
     Item  -> /api/resource/Item   create, or update only when something changed
     BOM   -> /api/resource/BOM    create and submit when the lines differ from the default BOM
     Stock <- /api/resource/Bin and Item.valuation_rate
+    Reconciliation <- /api/resource/Item and BOM, read only
 
 Authentication uses an API key and secret generated in ERPNext under User › API Access.
 Every method is idempotent, as the ErpConnector contract requires.
 """
 from __future__ import annotations
 
+import html
 import json
+import re
 import urllib.parse
 
 from kosha_sdk import AddinContext, Health
-from kosha_sdk.erp import ErpBom, ErpConnector, ErpError, ErpEvent, ErpItem, ErpResult, StockInfo
+from kosha_sdk.erp import (ErpBom, ErpBomLine, ErpBomRecord, ErpConnector, ErpError, ErpEvent, ErpItem, ErpItemRecord,
+                           ErpNotSupported, ErpResult, StockInfo)
 from kosha_sdk.http import HttpError
 
 from . import signing
@@ -25,6 +29,12 @@ EVENT_KINDS = {"item_changed", "stock_changed", "bom_cancelled"}
 
 def _q(value: str) -> str:
     return urllib.parse.quote(value, safe="")
+
+
+def plain_text(value: str) -> str:
+    """ERPNext keeps descriptions as HTML once someone edits them in its editor; compare the words only."""
+    text = html.unescape(re.sub(r"<[^>]+>", " ", value or ""))
+    return " ".join(text.split())
 
 
 def frappe_message(raw: str) -> str:
@@ -168,3 +178,59 @@ class ERPNextConnector(ErpConnector):
             if isinstance(e, dict) and e.get("kind") in EVENT_KINDS and isinstance(e.get("code"), str) and e["code"].strip():
                 out.append(ErpEvent(kind=e["kind"], code=e["code"].strip()[:140], detail=str(e.get("detail", ""))[:200]))
         return out
+
+    # ------------------------------------------------- reading back (reconciliation)
+    def _item_fields(self) -> list[str]:
+        fields = ["item_code", "item_name", "description", "stock_uom", "disabled"]
+        fields += [f for f in (self.cfg.get("revision_field"), self.cfg.get("material_field")) if f]
+        return fields
+
+    def _record(self, row: dict) -> ErpItemRecord:
+        rev, mat = self.cfg.get("revision_field"), self.cfg.get("material_field")
+        return ErpItemRecord(
+            code=str(row.get("item_code") or ""),
+            description=plain_text(row.get("description") or row.get("item_name") or ""),
+            uom=row.get("stock_uom") or "",
+            revision=str(row.get(rev) or "") if rev else None,
+            material=str(row.get(mat) or "") if mat else None,
+            active=not row.get("disabled"),
+            from_kosha=bool(row.get(rev)) if rev else None)
+
+    def fetch_items(self, codes) -> dict[str, ErpItemRecord]:
+        wanted = [c for c in dict.fromkeys(codes) if c]
+        out: dict[str, ErpItemRecord] = {}
+        for start in range(0, len(wanted), 100):
+            chunk = wanted[start:start + 100]
+            rows = self._call("GET", "/api/resource/Item", params={
+                "filters": [["item_code", "in", chunk]], "fields": self._item_fields(),
+                "limit_page_length": len(chunk)}).get("data") or []
+            for row in rows:
+                rec = self._record(row)
+                out[rec.code] = rec
+        return out
+
+    def fetch_bom(self, code: str) -> ErpBomRecord | None:
+        current = self._default_bom(code)
+        if not current:
+            return None
+        rev = self.cfg.get("revision_field")
+        lines = tuple(ErpBomLine(str(r.get("item_code") or ""), float(r.get("qty") or 0), str(r.get("uom") or ""))
+                      for r in current.get("items", []))
+        return ErpBomRecord(code=str(current.get("item") or code), lines=lines,
+                            revision=str(current.get(rev) or "") if rev else None, reference=str(current.get("name") or ""))
+
+    def list_items_from_kosha(self) -> list[str]:
+        rev = self.cfg.get("revision_field")
+        if not rev:
+            raise ErpNotSupported("Set the revision custom field in the ERPNext connection settings, so Kosha can "
+                                  "recognise the items it created in ERPNext.")
+        out: list[str] = []
+        start, page = 0, 500
+        while True:
+            rows = self._call("GET", "/api/resource/Item", params={
+                "filters": [[rev, "is", "set"]], "fields": ["item_code"], "limit_start": start,
+                "limit_page_length": page}).get("data") or []
+            out += [str(r.get("item_code")) for r in rows if r.get("item_code")]
+            if len(rows) < page:
+                return out
+            start += page
