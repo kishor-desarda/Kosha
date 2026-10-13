@@ -34,7 +34,7 @@ SCREENS = ["#/home", "#/files", "#/boms", "#/changes", "#/erp", "#/common", "#/a
            "#/admin?tab=security", "#/search?q=MX-100", "#/library", "#/library?q=M16x60",
            "#/admin?tab=packs", "#/deviations", "#/deviation/1", "#/inputs", "#/inputs?q=bearing",
            "#/input/1", "#/projects", "#/project/1", "#/item/1", "#/erp?tab=reconcile", "#/erp?tab=settings",
-           "#/admin?tab=notify"]
+           "#/admin?tab=notify", "#/ask", "#/admin?tab=ai"]
 ADMIN_ONLY = ("#/admin", "#/erp?tab=")
 
 

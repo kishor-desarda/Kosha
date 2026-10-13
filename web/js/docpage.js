@@ -6,6 +6,7 @@ import {
 } from './core.js';
 import { openViewer } from './viewer.js';
 import { mountRecordPanels } from './deviations.js';
+import { classifyBox } from './ai.js';
 
 const changed = () => window.dispatchEvent(new Event('kosha:changed'));
 
@@ -107,6 +108,7 @@ function overview(c, d, reload) {
       d.meta?.mesh ? ['Model size', d.meta.mesh.bbox.join(' × ') + ' mm'] : null,
       d.meta?.source ? ['Checked in from', d.meta.source === 'solidworks-addin' ? 'SolidWorks add-in' : d.meta.source] : null,
     ].filter(Boolean).flatMap(([k, v]) => [h('dt', null, k), h('dd', null, String(v))])),
+    classifyBox('document', d.id, { onApplied: reload, locked: it ? lockedFor(it) : (editable ? {} : { description: d.actions.edit.why }) }),
     d.meta?.preview_note ? h('div', { class: 'banner info small' }, icon('info'), h('div', null, d.meta.preview_note)) : null,
     Object.keys(tb).length ? h('div', null, h('h3', { style: { margin: '6px 0' } }, 'Title block'),
       h('dl', { class: 'props' }, Object.entries(tb).flatMap(([k, v]) => [h('dt', null, k.replace(/_/g, ' ')), h('dd', null, v)]))) : null,
@@ -127,6 +129,13 @@ function overview(c, d, reload) {
         try { const r = await post('/api/boms/generate', { document_id: d.id }); location.hash = `#/bom/${r.bom_id}`; } catch (e) { fail(e); }
       } }, icon('bom', 16), 'Build BOM from this assembly') : null) : null;
   c.appendChild(h('div', { class: 'row wrap', style: { alignItems: 'flex-start', gap: '28px' } }, left, right));
+}
+
+// What an accepted AI suggestion may not change for this person (the same rules as the Save button).
+function lockedFor(it) {
+  if (it.state !== 'released' || can('approver')) return {};
+  const why = 'This part is released: only an approver can change its description or material, or start a new revision.';
+  return { description: why, material: why };
 }
 
 function versionsTab(c, d) {
@@ -220,7 +229,8 @@ export async function renderItem(container, [id], _p, { setTitle }) {
           editable ? h('div', null, h('button', { class: 'btn primary', onclick: async () => {
             const body = {}; for (const [k, el] of Object.entries(f)) body[k] = el.value;
             try { await patch(`/api/items/${it.id}`, body); toast('Saved', 'ok'); load(); } catch (e) { fail(e); }
-          } }, 'Save')) : null)),
+          } }, 'Save')) : null,
+          classifyBox('item', it.id, { onApplied: load, locked: lockedFor(it) }))),     // AI suggestions, only when switched on
         h('section', { class: 'panel' }, h('div', { class: 'panel-h' }, h('h2', null, `Files (${r.documents.length})`)),
           r.documents.length ? docTable(r.documents) : h('div', { class: 'empty' }, 'No files yet (purchased parts often have none).')),
         h('section', { class: 'panel' }, h('div', { class: 'panel-h' }, h('h2', null, 'BOMs'), h('span', { class: 'spacer' }),

@@ -2,6 +2,7 @@
 // Measured change list: the "Changes" side list in the viewer overlay, and the change-log editor
 // shown on the document page and in a change order.
 import { h, mount, icon, get, post, put, toast, fail, ago } from './core.js';
+import { aiDraftButton } from './ai.js';
 
 const SEV = {
   major: ['Major', 'var(--err)', 'var(--err-bg)'],
@@ -62,13 +63,13 @@ export function changesPanel(stage, docId, fromVersion, toVersion, onZone) {
 export function changeLogTab(c, d) {
   const box = h('div');
   c.appendChild(box);
-  editor(box, { base: `/api/documents/${d.id}/changelog`, revision: d.revision, perDocument: false });
+  editor(box, { base: `/api/documents/${d.id}/changelog`, revision: d.revision, perDocument: false, ai: { subject: 'document', id: d.id } });
 }
 
 export function changeLogSection(section, co) {
   const box = h('div', { class: 'panel-b' });
   mount(section, h('div', { class: 'panel-h' }, h('h2', null, 'Change log')), box);
-  editor(box, { base: `/api/changes/${co.id}/changelog`, perDocument: true });
+  editor(box, { base: `/api/changes/${co.id}/changelog`, perDocument: true, ai: { subject: 'change_order', id: co.id } });
 }
 
 async function editor(box, opts) {
@@ -92,18 +93,21 @@ async function editor(box, opts) {
       return h('div', { class: 'field' }, h('label', { for: ta.id }, s.label), ta);
     });
     const fill = sec => { for (const [k, ta] of Object.entries(fields)) ta.value = sec[k] || ''; };
+    let aiSuggestion = null;              // the AI draft the text started from, named when saving (audit log)
+    const aiArea = h('div', { class: 'ask-slot', style: { marginBottom: '10px' } });
     const buildDraft = async btn => {
       btn.disabled = true;
       try {
         const x = await post(`${opts.base}/draft`, { note: note.value, revision: rev || undefined });
-        fill(x.draft); toast('Draft built from the measured changes and your note. Edit it, then save.', 'ok');
+        fill(x.draft); aiSuggestion = null; mount(aiArea);
+        toast('Draft built from the measured changes and your note. Edit it, then save.', 'ok');
       } catch (e) { fail(e); } finally { btn.disabled = false; }
     };
     const save = async btn => {
       btn.disabled = true;
       try {
         const sec = {}; for (const [k, ta] of Object.entries(fields)) sec[k] = ta.value;
-        const x = await put(opts.base, { note: note.value, sections: sec, revision: rev || undefined });
+        const x = await put(opts.base, { note: note.value, sections: sec, revision: rev || undefined, ai_suggestion_id: aiSuggestion || undefined });
         toast('Change log saved', 'ok'); draw(x);
       } catch (e) { fail(e); } finally { btn.disabled = false; }
     };
@@ -112,6 +116,12 @@ async function editor(box, opts) {
     draftBtn.addEventListener('click', () => buildDraft(draftBtn));
     const saveBtn = h('button', { class: 'btn primary', disabled: ro, title: ro ? why : 'Save this change log' }, icon('check', 16), 'Save change log');
     saveBtn.addEventListener('click', () => save(saveBtn));
+    const aiSlot = h('span', { class: 'ask-slot' });       // "Draft with AI", only when an administrator switched it on
+    if (opts.ai) {
+      aiDraftButton({ ...opts.ai, revision: opts.perDocument ? '' : rev, note: () => note.value, fill, readOnly: ro, why,
+        setSuggestion: id => { aiSuggestion = id; if (!r.saved) status.textContent = 'Not saved yet. The text below is a draft written by the AI assistant: check it before you save.'; },
+        area: aiArea }).then(b => { if (b) mount(aiSlot, b); }).catch(() => {});
+    }
 
     const status = r.saved
       ? h('div', { class: 'small muted' }, `Saved by ${r.saved.updated_by} ${ago(r.saved.updated_at)}${r.saved.source === 'edited' ? ' (edited by hand)' : ''}.`)
@@ -129,7 +139,8 @@ async function editor(box, opts) {
         changeList(g.changes || []), notesBlock(g.notes))));
 
     mount(box,
-      h('div', { class: 'row wrap', style: { marginBottom: '12px' } }, revSel, status, h('span', { class: 'spacer' }), draftBtn, saveBtn),
+      h('div', { class: 'row wrap', style: { marginBottom: '12px' } }, revSel, status, h('span', { class: 'spacer' }), draftBtn, aiSlot, saveBtn),
+      aiArea,
       ro ? h('p', { class: 'muted small', style: { margin: '0 0 10px' } }, why) : null,
       r.saved && r.saved.stale ? h('div', { class: 'banner info small', style: { marginBottom: '12px' } }, icon('info'),
         h('div', null, 'The measured changes are different from when this change log was saved (a new version was checked in). Press ', h('b', null, 'Build draft'), ' to update the text, or keep yours.')) : null,

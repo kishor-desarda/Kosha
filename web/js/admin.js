@@ -5,6 +5,7 @@ import { addinsTab } from './addins.js';
 import { backupsTab, securityTab } from './admin_ops.js';
 import { packsTab } from './packs.js';
 import { notifyAdminTab } from './notify.js';
+import { aiAdminTab, askLink } from './ai.js';
 
 export async function renderAdmin(container, _m, params, { setTitle }) {
   setTitle('Administration');
@@ -12,7 +13,7 @@ export async function renderAdmin(container, _m, params, { setTitle }) {
   const cleanups = [];
   const draw = async () => {
     while (cleanups.length) { try { cleanups.pop()(); } catch (e) { /* ignore */ } }
-    const items = S.user.role === 'admin' ? [['users', 'Users'], ['import', 'Import legacy data'], ['rules', 'Numbering & revisions'], ['cad', 'CAD conversion'], ['addins', 'Add-ins'], ['security', 'Sign-in & sessions'], ['backups', 'Backups'], ['packs', 'Packs'], ['notify', 'Notifications'], ['audit', 'Audit log']] : [['audit', 'Audit log']];
+    const items = S.user.role === 'admin' ? [['users', 'Users'], ['import', 'Import legacy data'], ['rules', 'Numbering & revisions'], ['cad', 'CAD conversion'], ['addins', 'Add-ins'], ['security', 'Sign-in & sessions'], ['backups', 'Backups'], ['packs', 'Packs'], ['notify', 'Notifications'], ['ai', 'AI assistant'], ['audit', 'Audit log']] : [['audit', 'Audit log']];
     const body = h('div', { class: 'panel-b' });
     mount(container, h('div', { class: 'page-pad' }, h('div', { class: 'page-head' }, h('h1', null, 'Administration')),
       h('div', { class: 'panel' }, tabs(items, tab, k => { tab = k; draw(); }), body)));
@@ -25,6 +26,7 @@ export async function renderAdmin(container, _m, params, { setTitle }) {
     if (tab === 'backups') await backupsTab(body);
     if (tab === 'packs') await packsTab(body);
     if (tab === 'notify') await notifyAdminTab(body);
+    if (tab === 'ai') await aiAdminTab(body);
     if (tab === 'audit') await audit(body);
   };
   await draw();
@@ -230,7 +232,7 @@ export async function renderSearch(container, _m, params, { setTitle }) {
   if (input) input.value = q;
   mount(container, h('div', { class: 'page-pad' },
     h('div', { class: 'page-head' }, h('div', null, h('h1', null, `Results for "${q}"`), h('div', { class: 'sub' }, `${r.documents.length} files · ${r.items.length} parts · ${r.changes.length} change orders`)),
-      h('span', { class: 'spacer' }), h('a', { class: 'btn', href: `#/inputs?q=${encodeURIComponent(q)}` }, icon('layers', 16), 'Search inputs too')),
+      h('span', { class: 'spacer' }), askLink(q), h('a', { class: 'btn', href: `#/inputs?q=${encodeURIComponent(q)}` }, icon('layers', 16), 'Search inputs too')),
     h('div', { class: 'col', style: { gap: '16px' } },
       h('section', { class: 'panel' }, h('div', { class: 'panel-h' }, h('h2', null, 'Files')),
         r.documents.length ? h('table', { class: 'tbl' }, h('tbody', null, r.documents.map(d => h('tr', { class: 'clickable', onclick: () => { location.hash = `#/files/${d.folder_id}?select=${d.id}`; } },
