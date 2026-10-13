@@ -469,6 +469,10 @@ def redeem(ticket: str, browser: str, ip: str, user_agent: str) -> tuple[dict, s
     if not u or not u["active"]:
         raise ApiError(403, "Your Kosha account is switched off. Ask your Kosha administrator to switch it on.",
                        "account_disabled")
+    from .access import sign_in_problem
+    problem = sign_in_problem(u)
+    if problem:
+        raise ApiError(403, problem, "account_not_usable")
     a = registry.get(row["provider"])
     token = sessions.create(u["id"], ip, user_agent)
     db.audit(u["id"], "login", "user", u["id"], f"from {ip} through {a.manifest.name if a and a.manifest else row['provider']}")

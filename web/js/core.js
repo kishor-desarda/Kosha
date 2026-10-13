@@ -337,7 +337,11 @@ export function store(key, val) {
   } catch (e) { return undefined; }
   return val;
 }
-export const can = role => S.user && ({ viewer: 0, engineer: 1, approver: 2, admin: 3 })[S.user.role] >= ({ viewer: 0, engineer: 1, approver: 2, admin: 3 })[role];
+// roles stack on the ladder; extra roles (data_steward, spares, quality) are held beside it, and admins hold them all
+const LADDER = { viewer: 0, engineer: 1, checker: 2, approver: 3, admin: 4 };
+// a vendor account only reads, whatever its role
+export const can = role => !!S.user && (S.user.kind === 'vendor' ? role === 'viewer' : role in LADDER ? LADDER[S.user.role] >= LADDER[role]
+  : S.user.role === 'admin' || (S.user.roles || []).includes(role));
 
 export function tabs(items, active, onSelect) {
   const bar = h('div', { class: 'tabs', role: 'tablist' });

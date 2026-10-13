@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from datetime import date
 
-from . import db
+from . import access, db
 from .web import bad, conflict, not_found
 
 STATUSES = ("open", "closed")
@@ -40,7 +40,7 @@ def clean_code(code) -> str:
 
 def project_or_404(pid: int) -> dict:
     p = db.one("SELECT * FROM projects WHERE id = ?", (pid,))
-    if not p:
+    if not p or not access.scope().can_see_project(pid):
         raise not_found("Project not found")
     return p
 
@@ -128,12 +128,13 @@ def unlink_item(user: dict, pid: int, item_id: int) -> bool:
 
 def items_of(pid: int) -> list[dict]:
     return db.rows("SELECT i.id, i.part_number, i.description, i.item_type, i.state, i.revision FROM project_items pi "
-                   "JOIN items i ON i.id = pi.item_id WHERE pi.project_id = ? ORDER BY i.part_number", (pid,))
+                   "JOIN items i ON i.id = pi.item_id WHERE pi.project_id = ?" + access.scope().items() +
+                   " ORDER BY i.part_number", (pid,))
 
 
 def projects_of_item(item_id: int) -> list[dict]:
     return db.rows("SELECT p.id, p.code, p.name, p.status FROM project_items pi JOIN projects p ON p.id = pi.project_id "
-                   "WHERE pi.item_id = ? ORDER BY p.code", (item_id,))
+                   "WHERE pi.item_id = ?" + access.scope().projects() + " ORDER BY p.code", (item_id,))
 
 
 def search(q: str = "", status: str = "", limit: int = 200) -> list[dict]:
@@ -145,7 +146,7 @@ def search(q: str = "", status: str = "", limit: int = 200) -> list[dict]:
         where.append("(p.code LIKE ? OR p.name LIKE ? OR p.customer LIKE ?)")
         params += [f"%{t}%"] * 3
     sql = ("SELECT p.*, (SELECT COUNT(*) FROM project_items pi WHERE pi.project_id = p.id) AS item_count "
-           "FROM projects p" + (" WHERE " + " AND ".join(where) if where else "") +
+           "FROM projects p WHERE 1 = 1" + "".join(" AND " + w for w in where) + access.scope().projects() +
            " ORDER BY CASE p.status WHEN 'open' THEN 0 ELSE 1 END, p.code_key LIMIT ?")
     return db.rows(sql, [*params, max(1, min(int(limit), 1000))])
 

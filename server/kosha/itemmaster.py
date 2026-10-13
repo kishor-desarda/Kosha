@@ -7,7 +7,7 @@
   whether it fits directly. An OEM part number typed anywhere finds the company's part. The OEM's name never
   becomes part of the company's own part number or description;
 * customer-specific parts: the customer and the customer's part number, the restricted flag and the
-  do-not-reuse lock. A locked part goes into another customer's assembly only after an admin allows it, with a
+  do-not-reuse lock. A locked part goes into another customer's assembly only after a data steward allows it, with a
   reason that is kept.
 """
 from __future__ import annotations
@@ -62,6 +62,12 @@ def clean_fields(body: dict, current: dict | None = None, cfg=None) -> dict:
     customer = out["customer"] if "customer" in out else current.get("customer")
     if out.get("restricted", current.get("restricted")) and not customer:
         raise bad("Name the customer first: a restricted part is restricted to one customer's team.")
+    if out.get("restricted") and not current.get("restricted") or (customer != current.get("customer")
+                                                                    and out.get("restricted", current.get("restricted"))):
+        if not any(r["value"].lower() == customer.lower() for r in
+                   db.rows("SELECT value FROM access_rules WHERE scope = 'customer' AND deleted = 0")):
+            raise bad(f"Nobody has access to {customer} yet, so nobody could see this part. An admin first names the "
+                      "customer's team under Admin › Access; then restrict the part.")
     return out
 
 
@@ -150,7 +156,7 @@ def _squash(s: str) -> str:
 
 def reuse_problems(parent_item_id: int, child_ids: list[int], keep: set[int] | None = None) -> list[str]:
     """Children locked against reuse that may not go into this parent: a different (or no) customer, and no
-    admin decision allowing it. Children already in the BOM (``keep``) are not checked again."""
+    data steward's decision allowing it. Children already in the BOM (``keep``) are not checked again."""
     parent = db.one("SELECT part_number, customer FROM items WHERE id = ?", (parent_item_id,)) or {}
     out = []
     for cid in set(child_ids) - (keep or set()):
@@ -163,7 +169,7 @@ def reuse_problems(parent_item_id: int, child_ids: list[int], keep: set[int] | N
                   (cid, parent_item_id)):
             continue
         who = f" for {c['customer']}" if c["customer"] else ""
-        out.append(f"{c['part_number']} is made{who} and locked against reuse. An admin can allow it in "
+        out.append(f"{c['part_number']} is made{who} and locked against reuse. A data steward can allow it in "
                    f"{parent.get('part_number', 'this assembly')} with a reason (on the part's page).")
     return out
 

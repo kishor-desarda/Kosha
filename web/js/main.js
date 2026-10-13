@@ -29,6 +29,12 @@ const NAV = [
   ['library', 'Library', 'grid', '#/library'],
 ];
 
+// a vendor account sees only its projects and their parts and files
+const VENDOR_NAV = [['projects', 'My projects', 'layers', '#/projects']];
+const VENDOR_ROUTES = new Set(['projects', 'project', 'item', 'doc', 'search']);
+const isVendor = () => S.user && S.user.kind === 'vendor';
+const homeRoute = () => (isVendor() ? '#/projects' : '#/home');
+
 const ROUTES = [
   [/^#\/home$/, 'home', () => renderHome],
   [/^#\/files(?:\/(\d+))?$/, 'kosha', () => renderExplorer],
@@ -70,7 +76,7 @@ function setMode(mode, save = true) {
 function buildShell() {
   const rail = h('nav', { class: 'rail', 'aria-label': 'Main' }, h('div', { class: 'logo' }, logo(32)));
   const links = {};
-  for (const [key, label, ic, href] of NAV) {
+  for (const [key, label, ic, href] of (isVendor() ? VENDOR_NAV : NAV)) {
     const badge = h('span', { class: 'badge', hidden: true });
     const a = h('a', { href }, icon(ic, 22), label, badge);
     links[key] = { a, badge };
@@ -117,7 +123,7 @@ function buildShell() {
 }
 
 async function refreshBadges() {
-  if (!shell) return;
+  if (!shell || isVendor()) return;
   try {
     const d = await api('GET', '/api/dashboard', undefined, { background: true });
     const set = (key, n) => { const l = shell.links[key]; if (l && l.badge) { l.badge.hidden = !n; l.badge.textContent = n; } };
@@ -153,7 +159,7 @@ function signedIn(r) {
   applyTheme(currentTheme());
   localStorage.setItem('kosha.token', r.token);
   buildShell();
-  location.hash = store('lastRoute') && store('lastRoute') !== '#/login' ? store('lastRoute') : '#/home';
+  location.hash = store('lastRoute') && store('lastRoute') !== '#/login' && !isVendor() ? store('lastRoute') : homeRoute();
   route();
 }
 
@@ -226,7 +232,7 @@ async function route() {
   const hash = location.hash || '#/home';
   if (await returnFromSso(hash)) return;
   if (!S.token) { if (hash !== '#/login') location.hash = '#/login'; renderLogin(); return; }
-  if (hash === '#/login') { location.hash = '#/home'; return; }
+  if (hash === '#/login') { location.hash = homeRoute(); return; }
   if (!S.user) {
     try {
       const me = await get('/api/auth/me');
@@ -237,6 +243,7 @@ async function route() {
   }
   if (!shell) buildShell();
   const [path, query] = hash.split('?');
+  if (isVendor() && !VENDOR_ROUTES.has((path.match(/^#\/(\w+)/) || [])[1])) { location.hash = '#/projects'; return; }
   const params = Object.fromEntries(new URLSearchParams(query || ''));
   for (const [re, key, loader] of ROUTES) {
     const m = path.match(re);

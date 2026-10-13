@@ -6,7 +6,7 @@ import json
 
 from starlette.responses import Response
 
-from .. import addins, boms, changes, db, erp, itemmaster, lifecycle, similarity
+from .. import access, addins, boms, changes, db, erp, itemmaster, lifecycle, similarity
 from ..cad import process as cadproc
 from ..web import Req, api, as_bool, bad, conflict, not_found
 from ..packs import PackConfig
@@ -25,11 +25,13 @@ def items(req: Req):
     limit = min(int(req.q("limit", 100)), 1000)
     if q:
         # an OEM part number or the customer's part number finds the company's part as well
-        rows = db.rows("SELECT * FROM items WHERE part_number LIKE ? OR description LIKE ? OR customer_part_number LIKE ? "
-                       "OR id IN (SELECT item_id FROM item_oem_refs WHERE deleted = 0 AND (oem_part_number LIKE ? "
-                       "OR oem_model LIKE ?)) ORDER BY part_number LIMIT ?", (*[f"%{q}%"] * 5, limit))
+        rows = db.rows("SELECT * FROM items i WHERE (part_number LIKE ? OR description LIKE ? OR customer_part_number "
+                       "LIKE ? OR id IN (SELECT item_id FROM item_oem_refs WHERE deleted = 0 AND (oem_part_number LIKE ? "
+                       "OR oem_model LIKE ?)))" + access.scope().items() + " ORDER BY part_number LIMIT ?",
+                       (*[f"%{q}%"] * 5, limit))
     else:
-        rows = db.rows("SELECT * FROM items ORDER BY updated_at DESC LIMIT ?", (limit,))
+        rows = db.rows("SELECT * FROM items i WHERE 1 = 1" + access.scope().items() + " ORDER BY updated_at DESC LIMIT ?",
+                       (limit,))
     return {"items": rows}
 
 
@@ -56,9 +58,11 @@ def item(req: Req):
     it = db.one("SELECT * FROM items WHERE id = ?", (iid,))
     if not it:
         raise not_found("Item not found")
+    access.check_item(iid)
     it["props"] = json.loads(it.pop("props_json") or "{}")
     names = lifecycle.user_names()
-    docs = _with_preview(db.rows(DOC_SELECT + "WHERE d.item_id = ? AND d.deleted = 0", (iid,)), names)
+    docs = _with_preview(db.rows(DOC_SELECT + "WHERE d.item_id = ? AND d.deleted = 0" + access.scope().documents(),
+                                 (iid,)), names)
     item_boms = db.rows("SELECT id, revision, state, source, updated_at FROM boms WHERE item_id = ? ORDER BY id DESC", (iid,))
     jobs = db.rows("SELECT * FROM erp_jobs WHERE (kind IN ('item','refresh') AND entity_id = ?) OR (kind = 'bom' AND "
                    "entity_id IN (SELECT id FROM boms WHERE item_id = ?)) ORDER BY id DESC LIMIT 20", (iid, iid))
@@ -83,6 +87,7 @@ def update_item(req: Req):
     it = db.one("SELECT * FROM items WHERE id = ?", (iid,))
     if not it:
         raise not_found("Item not found")
+    access.check_item(iid)
     body = req.body if isinstance(req.body, dict) else {}
     upd = {}
     for k in ITEM_EDITABLE:

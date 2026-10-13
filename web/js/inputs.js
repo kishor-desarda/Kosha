@@ -1007,8 +1007,9 @@ export async function renderProject(container, [id], _p, { setTitle }) {
             if (!chosen.length) { toast('Choose a part first.', 'err'); return; }
             try { for (const c of chosen) await post(`/api/projects/${p.id}/items`, { item_id: c.value }); toast('Linked', 'ok'); load(); } catch (e) { fail(e); }
           } }, icon('link', 14), 'Link parts')) : null)),
-      h('section', null, h('h2', { style: { margin: '0 0 10px' } }, `Inputs (${p.input_count})`), libRoot)));
-    lib = library(libRoot, { fixed: { project: p.id }, compact: true, uploadDefaults: { projects: [{ id: p.id, code: p.code, name: p.name }] } });
+      S.user.kind === 'vendor' ? null : h('section', null, h('h2', { style: { margin: '0 0 10px' } }, `Inputs (${p.input_count})`), libRoot)));
+    // a vendor account sees the project's parts and their files, not the company's inputs library
+    lib = S.user.kind === 'vendor' ? null : library(libRoot, { fixed: { project: p.id }, compact: true, uploadDefaults: { projects: [{ id: p.id, code: p.code, name: p.name }] } });
   };
   try {
     await load();
