@@ -2,6 +2,8 @@
 """Engineering change orders (ECO): draft -> submitted -> approved -> implemented."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from . import db, lifecycle
 from .web import ROLE_LEVEL, bad, conflict, forbidden, not_found
 
@@ -16,9 +18,11 @@ def co_or_404(co_id: int) -> dict:
 
 
 def _next_number() -> str:
-    last = db.scalar("SELECT number FROM change_orders ORDER BY id DESC LIMIT 1")
-    n = int(last.split("-")[-1]) + 1 if last and last.split("-")[-1].isdigit() else 1
-    return f"ECO-{n:04d}"
+    """ECO-26-0031: the year and a running number that starts again each year. Older ECO-0001 numbers stay."""
+    head = f"ECO-{datetime.now(timezone.utc).year % 100:02d}-"
+    seqs = [int(r["number"][len(head):]) for r in db.rows("SELECT number FROM change_orders WHERE number LIKE ?",
+                                                           (head + "%",)) if r["number"][len(head):].isdigit()]
+    return f"{head}{max(seqs, default=0) + 1:04d}"
 
 
 def create(user: dict, title: str, reason: str = "", description: str = "", priority: str = "normal",

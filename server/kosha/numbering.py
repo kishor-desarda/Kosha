@@ -555,10 +555,28 @@ BUILTIN_SCHEMES = [
      "fields": {"prefix": {"type": "text", "label": "Series (prefix)", "pattern": r"^[A-Z0-9][A-Z0-9\-_/]{0,20}$",
                            "hint": "letters, digits and dashes, for example MX-100-"}}},
     {"id": "category", "label": "Category number",
-     "hint": "A running number per category, for example GR-00001 for gears.",
-     "pattern": "{category}-{seq:5}",
+     "hint": "A running number per category, for example SHF-001234 for a shaft. The number says what the part is, "
+             "never where it is used.",
+     "pattern": "{category}-{seq:6}",
      "fields": {"category": {"type": "choice", "label": "Category", "dictionary": CATEGORIES_DICTIONARY}}},
+    {"id": "document", "label": "Document number",
+     "hint": "Specifications, calculations, manuals, procedures and test reports, for example DOC-004120.",
+     "pattern": "DOC-{seq:6}", "item_type": "document"},
+    {"id": "kit", "label": "Kit number",
+     "hint": "Maintenance, shutdown, service and breakdown kits, for example KIT-000027.",
+     "pattern": "KIT-{seq:6}", "item_type": "kit"},
+    {"id": "machine-build", "label": "Machine serial number",
+     "hint": "One number for each machine built for a customer order, for example MX26-0042 for the 42nd mixer "
+             "built in 2026. It goes on the nameplate and links the as-built BOM.",
+     "pattern": "{family}{yy}-{seq:4}", "item_type": "machine-build",
+     "fields": {"family": {"type": "text", "label": "Product family code", "pattern": "^[A-Z]{2}$",
+                           "hint": "Two letters, for example MX for mixers or PU for pumps"}}},
 ]
+# series whose running counter keeps the width it started with, so numbers already issued stay in one format
+KEEP_WIDTH = ("prefix", "category")
+USAGE_WARNING = 0.8          # tell the data steward when a series has used this share of its numbers
+VOID_AFTER_DAYS = 30         # a reserved number with nothing made from it is voided (never reused) after this
+MAX_RESERVE = 500
 
 
 # ------------------------------------------------------------------ service --
@@ -667,15 +685,19 @@ class NumberingService:
                 return {"ok": False, "errors": r.errors, "error": r.first_error(), "part_number": r.code,
                         "description": ""}
             existing = self.find_item(r.code)
+            near = self.near_matches(s, r.values, r.code)
+            msg = (f"{existing['part_number']} already exists. Kosha uses it instead of making a duplicate."
+                   if existing else "This spec code is new. Kosha will create the part.")
+            if near and not existing:
+                msg += (f" {len(near)} similar part{'s' if len(near) > 1 else ''} differ in one value only; "
+                        "check them first, one may do the job.")
             return {"ok": True, "errors": {}, "part_number": r.code, "description": r.description, "provisional": False,
-                    "existing": _item_brief(existing),
-                    "message": (f"{existing['part_number']} already exists. Kosha uses it instead of making a duplicate."
-                                if existing else "This spec code is new. Kosha will create the part.")}
+                    "existing": _item_brief(existing), "near": near, "message": msg}
         before, after, parsed, errors = s.parts(values, self.config)
         if errors:
             return {"ok": False, "errors": errors, "error": next(iter(errors.values())), "part_number": "",
                     "description": description}
-        pn, _n, _w, _k = self._next(before, after, s.width, s.id == "prefix")
+        pn, _n, _w, _k = self._next(before, after, s.width, s.id in KEEP_WIDTH)
         return {"ok": True, "errors": {}, "part_number": pn, "provisional": True, "existing": None,
                 "description": description or s.default_description(parsed),
                 "message": "This is the next free number. It is fixed when you press Create; if someone takes it "
@@ -690,11 +712,14 @@ class NumberingService:
             if not r.ok:
                 raise NumberingError(r.first_error(), r.errors)
             cat = self.config.category(s.category) or {}
-            return self.ensure_coded_item(
+            out = self.ensure_coded_item(
                 scheme=f"spec:{s.id}", code=r.code, description=r.description, values=r.values, user_id=user_id,
                 uom=r.item.get("uom") or cat.get("uom") or "", material=r.item.get("material", ""),
                 make_buy=r.item.get("make_buy") or cat.get("make_buy") or "make",
                 item_type=item_type or r.item.get("item_type", ""), props={"category": s.category})
+            exact = [] if not out["existing"] else [{**_item_brief(out["item"]), "spec_code": r.code, "differs": ""}]
+            out["existing_matches"] = exact + self.near_matches(s, r.values, r.code)
+            return out
         return self._allocate_sequence(s, values, user_id, description, item_type)
 
     def _allocate_sequence(self, s: SequenceScheme, values: dict, user_id, description: str, item_type: str) -> dict:
@@ -709,7 +734,7 @@ class NumberingService:
         for attempt in range(self.MAX_TRIES):
             try:
                 with db.tx():
-                    pn, n, width, key = self._next(before, after, s.width, s.id == "prefix")
+                    pn, n, width, key = self._next(before, after, s.width, s.id in KEEP_WIDTH)
                     db.execute("INSERT INTO numbering(prefix, next_value, width) VALUES (?, ?, ?) "
                                "ON CONFLICT(prefix) DO UPDATE SET next_value = excluded.next_value", (key, n + 1, width))
                     item_id = None
@@ -727,8 +752,130 @@ class NumberingService:
                 if attempt == self.MAX_TRIES - 1:
                     raise
         item = db.one("SELECT * FROM items WHERE id = ?", (item_id,)) if item_id else None
-        return {"part_number": pn, "item": item, "existing": False, "scheme": s.id,
+        return {"part_number": pn, "item": item, "existing": False, "scheme": s.id, "existing_matches": [],
+                "warning": self._usage_warning(key, before, after, n, width, user_id),
                 "message": f"{pn} is yours." + (" The part has been created." if item else "")}
+
+    def reserve(self, scheme_id: str, values: dict, count: int, user_id: int | None, description: str = "") -> dict:
+        """Reserve ``count`` numbers of one series in one go (configurators, copy design, imports). No items are
+        made yet; a reserved number nothing is made from within 30 days is voided and never handed out again."""
+        s = self.scheme(scheme_id)
+        if isinstance(s, SpecTemplate):
+            raise NumberingError("Spec codes are made from their values, so they cannot be reserved in advance. "
+                                 "Choose a number series instead.", code="not_a_series")
+        if not isinstance(count, int) or isinstance(count, bool) or not 1 <= count <= MAX_RESERVE:
+            raise NumberingError(f"Reserve between 1 and {MAX_RESERVE} numbers at a time.", code="bad_count")
+        before, after, parsed, errors = s.parts(values, self.config)
+        if errors:
+            raise NumberingError(next(iter(errors.values())), errors)
+        plain = plain_values(parsed)
+        if description:
+            plain = {**plain, "_note": description.strip()[:200]}
+        for attempt in range(self.MAX_TRIES):
+            numbers = []
+            try:
+                with db.tx():
+                    for _ in range(count):
+                        pn, n, width, key = self._next(before, after, s.width, s.id in KEEP_WIDTH)
+                        db.execute("INSERT INTO numbering(prefix, next_value, width) VALUES (?, ?, ?) "
+                                   "ON CONFLICT(prefix) DO UPDATE SET next_value = excluded.next_value",
+                                   (key, n + 1, width))
+                        self._ledger(pn, s.id, key, n, None, plain, None, user_id)
+                        numbers.append(pn)
+                    db.audit(user_id, "number_reserve", "number", None,
+                             f"{count} numbers {numbers[0]} to {numbers[-1]} ({s.label})")
+                break
+            except sqlite3.IntegrityError:
+                if attempt == self.MAX_TRIES - 1:
+                    raise
+        return {"numbers": numbers, "scheme": s.id,
+                "warning": self._usage_warning(key, before, after, n, width, user_id),
+                "message": (f"{count} number{'s' if count > 1 else ''} reserved, {numbers[0]}"
+                            + (f" to {numbers[-1]}" if count > 1 else "") + f". Numbers nothing is made from within "
+                            f"{VOID_AFTER_DAYS} days are voided and never used again.")}
+
+    # -- near matches
+    def near_matches(self, template: SpecTemplate, values: dict, code: str, limit: int = 5) -> list[dict]:
+        """Parts made from the same template whose values differ in exactly one field, e.g. the same gear with 41
+        instead of 40 teeth. Shown before a new spec code is created, so an existing part can be reused."""
+        code = _upper(code)
+        out = []
+        for row in db.rows("SELECT a.spec_code, a.values_json, i.id, i.part_number, i.description, i.state, i.revision "
+                           "FROM number_allocations a JOIN items i ON i.id = a.item_id "
+                           "WHERE a.scheme = ? AND a.spec_code IS NOT NULL AND a.spec_code <> ? ORDER BY a.id",
+                           (f"spec:{template.id}", code)):
+            try:
+                theirs = json.loads(row["values_json"] or "{}")
+            except ValueError:
+                continue
+            diff = [n for n in template.fields if str(theirs.get(n, "")).upper() != str(values.get(n, "")).upper()]
+            if len(diff) != 1:
+                continue
+            f = template.fields[diff[0]]
+            out.append({"id": row["id"], "part_number": row["part_number"], "description": row["description"],
+                        "state": row["state"], "revision": row["revision"], "spec_code": row["spec_code"],
+                        "differs": f"{f.label}: {theirs.get(diff[0])} instead of {values.get(diff[0])}"})
+            if len(out) >= limit:
+                break
+        return out
+
+    # -- capacity
+    @staticmethod
+    def _usage_warning(key: str, before: str, after: str, n: int, width: int, user_id) -> str:
+        """Say so when a series has used 80% of its numbers, and tell the admins once per series."""
+        top = 10 ** width - 1
+        if n < USAGE_WARNING * top:
+            return ""
+        series = f"{before}{'N' * width}{after}"
+        msg = (f"The series {series} has used {n:,} of its {top:,} numbers ({n * 100 // top}%). Ask the data steward "
+               "to plan a new category or a longer number before it runs out.")
+        if not db.scalar("SELECT 1 FROM audit WHERE action = 'number_capacity' AND entity = 'series' "
+                         "AND details LIKE ?", (f"{series}:%",)):
+            with db.tx():
+                db.audit(user_id, "number_capacity", "series", None, f"{series}: {n} of {top} used")
+            from . import notify_outbox
+            admins = [r["id"] for r in db.rows("SELECT id FROM users WHERE active = 1 AND role = 'admin'")]
+            notify_outbox.enqueue(admins, f"Number series {series} is 80% used", msg, "#/admin/rules", "general",
+                                  severity="warning", key=f"number_capacity:{key}")
+        return msg
+
+    @staticmethod
+    def capacity() -> list[dict]:
+        """How full each running series is, fullest first."""
+        out = []
+        for r in db.rows("SELECT prefix, next_value, width FROM numbering"):
+            top = 10 ** r["width"] - 1
+            used = max(r["next_value"] - 1, 0)
+            before, _, after = r["prefix"].partition("#")
+            out.append({"series": f"{before}{'N' * r['width']}{after}", "used": used, "of": top,
+                        "percent": round(used * 100 / top, 1), "warning": used >= USAGE_WARNING * top})
+        return sorted(out, key=lambda x: -x["percent"])
+
+    # -- voiding
+    def void_unused(self, days: int = VOID_AFTER_DAYS, now: datetime | None = None) -> int:
+        """Void numbers handed out at least ``days`` ago that nothing was made from: no item and no file carries
+        them. They stay in the ledger, so they are never issued again. Numbers of series that never make items
+        (projects) are left alone. Returns how many were voided."""
+        from datetime import timedelta
+        cutoff = ((now or datetime.now(timezone.utc)) - timedelta(days=days)).isoformat(timespec="seconds")
+        keep = [sid for sid, sc in self.sequence_schemes().items() if not sc.creates_item]
+        rows = db.rows("SELECT a.id, a.part_number, a.scheme FROM number_allocations a "
+                       "WHERE a.item_id IS NULL AND a.voided_at IS NULL AND a.allocated_at < ? "
+                       "AND NOT EXISTS (SELECT 1 FROM items i WHERE i.part_number = a.part_number COLLATE NOCASE) "
+                       "AND NOT EXISTS (SELECT 1 FROM documents d WHERE d.part_number = a.part_number "
+                       "COLLATE NOCASE AND d.deleted = 0)", (cutoff,))
+        rows = [r for r in rows if r["scheme"] not in keep]
+        if not rows:
+            return 0
+        with db.tx():
+            stamp = db.now()
+            for r in rows:
+                db.execute("UPDATE number_allocations SET voided_at = ? WHERE id = ? AND voided_at IS NULL",
+                           (stamp, r["id"]))
+            db.audit(None, "number_void", "number", None,
+                     f"{len(rows)} unused number{'s' if len(rows) > 1 else ''} voided after {days} days: "
+                     + ", ".join(r["part_number"] for r in rows[:20]) + (" ..." if len(rows) > 20 else ""))
+        return len(rows)
 
     def next_in_series(self, prefix: str, width: int, user_id: int | None) -> str:
         """Same result as /api/numbering/next (the CAD add-ins), but recorded in the ledger."""
@@ -738,6 +885,7 @@ class NumberingService:
             db.execute("INSERT INTO numbering(prefix, next_value, width) VALUES (?, ?, ?) "
                        "ON CONFLICT(prefix) DO UPDATE SET next_value = excluded.next_value", (key, n + 1, width))
             self._ledger(pn, "prefix", key, n, None, {"prefix": prefix}, None, user_id)
+        self._usage_warning(key, prefix, "", n, width, user_id)
         return pn
 
     def ensure_coded_item(self, *, scheme: str, code: str, description: str, values: dict, user_id: int | None,

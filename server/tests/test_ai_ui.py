@@ -92,7 +92,7 @@ def test_ai_screens(browser, server):
     assert asha_api.call("GET", f"/api/items/{key['id']}")["item"]["props"].get("category") == "SH"
 
     # --- a draft change log from the AI, edited and saved
-    co = next(c for c in asha_api.call("GET", "/api/changes")["changes"] if c["number"] == "ECO-0001")
+    co = next(c for c in asha_api.call("GET", "/api/changes")["changes"] if c["number"].endswith("-0001"))
     pg.goto(f"{server.base}/#/change/{co['id']}")
     pg.get_by_role("button", name="Draft with AI").click()
     _wait_until(pg, "[...document.querySelectorAll('textarea')].some(t => t.id.startsWith('cl-what') && "

@@ -41,7 +41,29 @@ def allocate(req: Req):
         raise bad(str(e), e.code, errors=e.errors)
 
 
+@api("POST", "/api/numbering/reserve", role="engineer")
+def reserve(req: Req):
+    """Reserve several numbers of one series at once, e.g. for a configurator or an import. No parts are made yet."""
+    try:
+        count = int(req.b("count") or 0)
+    except (TypeError, ValueError):
+        raise bad("count is how many numbers to reserve.") from None
+    try:
+        return NumberingService().reserve(req.b("scheme") or "", _values(req), count, req.uid,
+                                          (req.b("description") or "").strip())
+    except NumberingError as e:
+        raise bad(str(e), e.code, errors=e.errors)
+
+
 @api("GET", "/api/numbering/allocations", role="engineer")
 def allocations(req: Req):
     limit = min(int(req.q("limit", 50)), 500)
-    return {"allocations": NumberingService.recent(limit)}
+    svc = NumberingService()
+    svc.void_unused()
+    return {"allocations": NumberingService.recent(limit), "capacity": svc.capacity()}
+
+
+@api("GET", "/api/numbering/capacity", role="engineer")
+def capacity(req: Req):
+    """How full each number series is; a series at 80% or more is marked."""
+    return {"series": NumberingService.capacity()}

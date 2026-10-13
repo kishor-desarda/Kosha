@@ -18,7 +18,8 @@ def test_packs_numbering_and_library_through_the_api(kosha):
     eng.call("POST", "/api/packs/general-machinery/install", expect=403)
     assert admin.call("GET", "/api/library")["installed"] is False
     schemes = {s["id"]: s for s in eng.call("GET", "/api/numbering/schemes")["schemes"]}
-    assert set(schemes) == {"prefix", "category"} and schemes["category"]["available"] is False
+    assert set(schemes) == {"prefix", "category", "document", "kit", "machine-build"}
+    assert schemes["category"]["available"] is False and schemes["document"]["available"] is True
 
     plan = admin.call("GET", "/api/packs/general-machinery/plan")
     assert plan["action"] == "install" and plan["counts"]["added"] > 20

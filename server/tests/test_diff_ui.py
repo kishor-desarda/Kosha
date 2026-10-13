@@ -77,7 +77,7 @@ def test_change_log_tab_viewer_changes_and_change_order(page, demo_kosha):
     assert page.locator(".viewer .svgwrap svg:first-child rect").count() == 1               # the change zone is marked
     page.keyboard.press("Escape")
 
-    co = next(c for c in asha.call("GET", "/api/changes")["changes"] if c["number"] == "ECO-0001")
+    co = next(c for c in asha.call("GET", "/api/changes")["changes"] if c["number"].endswith("-0001"))
     page.goto(f"{base}/#/change/{co['id']}")
     page.wait_for_selector("text=No version of revision B has been checked in yet.")
     _wait_until(page, "[...document.querySelectorAll('textarea')].some(t => t.value.startsWith('Field report: fretting'))")

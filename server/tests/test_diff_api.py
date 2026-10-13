@@ -2,7 +2,7 @@
 """Measured changes and change logs through the API, on the Demo Engineering data.
 
 The demo agitator shaft MX-100-020 has released revisions A, B and C (hub seat Ø100 → Ø105 → Ø110,
-material C45 → 42CrMo4) and is at revision D in work for change order ECO-0001.
+material C45 → 42CrMo4) and is at revision D in work for the first change order (ECO-YY-0001).
 """
 import json
 
@@ -113,7 +113,7 @@ def test_change_log_permissions(ctx):
 
 def test_change_order_change_log(ctx):
     asha = ctx["asha"]
-    co = next(c for c in asha.call("GET", "/api/changes")["changes"] if c["number"] == "ECO-0001")
+    co = next(c for c in asha.call("GET", "/api/changes")["changes"] if c["number"].endswith("-0001"))
     r = asha.call("GET", f"/api/changes/{co['id']}/changelog")
     groups = {g["document"]["filename"]: g for g in r["input"]["groups"]}
     shaft = groups["MX-100-020 Agitator Shaft.dxf"]

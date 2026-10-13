@@ -90,7 +90,10 @@ export async function newPartNumberDialog({ scheme: preselect, onDone } = {}) {
       h('div', { class: 'mono', style: { fontSize: '22px', fontWeight: 700, wordBreak: 'break-all' } }, r.part_number),
       r.description ? h('div', null, r.description) : null,
       ex ? h('div', { class: 'banner ok small' }, icon('check'), h('div', null, h('a', { href: `#/item/${ex.id}` }, ex.part_number), ` already exists (${ex.description || 'no description'}). Kosha uses it instead of making a duplicate.`))
-        : h('div', { class: 'small muted' }, r.message)));
+        : h('div', { class: 'small muted' }, r.message),
+      !ex && r.near && r.near.length ? h('div', { class: 'col', style: { gap: '4px' } },
+        h('div', { class: 'small' }, h('b', null, 'Similar parts that differ in one value'), ' (reuse one if it does the job):'),
+        r.near.map(n => h('div', { class: 'small' }, h('a', { href: `#/item/${n.id}` }, n.part_number), ` ${n.description || ''} · ${n.differs}`))) : null));
     if (!data.can_allocate) setWhy('You need the engineer role to create part numbers.', false);
     else if (current.available === false) setWhy(current.why, false);
     else setWhy('', true);
@@ -148,6 +151,7 @@ export async function newPartNumberDialog({ scheme: preselect, onDone } = {}) {
     const copy = h('button', { class: 'btn', onclick: async () => { try { await navigator.clipboard.writeText(r.part_number); toast('Copied', 'ok'); } catch (e) { toast('Copy did not work in this browser; select the number instead.', 'err'); } } }, icon('copy', 16), 'Copy number');
     mount(body, h('div', { class: 'col', style: { gap: '14px', width: '100%' } },
       h('div', { class: 'banner ok' }, icon('check'), h('div', null, r.message)),
+      r.warning ? h('div', { class: 'banner small' }, icon('warn'), h('div', null, r.warning)) : null,
       h('div', { class: 'mono', style: { fontSize: '26px', fontWeight: 700, userSelect: 'all' } }, r.part_number),
       r.item ? h('div', null, r.item.description) : null,
       h('div', { class: 'row wrap' }, copy,
