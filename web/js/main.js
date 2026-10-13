@@ -25,6 +25,7 @@ import { loadWorkbench, openPalette, pinStrip, recordRecent, setScreens } from '
 import { loadLocale, t } from './locale.js';
 import { helpDialog, languageDialog } from './help.js';
 import { renderShop } from './shop.js';
+import { renderLegacy } from './legacy.js';
 import { maybeStartTour, startTour } from './tour.js';
 
 const NAV_KEY = { home: 'nav.home', kosha: 'nav.explorer', inputs: 'nav.inputs', boms: 'nav.boms', changes: 'nav.changes',
@@ -76,6 +77,7 @@ const ROUTES = [
   [/^#\/project\/(\d+)$/, 'inputs', () => renderProject],
   [/^#\/ask$/, 'search', () => renderAsk],
   [/^#\/shop$/, 'search', () => renderShop],
+  [/^#\/legacy\/(\d+)$/, 'admin', () => renderLegacy],
 ];
 
 const root = document.getElementById('app');

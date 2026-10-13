@@ -51,6 +51,7 @@ async function legacyImport(body) {
   const keepRev = h('input', { type: 'checkbox', checked: true });
   const skipDup = h('input', { type: 'checkbox', checked: true });
   const dry = h('input', { type: 'checkbox', checked: true });
+  const unzip = h('input', { type: 'checkbox', checked: true });
   const meta = h('input', { type: 'file', class: 'input', id: 'im-meta', accept: '.xlsx,.csv' });
   const groups = Object.fromEntries(GROUPS.map(([k], i) => [k, h('input', { type: 'checkbox', checked: i < 4 })]));
   const pv = h('div');
@@ -79,6 +80,7 @@ async function legacyImport(body) {
     fd.append('keep_revision', keepRev.checked ? '1' : '0');
     fd.append('skip_identical', skipDup.checked ? '1' : '0');
     fd.append('dry_run', dry.checked ? '1' : '0');
+    fd.append('unpack_archives', unzip.checked ? '1' : '0');
     fd.append('groups', selGroups().join(','));
     if (meta.files[0]) fd.append('metadata', meta.files[0]);
     try { await upload('/api/import/start', fd); toast(dry.checked ? 'Dry run started: nothing will be changed' : 'Import started', 'ok'); loadJobs(); }
@@ -101,6 +103,7 @@ async function legacyImport(body) {
         h('td', { class: 'nowrap' }, h('div', { class: 'row' },
           j.report_sha ? h('a', { class: 'btn sm', href: `/api/import/jobs/${j.id}/report?access_token=${encodeURIComponent(S.token)}` }, icon('download', 14), 'Report') : null,
           j.status === 'running' ? h('button', { class: 'btn sm', onclick: async () => { await post(`/api/import/jobs/${j.id}/cancel`); loadJobs(); } }, 'Cancel') : null,
+          j.status !== 'running' && !j.options.dry_run ? h('a', { class: 'btn sm', href: `#/legacy/${j.id}`, title: 'Work queues, count check, sign-off and Undo batch' }, icon('check', 14), j.undone_at ? 'Undone' : j.signed_off_at ? 'Signed off' : 'Review') : null,
           j.status === 'done' && !j.options.dry_run && j.target_folder_id ? h('a', { class: 'btn sm', href: `#/common?folder=${j.target_folder_id}` }, icon('common', 14), 'Find duplicates') : null))))))
       : h('div', { class: 'empty' }, 'No imports yet.'));
     return r.jobs.some(j => j.status === 'running');
@@ -124,6 +127,7 @@ async function legacyImport(body) {
     h('div', { class: 'col', style: { gap: '2px' } },
       h('label', { class: 'check' }, keepRev, 'Keep the revision from the title block (Rev 3, R-2, B…). Otherwise files start at A.'),
       h('label', { class: 'check' }, skipDup, 'Import identical copies only once'),
+      h('label', { class: 'check' }, unzip, 'Unpack ZIP archives and import what is inside (into a folder named after the archive)'),
       h('label', { class: 'check' }, dry, h('b', null, 'Dry run'), ' — only report what would happen')),
     h('div', null, h('button', { class: 'btn primary', onclick: start }, icon('upload', 16), 'Start import')),
     h('h2', null, 'Imports'), jobsBox));

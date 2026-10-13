@@ -235,6 +235,7 @@ def document(req: Req):
     out.update({
         "path": lifecycle.folder_path(d["folder_id"]), "versions": versions, "events": events, "item": item,
         "related": related, "where_used": where_used, "bom": bom, "changes": cos,
+        "legacy_refs": db.rows("SELECT kind, value FROM legacy_refs WHERE document_id = ? ORDER BY id", (did,)),
         "actions": actions_for(d, req.user), "preview_kind": latest["preview_kind"] if latest else None,
         "viewer_kind": latest["viewer_kind"] if latest else None, "meta": latest["meta"] if latest else {},
         "returned": returned, "replaced_by": replaced_by,

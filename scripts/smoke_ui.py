@@ -195,6 +195,7 @@ def check_workbench(page, errors: list[str]) -> None:
     page.evaluate("""async () => { const w = await import('/static/js/workbench.js'); await w.savePrefs({ text_size: 100, pins: [] }); }""")
     check_language(page, errors)
     check_shop(page, errors)
+    check_legacy_batch(page, errors)
 
 
 def close_first_tour(page, user: str, errors: list[str]) -> None:
@@ -236,6 +237,41 @@ def check_shop(page, errors: list[str]) -> None:
         page.click("#tour-close")
     except Exception as e:
         errors.append(f"Take the tour did not start the tour again: {e}")
+
+
+IMPORT_BATCH = """async (source) => {
+  const core = await import('/static/js/core.js');
+  const fd = new FormData();
+  fd.append('source', source); fd.append('target', 'Legacy/Smoke'); fd.append('groups', 'cad2d');
+  const r = await core.upload('/api/import/start', fd);
+  for (let i = 0; i < 300; i++) {
+    const j = (await core.get(`/api/import/jobs/${r.job.id}`)).job;
+    if (j.status !== 'running') return j;
+    await new Promise(res => setTimeout(res, 100));
+  }
+  return null;
+}"""
+
+
+def check_legacy_batch(page, errors: list[str]) -> None:
+    """A small legacy import: its review grid, a row confirmed, the count check that adds up."""
+    src = Path(tempfile.mkdtemp(prefix="kosha-smoke-legacy-"))
+    try:
+        (src / "SM-100-001 Plate.dxf").write_bytes(b"0\nSECTION\n2\nENTITIES\n0\nENDSEC\n0\nEOF\n")
+        (src / "notes.dxf.bak").write_bytes(b"junk")
+        job = page.evaluate(IMPORT_BATCH, str(src))
+        if not job or job["status"] != "done":
+            errors.append(f"the smoke legacy import did not finish: {job}")
+            return
+        page.goto(f"{BASE}/#/legacy/{job['id']}?queue=")
+        page.wait_for_selector("#legacy-grid tbody tr", timeout=15000)
+        page.wait_for_selector("#legacy-check >> text=Every file is accounted for", timeout=10000)
+        page.click("#legacy-grid tbody tr >> button:has-text('Confirm')")
+        page.wait_for_selector("#legacy-grid >> text=Confirmed by", timeout=10000)
+    except Exception as e:
+        errors.append(f"the legacy batch screen did not work: {e}")
+    finally:
+        shutil.rmtree(src, ignore_errors=True)
 
 
 def check_language(page, errors: list[str]) -> None:

@@ -24,6 +24,7 @@
 - [`transmittals.md`](transmittals.md): vendor packages and transmittals, Pack and Go, projects from ERP sales orders.
 - [`language-and-locale.md`](language-and-locale.md): Hinglish search, ₹ lakh and Indian dates, screen languages, F1 help.
 - [`shop-floor-and-learning.md`](shop-floor-and-learning.md): shop view and QR labels, the first-login tour, the practice folder.
+- [`legacy-migration.md`](legacy-migration.md): import batches, quality queues and the review grid, Excel round-trip, old paths and numbers, count check, sample audit, sign-off and Undo batch.
 - [`workbench.md`](workbench.md): Ctrl+K, favourites, saved views, pinned pages, Undo, accent colour and text size.
 - [`erp-extended.md`](erp-extended.md): HSN, OEM and status to the ERP, drawings attached to ERP items, orders and customers in, retries and the nightly check.
 - [`programs-and-events.md`](programs-and-events.md): API keys for programs, webhooks, and live updates on open screens.

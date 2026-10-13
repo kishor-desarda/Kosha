@@ -186,6 +186,12 @@ async function outputsTab(c, d) {
 }
 
 function historyTab(c, d) {
+  const refs = d.legacy_refs || [];
+  if (refs.length) {   // where the file was before Kosha: old paths and numbers stay searchable
+    c.appendChild(h('div', { class: 'banner info', id: 'legacy-refs', style: { marginBottom: '12px' } }, icon('info'), h('div', null,
+      h('b', null, 'Before Kosha'), h('ul', { class: 'small', style: { margin: '4px 0 0', paddingLeft: '16px' } },
+        refs.map(r => h('li', null, r.kind === 'path' ? 'Old path: ' : 'Old number: ', h('span', { class: 'mono' }, r.value)))))));
+  }
   c.appendChild(h('div', { class: 'timeline' }, d.events.map(e => h('div', { class: 'tl' }, h('span', { class: `dot ${e.to_state}` }),
     h('div', null, h('div', null, h('b', null, `Revision ${e.revision}: ${({ in_work: 'In work', in_review: 'In review', released: 'Released', spares_only: 'Spares only', obsolete: 'Obsolete' })[e.to_state]}`),
       e.change_number ? [' · ', h('a', { href: `#/change/${e.change_order_id}` }, e.change_number)] : null),
