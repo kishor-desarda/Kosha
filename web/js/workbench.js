@@ -20,7 +20,7 @@ export function loadWorkbench() {
   return ready;
 }
 async function fetchWorkbench() {
-  try { S.wb = await get('/api/me/workbench'); } catch (e) { S.wb = { favourites: [], views: [], prefs: { accent: 'blue', text_size: 100, pins: [] } }; }
+  try { S.wb = await get('/api/me/workbench'); } catch (e) { S.wb = { favourites: [], views: [], prefs: { accent: 'blue', text_size: 100, pins: [], tour_done: true } }; }
   applyPrefs(S.wb.prefs);
   drawStrip();
 }

@@ -190,6 +190,10 @@ def run_job(job_id: int) -> dict:
     job = db.one("SELECT * FROM erp_jobs WHERE id = ?", (job_id,))
     if not job:
         return {}
+    from . import practice
+    if practice.erp_job_is_practice(job["kind"], job["entity_id"]):
+        _finish(job_id, "skipped", {}, "A practice part (Training — safe to try): never sent to the ERP.")
+        return db.one("SELECT * FROM erp_jobs WHERE id = ?", (job_id,))
     cfg = settings()
     db.update("erp_jobs", job_id, {"status": "running", "attempts": job["attempts"] + 1, "updated_at": db.now()})
     try:

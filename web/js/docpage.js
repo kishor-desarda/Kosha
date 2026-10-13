@@ -267,6 +267,7 @@ export async function renderItem(container, [id], _p, { setTitle }) {
       h('div', { class: 'page-head' }, h('div', { style: { flex: 1 } }, h('div', { class: 'small muted' }, 'Part'),
         h('h1', { class: 'mono' }, it.part_number, ' ', favButton('item', it.id)), h('div', { class: 'sub' }, it.description),
         h('div', { class: 'row', style: { marginTop: '8px' } }, stateChip(it.state), h('span', { class: 'muted' }, `Revision ${it.revision} · ${it.item_type} · ${it.make_buy}`), ...itemBadges(r))),
+      S.user.kind === 'vendor' ? null : h('button', { class: 'btn', id: 'item-qr', title: 'A QR code for the job card or nameplate; scanning it opens the released drawing in the shop view', onclick: () => import('./shop.js').then(m => m.qrLabelDialog(it)).catch(fail) }, icon('qr', 16), 'Print QR label'),
       can('engineer') ? h('button', { class: 'btn', title: 'Start a new design from this one, with new part numbers', onclick: () => import('./copydesign.js').then(m => m.copyDesignDialog({ item_id: it.id })).catch(fail) }, icon('copy', 16), 'Copy design…') : null,
       can('approver') ? h('div', { class: 'row' },
         h('button', { class: 'btn primary', onclick: () => erpPush('item', it.id, load) }, icon('erp', 16), `Send to ${S.erp}`),

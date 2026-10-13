@@ -408,6 +408,7 @@ table.tbl { width: 100%; border-collapse: collapse; }
 .banner.info { background: var(--info-bg); border-color: var(--info-line); }
 .banner.ok { background: var(--ok-soft); border-color: var(--ok-line); }
 .banner.err { background: var(--err-bg); border-color: var(--err-line); color: var(--err); }
+.banner.warn { background: var(--warn-bg); border-color: var(--warn); }
 .banner svg { flex: none; margin-top: 2px; }
 
 /* ------------------------------------------------------------ explorer */
@@ -711,3 +712,21 @@ dialog.palette { width: min(640px, 94vw); margin-top: 12vh; }
   .palette-item .sub { display: none; }
   .topbar .kbd { display: none; }
 }
+
+/* ------------------------------------------------------------ shop view (large, read-only, for tablets and big screens) */
+.shop .shop-bar { gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+.shop .shop-input { font-size: 22px; min-height: 52px; flex: 1 1 260px; max-width: 520px; }
+.btn.lg { min-height: 52px; padding: 0 18px; font-size: 16px; }
+.shop-head { display: flex; flex-direction: column; gap: 6px; }
+.shop-pn { font-size: 34px; font-weight: 700; }
+.shop-desc { font-size: 20px; }
+.shop-rev { font-size: 20px; font-weight: 700; margin-right: 8px; }
+.shop-drawing { display: block; width: 100%; height: auto; max-height: 80vh; object-fit: contain; background: var(--panel); }
+.shop-camera { width: 100%; max-width: 480px; border-radius: 7px; background: var(--ink); }
+
+/* ------------------------------------------------------------ first-login tour (never blocks the page) */
+.tour { position: fixed; right: 18px; bottom: 18px; width: min(360px, calc(100vw - 36px)); z-index: 40; background: var(--panel);
+  border: 1px solid var(--accent-line); border-radius: 10px; box-shadow: var(--shadow); padding: 14px 16px; }
+.tour h2 { font-size: 16px; margin: 0 0 6px; }
+.tour p { margin: 0 0 10px; line-height: 1.5; }
+.tour .tour-step { font-size: 12px; color: var(--muted); }

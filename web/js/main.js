@@ -24,6 +24,8 @@ import { renderAsk, askEntry } from './ai.js';
 import { loadWorkbench, openPalette, pinStrip, recordRecent, setScreens } from './workbench.js';
 import { loadLocale, t } from './locale.js';
 import { helpDialog, languageDialog } from './help.js';
+import { renderShop } from './shop.js';
+import { maybeStartTour, startTour } from './tour.js';
 
 const NAV_KEY = { home: 'nav.home', kosha: 'nav.explorer', inputs: 'nav.inputs', boms: 'nav.boms', changes: 'nav.changes',
   deviations: 'nav.deviations', erp: 'nav.erp', common: 'nav.duplicates', library: 'nav.library', projects: 'nav.my_projects' };
@@ -73,6 +75,7 @@ const ROUTES = [
   [/^#\/projects$/, 'inputs', () => renderProjects],
   [/^#\/project\/(\d+)$/, 'inputs', () => renderProject],
   [/^#\/ask$/, 'search', () => renderAsk],
+  [/^#\/shop$/, 'search', () => renderShop],
 ];
 
 const root = document.getElementById('app');
@@ -124,6 +127,7 @@ function buildShell() {
       ...(can('approver') || can('quality') ? [{ label: t('menu.standin', 'Stand-in while I am away'), icon: 'users', run: delegateDialog }] : []),
       { label: `${t('menu.theme', 'Theme')}: ${themeLabel(currentTheme())}`, icon: 'theme', run: themeDialog },
       { label: t('menu.language', 'Language'), icon: 'info', run: languageDialog },
+      ...(isVendor() ? [] : [{ label: t('menu.tour', 'Take the tour'), icon: 'play', run: () => startTour().catch(fail) }]),
       { label: t('menu.password', 'Change password'), icon: 'checkout', run: changePassword },
       ...(can('engineer') && S.user.kind !== 'vendor' ? [{ label: t('menu.shares', 'My share links'), icon: 'link', run: () => { location.hash = '#/shares'; } }, { label: t('menu.transmittals', 'Transmittals'), icon: 'external', run: () => { location.hash = '#/transmittals'; } }] : []),
       { label: t('menu.twostep', 'Two-step sign-in'), icon: 'checkin', run: () => import('./twostep.js').then(m => m.twoStepDialog()).catch(fail) },
@@ -148,7 +152,9 @@ function buildShell() {
   const list = (isVendor() ? VENDOR_NAV : NAV).map(([key, label, ic, href]) => [t(NAV_KEY[key], label), ic, href]);
   if (S.user.role === 'admin' || S.user.role === 'approver') list.push([t('nav.admin', 'Admin'), 'admin', '#/admin']);
   if (can('engineer') && !isVendor()) list.push(['Transmittals', 'external', '#/transmittals'], ['My share links', 'link', '#/shares'], ['Machines', 'cube', '#/machines'], ['Change requests', 'change', '#/ecrs'], ['Projects', 'layers', '#/projects'], ['Recycle bin', 'trash', '#/bin']);
+  if (!isVendor()) list.push([t('shop.title', 'Shop view'), 'qr', '#/shop']);
   setScreens(list);
+  maybeStartTour();
 }
 
 // The workbench (language, favourites) and the locale load before the shell is drawn, so its words are right at once.
@@ -336,7 +342,7 @@ async function route() {
   }
   // changing the hash routes again and draws the sign-in form then; drawing it here as well made it appear twice,
   // and what someone typed into the first one was lost
-  if (!S.token) { if (hash !== '#/login') location.hash = '#/login'; else renderLogin(); return; }
+  if (!S.token) { document.getElementById('tour')?.remove(); if (hash !== '#/login') location.hash = '#/login'; else renderLogin(); return; }
   if (hash === '#/login') { location.hash = homeRoute(); return; }
   if (!S.user) {
     try {

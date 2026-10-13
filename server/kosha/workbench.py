@@ -156,6 +156,8 @@ def save_prefs(user_id: int, body: dict) -> dict:
         if body["language"] not in {lang["code"] for lang in languages()}:
             raise bad("Choose one of the languages Kosha has a translation for.")
         cur["language"] = body["language"]
+    if "tour_done" in body:
+        cur["tour_done"] = bool(body["tour_done"])
     if "pins" in body:
         pins = body["pins"]
         if not isinstance(pins, list):

@@ -42,7 +42,7 @@ SCREENS = ["#/home", "#/files", "#/boms", "#/changes", "#/erp", "#/common", "#/a
            "#/ecrs", "#/ecr/1", "#/change/1", "#/admin?tab=approvals",
            "#/admin?tab=webhooks", "#/bin", "#/shares", "#/doc/1?tab=outputs",
            "#/machines", "#/bom-view/1?view=in_work&cost=1", "#/transmittals", "#/erp?tab=orders",
-           "#/erp?tab=mapping"]
+           "#/erp?tab=mapping", "#/shop", "#/shop?pn=MX-100-020"]
 ADMIN_ONLY = ("#/admin", "#/erp?tab=")
 
 
@@ -194,6 +194,48 @@ def check_workbench(page, errors: list[str]) -> None:
         errors.append("a larger text size was not applied")
     page.evaluate("""async () => { const w = await import('/static/js/workbench.js'); await w.savePrefs({ text_size: 100, pins: [] }); }""")
     check_language(page, errors)
+    check_shop(page, errors)
+
+
+def close_first_tour(page, user: str, errors: list[str]) -> None:
+    """The first sign-in starts the tour in a corner; closing it is remembered (it would cover the corner)."""
+    try:
+        page.wait_for_selector("#tour", timeout=10000)
+        page.click("#tour-next")
+        page.wait_for_selector("#tour >> text=Step 2", timeout=5000)
+        page.click("#tour-close")
+    except Exception as e:
+        errors.append(f"{user}: the first-login tour did not show or close: {e}")
+    if not wait_until(page, "!document.querySelector('#tour')"):
+        errors.append(f"{user}: the tour stayed open")
+
+
+def check_shop(page, errors: list[str]) -> None:
+    """The shop view shows the released drawing large; the part page offers its QR label; the tour starts again."""
+    page.goto(f"{BASE}/#/shop?pn=MX-100-020")
+    try:
+        page.wait_for_selector("#shop-result .shop-pn", timeout=15000)
+        page.wait_for_selector("#shop-result img.shop-drawing", timeout=15000)
+        if not wait_until(page, "[...document.querySelectorAll('img.shop-drawing')].some(i => i.complete && i.naturalWidth > 0)"):
+            errors.append("the shop view's drawing did not load")
+    except Exception as e:
+        errors.append(f"the shop view did not show the released drawing: {e}")
+    page.goto(f"{BASE}/#/item/1")
+    try:
+        page.click("#item-qr", timeout=15000)
+        page.wait_for_selector("dialog[open] img#qr-label", timeout=10000)
+        if not wait_until(page, "document.querySelector('img#qr-label').naturalWidth > 0"):
+            errors.append("the QR label picture did not load")
+    except Exception as e:
+        errors.append(f"the QR label did not open: {e}")
+    page.keyboard.press("Escape")
+    page.click("button.avatar")
+    page.click(".ctxmenu >> text=Take the tour")
+    try:
+        page.wait_for_selector("#tour >> text=Find a drawing", timeout=10000)
+        page.click("#tour-close")
+    except Exception as e:
+        errors.append(f"Take the tour did not start the tour again: {e}")
 
 
 def check_language(page, errors: list[str]) -> None:
@@ -267,6 +309,7 @@ def main() -> int:
                 page.fill("input[type=password]", pw)
                 page.keyboard.press("Enter")
                 page.wait_for_selector("nav.rail", timeout=15000)
+                close_first_tour(page, user, errors)
                 if not wait_until(page, "window.koshaLive && window.koshaLive.readyState === 1"):
                     errors.append(f"{user}: the live updates connection did not open")
                 visit_screens(page, user, errors, dark=False)
