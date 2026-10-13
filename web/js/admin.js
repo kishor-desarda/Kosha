@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Administration (users, rules, audit) and global search results.
-import { S, h, mount, icon, get, post, put, patch, toast, fail, dialog, fmtDate, ago, tabs, stateChip, typeChip, thumb, can, upload } from './core.js';
+import { S, h, mount, icon, get, post, put, patch, toast, fail, dialog, fmtDate, ago, tabs, stateChip, typeChip, thumb, can, upload, newPassword, confirmDlg } from './core.js';
 import { addinsTab } from './addins.js';
+import { backupsTab, securityTab } from './admin_ops.js';
 
 export async function renderAdmin(container, _m, params, { setTitle }) {
   setTitle('Administration');
@@ -9,7 +10,8 @@ export async function renderAdmin(container, _m, params, { setTitle }) {
   const cleanups = [];
   const draw = async () => {
     while (cleanups.length) { try { cleanups.pop()(); } catch (e) { /* ignore */ } }
-    const items = S.user.role === 'admin' ? [['users', 'Users'], ['import', 'Import legacy data'], ['rules', 'Numbering & revisions'], ['cad', 'CAD conversion'], ['addins', 'Add-ins'], ['audit', 'Audit log']] : [['audit', 'Audit log']];
+    const items = S.user.role === 'admin' ? [['users', 'Users'], ['import', 'Import legacy data'], ['rules', 'Numbering & revisions'], ['cad', 'CAD conversion'], ['addins', 'Add-ins'],
+      ['security', 'Sign-in & sessions'], ['backups', 'Backups'], ['audit', 'Audit log']] : [['audit', 'Audit log']];
     const body = h('div', { class: 'panel-b' });
     mount(container, h('div', { class: 'page-pad' }, h('div', { class: 'page-head' }, h('h1', null, 'Administration')),
       h('div', { class: 'panel' }, tabs(items, tab, k => { tab = k; draw(); }), body)));
@@ -18,6 +20,8 @@ export async function renderAdmin(container, _m, params, { setTitle }) {
     if (tab === 'rules') await rules(body);
     if (tab === 'cad') await cad(body);
     if (tab === 'addins') await addinsTab(body);
+    if (tab === 'security') await securityTab(body);
+    if (tab === 'backups') await backupsTab(body);
     if (tab === 'audit') await audit(body);
   };
   await draw();
@@ -133,12 +137,13 @@ async function users(body, draw) {
         h('td', null, h('span', { class: `chip ${u.active ? 'st-released' : 'st-obsolete'}` }, u.active ? 'Active' : 'Disabled')),
         h('td', { class: 'nowrap' }, h('div', { class: 'row' },
           h('button', { class: 'btn sm', onclick: () => resetPw(u) }, 'Reset password'),
+          h('button', { class: 'btn sm', title: 'End all sessions of this user, in browsers and CAD add-ins. They can sign in again at once.', onclick: () => signOutEverywhere(u) }, 'Sign out everywhere'),
           u.id !== S.user.id ? h('button', { class: 'btn sm', onclick: async () => { try { await patch(`/api/users/${u.id}`, { active: !u.active }); draw(); } catch (e) { fail(e); } } }, u.active ? 'Disable' : 'Enable') : null)))))));
 }
 
 function addUser(draw) {
   const f = { username: h('input', { class: 'input', id: 'nu-u' }), full_name: h('input', { class: 'input', id: 'nu-n' }), email: h('input', { class: 'input', id: 'nu-e', type: 'email' }),
-    password: h('input', { class: 'input', id: 'nu-p', type: 'text', value: Math.random().toString(36).slice(2, 10) + 'A1' }),
+    password: h('input', { class: 'input', id: 'nu-p', type: 'text', value: newPassword() }),
     role: h('select', { class: 'input', id: 'nu-r' }, ['engineer', 'approver', 'viewer', 'admin'].map(x => h('option', { value: x }, x))),
     ui_mode: h('select', { class: 'input', id: 'nu-m' }, h('option', { value: 'guided' }, 'Guided (new users)'), h('option', { value: 'expert' }, 'Expert')) };
   const L = { username: 'User name', full_name: 'Full name', email: 'Email', password: 'Initial password', role: 'Role', ui_mode: 'Starts in' };
@@ -150,9 +155,18 @@ function addUser(draw) {
 }
 
 function resetPw(u) {
-  const p = h('input', { class: 'input', id: 'rp', value: Math.random().toString(36).slice(2, 10) + 'A1' });
-  dialog({ title: `Reset password for ${u.full_name}`, body: h('div', { class: 'field' }, h('label', { for: 'rp' }, 'New password'), p),
-    actions: [{ label: 'Cancel' }, { label: 'Reset', primary: true, onClick: async () => { await patch(`/api/users/${u.id}`, { password: p.value }); toast('Password reset', 'ok'); } }] });
+  const p = h('input', { class: 'input', id: 'rp', value: newPassword() });
+  dialog({ title: `Reset password for ${u.full_name}`, body: h('div', { class: 'field' }, h('label', { for: 'rp' }, 'New password'), p,
+    h('span', { class: 'hint' }, 'At least 10 characters. Resetting the password also signs this user out everywhere.')),
+  actions: [{ label: 'Cancel' }, { label: 'Reset', primary: true, onClick: async () => { await patch(`/api/users/${u.id}`, { password: p.value }); toast(`Password reset. Tell ${u.full_name} the new password.`, 'ok'); } }] });
+}
+
+async function signOutEverywhere(u) {
+  if (!await confirmDlg(`Sign ${u.full_name} out everywhere?`, `This ends every session of ${u.full_name} in browsers and CAD add-ins. Unsaved work in Kosha forms is lost; files and check-outs are safe. They can sign in again at once.`, 'Sign out everywhere')) return;
+  try {
+    const r = await post(`/api/users/${u.id}/sign-out-everywhere`);
+    toast(`${r.sessions_ended} session${r.sessions_ended === 1 ? '' : 's'} ended.`, 'ok');
+  } catch (e) { fail(e); }
 }
 
 async function rules(body) {

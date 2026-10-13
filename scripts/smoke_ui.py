@@ -30,7 +30,8 @@ def _free_port() -> int:
 
 PORT = _free_port()   # parallel runs never collide
 BASE = f"http://127.0.0.1:{PORT}"
-SCREENS = ["#/home", "#/files", "#/boms", "#/changes", "#/erp", "#/common", "#/admin", "#/search?q=MX-100"]
+SCREENS = ["#/home", "#/files", "#/boms", "#/changes", "#/erp", "#/common", "#/admin", "#/admin?tab=backups",
+           "#/admin?tab=security", "#/search?q=MX-100"]
 
 
 def main() -> int:
@@ -52,7 +53,9 @@ def main() -> int:
             page.on("pageerror", lambda e: errors.append(f"script error: {e}"))
             page.on("console", lambda m: errors.append(f"console {m.type}: {m.text}") if m.type == "error" else None)
             for user, pw in (("asha", "demo-kosha-1"), ("admin", "admin-smoke-1")):
-                page.goto(BASE + "/#/login")
+                resp = page.goto(BASE + "/#/login")   # None when only the #hash changed
+                if resp is not None and "script-src 'self'" not in (resp.headers.get("content-security-policy") or ""):
+                    errors.append("the page has no Content-Security-Policy; CSP violations would go unnoticed")
                 page.evaluate("localStorage.clear(); sessionStorage.clear()")
                 page.reload()
                 page.wait_for_selector("input[type=password]", timeout=15000)
@@ -61,7 +64,7 @@ def main() -> int:
                 page.keyboard.press("Enter")
                 page.wait_for_selector("nav.rail", timeout=15000)
                 for hash_ in SCREENS:
-                    if hash_ == "#/admin" and user != "admin":
+                    if hash_.startswith("#/admin") and user != "admin":
                         continue
                     page.goto(BASE + "/" + hash_)
                     try:   # each screen shows its title in the top bar once it has loaded

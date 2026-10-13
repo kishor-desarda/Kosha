@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+[Unit]
+Description=Kosha monthly restore test (restores the nightly backup into a temporary folder and checks every file)
+After=kosha-backup.service
+
+[Service]
+Type=oneshot
+User=kosha
+Group=kosha
+WorkingDirectory=/opt/kosha/server
+EnvironmentFile=/etc/kosha/kosha.env
+# The temporary restore needs as much free space as the backup; it is removed when the test ends.
+ExecStart=/opt/kosha/venv/bin/python -m kosha.backup --verify /var/lib/kosha/backups/nightly --work /var/lib/kosha/restore-test
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/kosha

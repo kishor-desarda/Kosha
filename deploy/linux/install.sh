@@ -42,7 +42,9 @@ ln -sf "$ETC/kosha.env" "$APP/server/kosha.env"
 install -m 0644 "$APP/deploy/linux/kosha.service" /etc/systemd/system/kosha.service
 install -m 0644 "$APP/deploy/linux/kosha-backup.service" /etc/systemd/system/kosha-backup.service
 install -m 0644 "$APP/deploy/linux/kosha-backup.timer" /etc/systemd/system/kosha-backup.timer
+install -m 0644 "$APP/deploy/linux/kosha-restore-test.service" /etc/systemd/system/kosha-restore-test.service
+install -m 0644 "$APP/deploy/linux/kosha-restore-test.timer" /etc/systemd/system/kosha-restore-test.timer
 systemctl daemon-reload
-systemctl enable --now kosha.service kosha-backup.timer
+systemctl enable --now kosha.service kosha-backup.timer kosha-restore-test.timer
 systemctl restart kosha.service
 echo "Kosha is running on 127.0.0.1:8080. Put an HTTPS front end in front of it (see deploy/linux/Caddyfile.example)."
