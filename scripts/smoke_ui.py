@@ -172,6 +172,10 @@ def choose_theme(page, theme: str, errors: list[str]) -> None:
     page.click("dialog[open] .dlg-f >> text=Done")
     if not wait_until(page, f"document.documentElement.dataset.theme === '{theme}'"):
         errors.append(f"choosing the {theme} theme in the account menu did not apply it")
+    # the choice is saved with the account in the background; a reload before that answer arrives would read the
+    # old choice back from the server
+    if not wait_until(page, "window.__koshaPending === 0"):
+        errors.append(f"saving the {theme} theme with the account did not finish")
 
 
 def main() -> int:
@@ -197,6 +201,7 @@ def main() -> int:
                 resp = page.goto(BASE + "/#/login")   # None when only the #hash changed
                 if resp is not None and "script-src 'self'" not in (resp.headers.get("content-security-policy") or ""):
                     errors.append("the page has no Content-Security-Policy; CSP violations would go unnoticed")
+                wait_until(page, "window.__koshaPending === 0")     # nothing of the last person still on its way
                 page.evaluate("localStorage.clear(); sessionStorage.clear()")
                 page.reload()
                 page.wait_for_selector("input[type=password]", timeout=15000)
