@@ -6,7 +6,7 @@ import json
 
 from starlette.responses import Response
 
-from .. import access, addins, boms, changes, db, erp, itemmaster, lifecycle, similarity
+from .. import access, addins, apisafety, boms, changes, db, erp, itemmaster, lifecycle, similarity
 from ..cad import process as cadproc
 from ..web import Req, api, as_bool, bad, conflict, not_found
 from ..packs import PackConfig
@@ -22,7 +22,25 @@ ITEM_EDITABLE = ("description", "material", "uom", "make_buy", "weight_kg", "ite
 @api("GET", "/api/items")
 def items(req: Req):
     q = (req.q("q") or "").strip()
-    limit = min(int(req.q("limit", 100)), 1000)
+    paged, after, limit = apisafety.cursor_args(req, 100)
+    if paged:       # programs reading every part: newest first, page by page (?cursor=)
+        sql = "SELECT * FROM items i WHERE 1 = 1" + access.scope().items()
+        params: list = []
+        if q:
+            sql += " AND (part_number LIKE ? OR description LIKE ?)"
+            params += [f"%{q}%"] * 2
+        for f in ("state", "item_type", "family"):
+            if req.q(f):
+                sql += f" AND {f} = ?"
+                params.append(req.q(f))
+        if req.q("category"):
+            sql += " AND part_number LIKE ?"
+            params.append(req.q("category").upper() + "-%")
+        if after is not None:
+            sql += " AND id < ?"
+            params.append(after)
+        rows, nxt = apisafety.next_cursor(db.rows(sql + " ORDER BY id DESC LIMIT ?", [*params, limit + 1]), limit)
+        return {"items": rows, "next_cursor": nxt}
     if q:
         # an OEM part number or the customer's part number finds the company's part as well
         rows = db.rows("SELECT * FROM items i WHERE (part_number LIKE ? OR description LIKE ? OR customer_part_number "
@@ -88,6 +106,7 @@ def update_item(req: Req):
     if not it:
         raise not_found("Item not found")
     access.check_item(iid)
+    apisafety.guard(req, "items", iid, it["part_number"])
     body = req.body if isinstance(req.body, dict) else {}
     upd = {}
     for k in ITEM_EDITABLE:
@@ -110,8 +129,10 @@ def update_item(req: Req):
             raise conflict("Released items can only have description, material and unit changed by an approver "
                            "or through a new revision.")
     upd["updated_at"] = db.now()
-    db.update("items", iid, upd)
-    db.audit(req.uid, "item_update", "item", iid, ",".join(upd))
+    with db.tx():
+        db.update("items", iid, upd)
+        apisafety.bump("items", iid, req.uid)
+        db.audit(req.uid, "item_update", "item", iid, ",".join(upd))
     return {"item": db.one("SELECT * FROM items WHERE id = ?", (iid,))}
 
 
@@ -155,7 +176,10 @@ def put_lines(req: Req):
     lines = (req.body or {}).get("lines") if isinstance(req.body, dict) else None
     if lines is None:
         raise bad("lines are required")
+    apisafety.guard(req, "boms", bid, "this BOM")
     boms.set_lines(req.uid, bid, lines)
+    with db.tx():
+        apisafety.bump("boms", bid, req.uid)
     return get_bom(req)
 
 
@@ -232,10 +256,22 @@ def where_used(req: Req):
 def list_changes(req: Req):
     st = req.q("state")
     names = lifecycle.user_names()
+    paged, after, limit = apisafety.cursor_args(req, 500)
+    where, params = [], []
+    if st:
+        where.append("c.state = ?")
+        params.append(st)
+    if after is not None:
+        where.append("c.id < ?")
+        params.append(after)
     rows = db.rows("SELECT c.*, (SELECT COUNT(*) FROM co_items WHERE co_id = c.id) AS items FROM change_orders c" +
-                   (" WHERE c.state = ?" if st else "") + " ORDER BY c.id DESC LIMIT 500", (st,) if st else ())
+                   (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY c.id DESC LIMIT ?",
+                   [*params, limit + 1 if paged else limit])
     for r in rows:
         r["requested_by_name"] = names.get(r["requested_by"], "?")
+    if paged:
+        rows, nxt = apisafety.next_cursor(rows, limit)
+        return {"changes": rows, "next_cursor": nxt}
     return {"changes": rows}
 
 
@@ -255,7 +291,10 @@ def get_change(req: Req):
 @api("PATCH", "/api/changes/{id:int}", role="engineer")
 def patch_change(req: Req):
     cid = req.int_param("id")
+    apisafety.guard(req, "change_orders", cid, changes.co_or_404(cid)["number"])
     changes.update(req.user, cid, req.body if isinstance(req.body, dict) else {})
+    with db.tx():
+        apisafety.bump("change_orders", cid, req.uid)
     return changes.detail(cid, req.user)
 
 

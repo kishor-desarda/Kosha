@@ -235,7 +235,9 @@ async function route() {
   document.querySelectorAll('dialog[open]').forEach(d => { d.close(); d.remove(); });
   const hash = location.hash || '#/home';
   if (await returnFromSso(hash)) return;
-  if (!S.token) { if (hash !== '#/login') location.hash = '#/login'; renderLogin(); return; }
+  // changing the hash routes again and draws the sign-in form then; drawing it here as well made it appear twice,
+  // and what someone typed into the first one was lost
+  if (!S.token) { if (hash !== '#/login') location.hash = '#/login'; else renderLogin(); return; }
   if (hash === '#/login') { location.hash = homeRoute(); return; }
   if (!S.user) {
     try {

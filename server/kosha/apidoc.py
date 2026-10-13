@@ -104,8 +104,14 @@ def openapi(routes) -> dict:
         "info": {"title": "Kosha API", "version": __version__,
                  "description": "REST API of the Kosha PLM server. Sign in with POST /api/auth/login and send the "
                                 "token as `Authorization: Bearer <token>`. `x-kosha-role` is the lowest role that "
-                                "may call an operation (viewer < engineer < approver < admin). Errors are JSON: "
-                                "`{\"error\": \"plain message\", \"code\": \"...\"}`.",
+                                "may call an operation (viewer < engineer < approver < admin). Every path also "
+                                "works under /api/v1/ (for example /api/v1/items), the versioned form programs "
+                                "should use. Errors are JSON: `{\"error\": \"plain message\", \"code\": "
+                                "\"...\", \"request_id\": \"...\"}`; the request ID is also in the X-Request-ID "
+                                "header and the server log. Updates may send If-Match with the record's "
+                                "row_version (412 when someone changed it meanwhile); POST may send an "
+                                "Idempotency-Key (a repeat returns the first answer); long lists page with "
+                                "?cursor= and next_cursor; too many calls a minute answer 429 with Retry-After.",
                  "license": {"name": "AGPL-3.0-or-later", "identifier": "AGPL-3.0-or-later"}},
         "servers": [{"url": "/"}],
         "tags": [{"name": t, "description": AREAS.get(t, t.replace("-", " ").capitalize())} for t in tags],

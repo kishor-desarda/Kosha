@@ -151,7 +151,7 @@ class KoshaServer:
             self.database_url = create_test_database()
             extra["KOSHA_DATABASE_URL"] = self.database_url
         env = dict(os.environ, KOSHA_DATA_DIR=str(self.data_dir / "data"), KOSHA_ADMIN_PASSWORD=ADMIN_PASSWORD,
-                   KOSHA_DISABLE_WORKER="1", KOSHA_HOST="127.0.0.1", KOSHA_PORT=str(self.port))
+                   KOSHA_DISABLE_WORKER="1", KOSHA_API_RATE_LIMIT_PER_MINUTE="0", KOSHA_HOST="127.0.0.1", KOSHA_PORT=str(self.port))
         env.update(extra)     # a test may override any of the above; the PostgreSQL URL comes in here too
         cmd = [sys.executable, "-m", "kosha"] + (["--demo"] if self.demo else [])
         self._logf = open(self.log, "wb")

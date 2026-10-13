@@ -134,10 +134,14 @@ def api(method: str, path: str, role: str | None = "viewer", auth: bool = True):
 
     def deco(fn: Callable[[Req], Any]):
         async def endpoint(request: Request) -> Response:
+            from . import apisafety
             form = None
+            idem = None         # (user id, Idempotency-Key) while this request holds the key
             try:
                 # in a worker thread: checking the session may write (last activity), which must never block the loop
                 user = await run_in_threadpool(_authenticate, request) if auth else None
+                client = request.client.host if request.client else "?"
+                await run_in_threadpool(apisafety.check_rate, f"u{user['id']}" if user else f"ip{client}")
                 if auth and user is None:
                     raise ApiError(401, "Please sign in.", "unauthorized")
                 if user is not None and user.get("kind") == "vendor" and not _vendor_may(method, path):
@@ -169,6 +173,14 @@ def api(method: str, path: str, role: str | None = "viewer", auth: bool = True):
                 req = Req(request, user, dict(request.path_params), dict(request.query_params), body, form, files)
                 if role and auth:
                     req.require(role)
+                key = request.headers.get("idempotency-key")
+                if key is not None and method == "POST" and user is not None:
+                    fp = await run_in_threadpool(apisafety.fingerprint, method, path, body, files)
+                    done = await run_in_threadpool(apisafety.begin, user["id"], key.strip(), method, path, fp)
+                    if done is not None:
+                        return JSONResponse(done["body"], status_code=done["status"],
+                                            headers={"Idempotent-Replayed": "true"})
+                    idem = (user["id"], key.strip())
                 if inspect.iscoroutinefunction(fn):
                     from .access import current
                     tok = current.set(user)
@@ -179,18 +191,29 @@ def api(method: str, path: str, role: str | None = "viewer", auth: bool = True):
                 else:
                     result = await run_in_threadpool(_run_sync, fn, req)
                 if isinstance(result, Response):
+                    if idem:
+                        await run_in_threadpool(apisafety.finish, *idem, 0, None)
                     return result
-                return JSONResponse(result if result is not None else {"ok": True})
+                payload = result if result is not None else {"ok": True}
+                if idem:
+                    await run_in_threadpool(apisafety.finish, *idem, 200, payload)
+                return JSONResponse(payload)
             except (ApiError, uploads.UploadRefused) as e:
+                if idem:
+                    await run_in_threadpool(apisafety.finish, *idem, e.status, None)
                 headers = {"Retry-After": str(e.extra["retry_after"])} if "retry_after" in e.extra else None
-                return JSONResponse({"error": e.message, "code": e.code, **e.extra}, status_code=e.status,
+                return JSONResponse(error_body(e.message, e.code, request, e.extra), status_code=e.status,
                                     headers=headers)
             except Exception:  # pragma: no cover - logged for admins with a reference the user can quote
+                if idem:
+                    await run_in_threadpool(apisafety.finish, *idem, 500, None)
                 ref = secrets.token_hex(3).upper()
-                log.error("Unhandled error ref %s on %s %s\n%s", ref, method, path, traceback.format_exc())
-                return JSONResponse({"error": "Something went wrong on our side. Your work is safe and nothing was "
-                                              f"changed. If it happens again, tell your admin: ref {ref}.",
-                                     "code": "server_error", "ref": ref}, status_code=500)
+                rid = apisafety.current_request_id(request)
+                log.error("Unhandled error ref %s (request %s) on %s %s\n%s", ref, rid, method, path,
+                          traceback.format_exc())
+                return JSONResponse(error_body("Something went wrong on our side. Your work is safe and nothing was "
+                                               f"changed. If it happens again, tell your admin: ref {ref}.",
+                                               "server_error", request, {"ref": ref}), status_code=500)
             finally:
                 if form is not None:
                     await form.close()
@@ -201,6 +224,12 @@ def api(method: str, path: str, role: str | None = "viewer", auth: bool = True):
         return fn
 
     return deco
+
+
+def error_body(message: str, code: str, request: Request | None = None, extra: dict | None = None) -> dict:
+    """Kosha's one error format: plain message, machine code, the request ID (also in the server log), details."""
+    from .apisafety import current_request_id
+    return {"error": message, "code": code, **(extra or {}), "request_id": current_request_id(request)}
 
 
 def _run_sync(fn, req):

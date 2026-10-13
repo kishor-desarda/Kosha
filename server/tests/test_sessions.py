@@ -56,7 +56,8 @@ def test_failed_sign_ins_pause_sign_in_without_revealing_who_exists(kosha):
     ip = "10.1.0.1"
     for _ in range(4):
         r = _login(kosha, "pia", "wrong-password-1", ip, expect=400)
-        assert r == {"error": "Wrong user name or password.", "code": "bad_login"}
+        assert {k: r[k] for k in ("error", "code")} == {"error": "Wrong user name or password.", "code": "bad_login"}
+        assert set(r) == {"error", "code", "request_id"}
     paused = _login(kosha, "PIA", "wrong-password-1", ip, expect=429)          # user names ignore case
     assert paused["code"] == "sign_in_paused" and 840 < paused["retry_after"] <= 900
     assert "try again in 15 minutes" in paused["error"] and "retry_at" in paused

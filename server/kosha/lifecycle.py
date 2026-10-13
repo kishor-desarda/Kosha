@@ -168,6 +168,8 @@ def _event(doc: dict, to_state: str, user_id, comment="", co_id=None, from_state
         "to_state": to_state, "user_id": user_id, "change_order_id": co_id,
         "comment": comment or "", "at": db.now(),
     })
+    from .apisafety import bump
+    bump("documents", doc["id"], user_id)        # a state change is a new version of the record (If-Match)
 
 
 def _link_item(part_number: str, description: str, dtype: str, user_id, material: str = "",

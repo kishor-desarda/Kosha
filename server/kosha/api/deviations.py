@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from starlette.responses import Response
 
-from .. import deviations, store
+from .. import apisafety, db, deviations, store
 from ..web import Req, api, bad, not_found
 from .files import SAFE_HEADERS, _disposition
 
@@ -72,7 +72,10 @@ def get_deviation(req: Req):
 
 @api("PATCH", "/api/deviations/{id:int}", role="engineer")
 def patch_deviation(req: Req):
+    apisafety.guard(req, "deviations", req.int_param("id"), "this deviation")
     deviations.update(req.user, req.int_param("id"), req.body if isinstance(req.body, dict) else {})
+    with db.tx():
+        apisafety.bump("deviations", req.int_param("id"), req.uid)
     return _detail(req)
 
 

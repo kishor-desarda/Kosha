@@ -2,7 +2,7 @@
 """Projects API: a light record (code, name, customer, status, dates) that inputs and parts belong to."""
 from __future__ import annotations
 
-from .. import db, projects
+from .. import apisafety, db, projects
 from ..inputs import library
 from ..web import Req, api, bad, not_found
 
@@ -45,7 +45,11 @@ def get_project(req: Req):
 
 @api("PATCH", "/api/projects/{id:int}", role="engineer")
 def update_project(req: Req):
+    apisafety.guard(req, "projects", req.int_param("id"), "this project")
     p = projects.update(req.user, req.int_param("id"), _body(req))
+    with db.tx():
+        apisafety.bump("projects", req.int_param("id"), req.uid)
+        p = projects.project_or_404(req.int_param("id"))
     return {"project": _out(req.user, p)}
 
 

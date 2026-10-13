@@ -9,6 +9,7 @@ One connection per thread. Modules write SQL the SQLite way (``?`` place holders
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import threading
 from contextlib import contextmanager
@@ -321,6 +322,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     # spares only and obsolete are decided through a change order
     "obsolete_needs_change_order": True,
     "company_name": "",
+    # calls each account (or address, before sign-in) may make per minute through the API; 0 = no limit
+    "api_rate_limit_per_minute": int(os.environ.get("KOSHA_API_RATE_LIMIT_PER_MINUTE") or 1200),
     # Theme of the web client for people who have not chosen one: system (same as their computer), light, dark
     # or contrast.
     "default_theme": "system",
