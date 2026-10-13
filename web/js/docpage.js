@@ -8,6 +8,7 @@ import { openViewer } from './viewer.js';
 import { mountRecordPanels } from './deviations.js';
 import { classifyBox } from './ai.js';
 import { itemBadges, masterPanel, oemPanel } from './itemmaster.js';
+import { favButton } from './workbench.js';
 
 const changed = () => window.dispatchEvent(new Event('kosha:changed'));
 
@@ -42,7 +43,7 @@ export async function renderDoc(container, [id], params, { setTitle }) {
         d.preview_kind ? h('img', { src: fileUrl(d.id, 'preview', d.version), alt: '', style: { maxHeight: '140px' } }) : icon('file', 40)),
       h('div', { style: { flex: 1, minWidth: '280px' } },
         h('div', { class: 'small muted' }, d.path.map(p => p.name).join(' › ')),
-        h('h1', { style: { margin: '4px 0', overflowWrap: 'anywhere' } }, d.filename),
+        h('h1', { style: { margin: '4px 0', overflowWrap: 'anywhere' } }, d.filename, ' ', favButton('doc', d.id)),
         h('div', { class: 'row wrap' }, typeChip(d.ext), d.part_number ? h('span', { class: 'mono' }, d.part_number) : null,
           h('span', null, d.description), h('span', { class: 'muted' }, `· Rev ${d.revision} · v${d.version}`)),
         h('div', { style: { marginTop: '10px' } }, stepper(d.state)),
@@ -264,7 +265,7 @@ export async function renderItem(container, [id], _p, { setTitle }) {
     const editable = can('engineer');
     mount(container, h('div', { class: 'page-pad' },
       h('div', { class: 'page-head' }, h('div', { style: { flex: 1 } }, h('div', { class: 'small muted' }, 'Part'),
-        h('h1', { class: 'mono' }, it.part_number), h('div', { class: 'sub' }, it.description),
+        h('h1', { class: 'mono' }, it.part_number, ' ', favButton('item', it.id)), h('div', { class: 'sub' }, it.description),
         h('div', { class: 'row', style: { marginTop: '8px' } }, stateChip(it.state), h('span', { class: 'muted' }, `Revision ${it.revision} · ${it.item_type} · ${it.make_buy}`), ...itemBadges(r))),
       can('engineer') ? h('button', { class: 'btn', title: 'Start a new design from this one, with new part numbers', onclick: () => import('./copydesign.js').then(m => m.copyDesignDialog({ item_id: it.id })).catch(fail) }, icon('copy', 16), 'Copy design…') : null,
       can('approver') ? h('div', { class: 'row' },

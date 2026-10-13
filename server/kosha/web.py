@@ -267,6 +267,9 @@ VENDOR_PATHS = {
     ("GET", "/api/items/{id:int}"), ("GET", "/api/projects"), ("GET", "/api/projects/{id:int}"),
     ("GET", "/api/notifications"), ("GET", "/api/notifications/count"), ("POST", "/api/notifications/{id:int}/read"),
     ("POST", "/api/notifications/read-all"), ("GET", "/api/auth/password-rules"),
+    # their own workbench: favourites and pins resolve through the same access scope
+    ("GET", "/api/me/workbench"), ("PUT", "/api/me/prefs"), ("POST", "/api/me/favourites"),
+    ("DELETE", "/api/me/favourites/{kind}/{ref_id:int}"), ("POST", "/api/me/views"), ("DELETE", "/api/me/views/{id:int}"),
 }
 
 

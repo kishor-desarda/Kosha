@@ -2,6 +2,7 @@
 // Engineering BOMs: list, indented editor, validation, import, compare, ERP push.
 import { S, h, mount, clear, icon, get, post, put, toast, fail, dialog, confirmDlg, stateChip, ago, upload, can, debounce, drafts, draftBanner } from './core.js';
 import { bomDeviations, lineDeviationChips, mountRecordPanels } from './deviations.js';
+import { favButton } from './workbench.js';
 
 const changed = () => window.dispatchEvent(new Event('kosha:changed'));
 
@@ -94,7 +95,7 @@ export async function renderBom(container, [id], _p, { setTitle }) {
       data.revisions.map(r => h('option', { value: r.id, selected: r.id === b.id }, `Revision ${r.revision} (${r.state})`)));
     const head = h('div', { class: 'page-head' },
       h('div', { style: { flex: 1, minWidth: '300px' } }, h('div', { class: 'small muted' }, 'Engineering BOM'),
-        h('h1', null, h('a', { href: `#/item/${b.item_id}`, class: 'mono', style: { color: 'inherit', textDecoration: 'none' } }, b.part_number), ' ', h('span', { style: { fontWeight: 400 } }, b.description)),
+        h('h1', null, h('a', { href: `#/item/${b.item_id}`, class: 'mono', style: { color: 'inherit', textDecoration: 'none' } }, b.part_number), ' ', h('span', { style: { fontWeight: 400 } }, b.description), ' ', favButton('bom', b.id)),
         h('div', { class: 'row wrap', style: { marginTop: '8px' } }, revSel,
           h('span', { class: `chip st-${draft ? 'draft' : 'released'}` }, draft ? 'Draft — can be edited' : 'Released — locked'),
           h('span', { class: 'muted small' }, `Source: ${sourceLabel(b.source)} · updated ${ago(b.updated_at)}`),

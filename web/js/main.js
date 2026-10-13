@@ -21,6 +21,7 @@ import { renderInputs, renderInput, renderProjects, renderProject } from './inpu
 import { applyTheme, currentTheme, themeDialog, themeLabel } from './theme.js';
 import { providerChoices, finishSso, ssoErrorText } from './signin.js';
 import { renderAsk, askEntry } from './ai.js';
+import { loadWorkbench, openPalette, pinStrip, recordRecent } from './workbench.js';
 
 const NAV = [
   ['home', 'Home', 'home', '#/home'],
@@ -128,13 +129,19 @@ function buildShell() {
     askEntry(q),     // only when an administrator switched Ask Kosha on
     h('span', { class: 'spacer' }),
     h('div', { class: 'seg', role: 'group', 'aria-label': 'Interface mode' }, modeBtns),
+    h('button', { class: 'btn ghost sm', id: 'go-to', onclick: openPalette, title: 'Go to any screen, part, file, favourite or saved view' },
+      icon('command', 16), 'Go to', h('span', { class: 'kbd' }, 'Ctrl K')),
     notificationBell(), avatar);
   const page = h('main', { class: 'page', id: 'page', tabindex: '-1' });
-  const app = h('div', { class: 'app' }, rail, h('div', { class: 'main' }, top, page));
+  const app = h('div', { class: 'app' }, rail, h('div', { class: 'main' }, top, page, pinStrip()));
   mount(root, app);
   shell = { links, titleEl, page, modeBtns, q };
   setMode(S.mode, false);
   refreshBadges();
+  const list = (isVendor() ? VENDOR_NAV : NAV).map(([, label, ic, href]) => [label, ic, href]);
+  if (S.user.role === 'admin' || S.user.role === 'approver') list.push(['Admin', 'admin', '#/admin']);
+  if (can('engineer') && !isVendor()) list.push(['Transmittals', 'external', '#/transmittals'], ['My share links', 'link', '#/shares'], ['Machines', 'cube', '#/machines'], ['Change requests', 'change', '#/ecrs'], ['Projects', 'layers', '#/projects'], ['Recycle bin', 'trash', '#/bin']);
+  loadWorkbench(list);
 }
 
 async function refreshBadges() {
@@ -204,7 +211,7 @@ const LIVE_EVENTS = ['item.created', 'item.updated', 'file.checked_in', 'file.ch
   'revision.obsoleted', 'bom.released', 'ecr.raised', 'eco.submitted', 'eco.approved', 'eco.implemented',
   'deviation.approved', 'comment.added'];
 
-export function setTitle(t) { if (shell) shell.titleEl.textContent = t; document.title = `${t} — Kosha`; }
+export function setTitle(t) { if (shell) shell.titleEl.textContent = t; document.title = `${t} — Kosha`; recordRecent(location.hash, t); }
 
 function changePassword() {
   import('./core.js').then(({ dialog, h: hh, post: pp, toast: tt }) => {
@@ -351,6 +358,9 @@ async function route() {
 
 window.addEventListener('hashchange', route);
 document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'k' || e.key === 'K') && shell && S.wb) {
+    e.preventDefault(); openPalette(); return;
+  }
   if (e.key === '/' && shell && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
     e.preventDefault(); shell.q.focus(); shell.q.select();
   }

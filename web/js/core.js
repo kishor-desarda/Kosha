@@ -41,6 +41,9 @@ export function mount(el, ...children) { clear(el); return append(el, children);
 
 // ------------------------------------------------------------------ icons
 const P = {
+  star: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',
+  pin: '<path d="M9 3h6l-1 6 4 4H6l4-4z"/><path d="M12 13v8"/>',
+  command: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10l3 2-3 2M12 15h5"/>',
   home: '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>',
   kosha: '<path d="M3 6h6l2 2h10v11H3z"/>',
   folder: '<path d="M3 6h6l2 2h10v11H3z"/>',
@@ -130,10 +133,14 @@ export const STATE_PLAIN = {
   spares_only: 'Spares only — supplied as a spare, not for new machines',
   obsolete: 'Obsolete — do not use',
 };
+const STATE_ICON = { in_work: 'edit', in_review: 'review', released: 'check', spares_only: 'warn', obsolete: 'x' };
 export function stateChip(state, label) {
   const text = label || STATE_LABEL[state] || (state || '').replace(/_/g, ' ');
   const guided = S.mode === 'guided' && STATE_PLAIN[state] && label === undefined;
-  return h('span', { class: `chip st-${state}`, title: STATE_PLAIN[state] || '' }, guided ? STATE_PLAIN[state].split(' — ')[0] : text);
+  // a shape as well as a colour, so the state reads the same for people who do not tell the colours apart
+  const mark = STATE_ICON[state];
+  return h('span', { class: `chip st-${state}`, title: STATE_PLAIN[state] || '' }, mark ? icon(mark, 12, 'st-ic') : null,
+    guided ? STATE_PLAIN[state].split(' — ')[0] : text);
 }
 
 // ------------------------------------------------------------------ format
@@ -253,11 +260,16 @@ export function logout(expired) {
 
 // ------------------------------------------------------------------ feedback
 let toastBox;
-export function toast(msg, kind = '') {
+// undo: { label: 'Undo', run: async () => {...} } adds a button that reverses what was just done (it stays longer).
+export function toast(msg, kind = '', undo = null) {
   if (!toastBox) { toastBox = h('div', { class: 'toasts', role: 'status', 'aria-live': 'polite' }); document.body.appendChild(toastBox); }
-  const t = h('div', { class: `toast ${kind}` }, icon(kind === 'err' ? 'warn' : kind === 'ok' ? 'check' : 'info', 18), h('div', null, msg));
+  const t = h('div', { class: `toast ${kind}` }, icon(kind === 'err' ? 'warn' : kind === 'ok' ? 'check' : 'info', 18), h('div', null, msg),
+    undo ? h('button', { class: 'toast-undo', onclick: async e => {
+      e.target.disabled = true;
+      try { await undo.run(); t.remove(); } catch (x) { fail(x); e.target.disabled = false; }
+    } }, undo.label || 'Undo') : null);
   toastBox.appendChild(t);
-  setTimeout(() => t.remove(), kind === 'err' ? 8000 : 4000);
+  setTimeout(() => t.remove(), undo ? 10000 : kind === 'err' ? 8000 : 4000);
 }
 // Requests cut off because the page is closing or reloading are not errors the user needs to see.
 let leaving = false;

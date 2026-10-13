@@ -234,6 +234,51 @@
 }
 :root[data-theme="contrast"] .chip { box-shadow: inset 0 0 0 1px currentColor; }
 :root[data-theme="contrast"] :focus-visible { outline-width: 3px; }
+/* accent colour (Account menu › Theme); blue is the default above. High contrast keeps its own.
+   server/tests/test_workbench_ui.py checks every accent meets WCAG AA in light and dark. */
+:root[data-accent="teal"]:not([data-theme="contrast"]) {
+  --accent: #0F6E6E; --accent-hover: #0B5757; --accent-soft: #E3F3F2; --accent-line: #9FD3CF;
+}
+:root[data-accent="green"]:not([data-theme="contrast"]) {
+  --accent: #1D6B34; --accent-hover: #165428; --accent-soft: #E6F4EA; --accent-line: #A7D7B4;
+}
+:root[data-accent="purple"]:not([data-theme="contrast"]) {
+  --accent: #6B3FA0; --accent-hover: #55307F; --accent-soft: #F0EAF8; --accent-line: #C9B5E3;
+}
+:root[data-accent="orange"]:not([data-theme="contrast"]) {
+  --accent: #B4460C; --accent-hover: #923809; --accent-soft: #FCEDE3; --accent-line: #EDB993;
+}
+:root[data-theme="dark"][data-accent="teal"] {
+  --accent: #4FC1BA; --accent-hover: #73D0CA; --accent-soft: #12302F; --accent-line: #2A5E5B;
+}
+:root[data-theme="dark"][data-accent="green"] {
+  --accent: #6CC788; --accent-hover: #8AD5A1; --accent-soft: #16301F; --accent-line: #2E5E3D;
+}
+:root[data-theme="dark"][data-accent="purple"] {
+  --accent: #B49AE8; --accent-hover: #C6B2EE; --accent-soft: #2A2140; --accent-line: #4E3F78;
+}
+:root[data-theme="dark"][data-accent="orange"] {
+  --accent: #F29A62; --accent-hover: #F5B184; --accent-soft: #3A2416; --accent-line: #6E4429;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-accent="teal"]:not([data-theme="light"]):not([data-theme="contrast"]) {
+    --accent: #4FC1BA; --accent-hover: #73D0CA; --accent-soft: #12302F; --accent-line: #2A5E5B;
+  }
+  :root[data-accent="green"]:not([data-theme="light"]):not([data-theme="contrast"]) {
+    --accent: #6CC788; --accent-hover: #8AD5A1; --accent-soft: #16301F; --accent-line: #2E5E3D;
+  }
+  :root[data-accent="purple"]:not([data-theme="light"]):not([data-theme="contrast"]) {
+    --accent: #B49AE8; --accent-hover: #C6B2EE; --accent-soft: #2A2140; --accent-line: #4E3F78;
+  }
+  :root[data-accent="orange"]:not([data-theme="light"]):not([data-theme="contrast"]) {
+    --accent: #F29A62; --accent-hover: #F5B184; --accent-soft: #3A2416; --accent-line: #6E4429;
+  }
+}
+/* text size (Account menu › Theme): the whole workbench and its dialogs grow together */
+:root[data-text="90"] { --text-zoom: .9; }
+:root[data-text="115"] { --text-zoom: 1.15; }
+:root[data-text="130"] { --text-zoom: 1.3; }
+.app, dialog { zoom: var(--text-zoom, 1); }
 body.mode-expert { --row: 28px; --fs: 13px; }
 body.mode-guided { --row: 42px; --fs: 14.5px; }
 
@@ -262,7 +307,7 @@ h3 { font-size: 15px; }
 h1.mono { font-size: 26px; }
 
 /* ------------------------------------------------------------ layout */
-.app { display: grid; grid-template-columns: 76px minmax(0, 1fr); height: 100vh; }
+.app { display: grid; grid-template-columns: 76px minmax(0, 1fr); height: calc(100vh / var(--text-zoom, 1)); }
 .rail { background: var(--rail); color: var(--rail-ink); display: flex; flex-direction: column; align-items: stretch; padding: 10px 6px; gap: 2px; overflow-y: auto; }
 .rail .logo { display: flex; justify-content: center; padding: 6px 0 14px; }
 .rail a { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 9px 2px; border-radius: 6px; color: var(--rail-ink); text-decoration: none; font-size: 11px; text-align: center; line-height: 1.15; min-height: 54px; justify-content: center; }
@@ -638,3 +683,31 @@ dialog.dlg::backdrop { background: var(--backdrop); }
 .ai-pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font-family: var(--mono); font-size: 12px; max-height: 40vh; overflow: auto; margin: 4px 0 0; }
 .ask-slot:empty { display: none; }
 .live-bar { margin: 0 0 12px; align-items: center; }
+
+/* workbench: Ctrl+K, favourites, pinned pages, Undo (specification 9.1) */
+.chip .st-ic { display: inline-flex; margin-left: -2px; }
+.toast-undo { margin-left: 6px; background: transparent; border: 1px solid currentColor; color: inherit; border-radius: 5px; padding: 2px 10px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.fav-btn { border: 0; background: transparent; color: var(--muted); cursor: pointer; padding: 4px; border-radius: 6px; display: inline-flex; }
+.fav-btn:hover { background: var(--row-hover); color: var(--ink); }
+.fav-btn[aria-pressed="true"] { color: var(--accent); }
+.fav-btn[aria-pressed="true"] svg { fill: currentColor; }
+dialog.palette { width: min(640px, 94vw); margin-top: 12vh; }
+.palette-q { width: 100%; border: 0; border-bottom: 1px solid var(--line); padding: 16px 18px; font-size: 16px; background: var(--panel); color: var(--ink); outline: none; }
+.palette-list { max-height: 56vh; overflow: auto; padding: 6px 0 10px; }
+.palette-group { padding: 10px 18px 4px; font-size: 11.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.palette-item { display: flex; align-items: center; gap: 10px; padding: 8px 18px; cursor: pointer; color: var(--ink); }
+.palette-item .sub { color: var(--muted); font-size: .9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-item[aria-selected="true"] { background: var(--sel); }
+.palette-hint { padding: 8px 18px; border-top: 1px solid var(--line-2); color: var(--muted); font-size: 12px; background: var(--panel-2); }
+.pin-strip { display: flex; gap: 6px; align-items: center; padding: 5px 12px; border-top: 1px solid var(--line); background: var(--panel-2); overflow-x: auto; min-height: 38px; }
+.pin-strip[hidden] { display: none; }
+.pin-tab { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 3px 4px 3px 10px; font-size: 12.5px; white-space: nowrap; color: var(--ink); text-decoration: none; }
+.pin-tab.active { border-color: var(--accent); background: var(--accent-soft); }
+.pin-tab button { border: 0; background: transparent; color: var(--muted); cursor: pointer; padding: 2px; border-radius: 4px; display: inline-flex; }
+.pin-tab button:hover { color: var(--ink); background: var(--row-hover); }
+.kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; color: var(--muted); }
+@media (max-width: 760px) {
+  dialog.palette { margin-top: 4vh; }
+  .palette-item .sub { display: none; }
+  .topbar .kbd { display: none; }
+}

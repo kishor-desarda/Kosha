@@ -22,6 +22,7 @@
 - [`release-outputs.md`](release-outputs.md): the stamped PDF and release sheet made at each release, printed and superseded marks.
 - [`bom-views-and-cost.md`](bom-views-and-cost.md): latest released, in work, as of a date and as-built BOMs, machines, cost roll-up and what-if.
 - [`transmittals.md`](transmittals.md): vendor packages and transmittals, Pack and Go, projects from ERP sales orders.
+- [`workbench.md`](workbench.md): Ctrl+K, favourites, saved views, pinned pages, Undo, accent colour and text size.
 - [`erp-extended.md`](erp-extended.md): HSN, OEM and status to the ERP, drawings attached to ERP items, orders and customers in, retries and the nightly check.
 - [`programs-and-events.md`](programs-and-events.md): API keys for programs, webhooks, and live updates on open screens.
 - [`ai.md`](ai.md): optional AI assistance (classification, change-log drafts, Ask Kosha): what is sent, privacy, running it fully local.

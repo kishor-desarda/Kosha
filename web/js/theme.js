@@ -3,6 +3,7 @@
 // The colours themselves are the variables in app.css; this module only picks which set applies (data-theme on
 // <html>), saves the choice with the user's account and remembers it in this browser for theme-boot.js.
 import { S, h, post, store, dialog, fail } from './core.js';
+import { lookSection } from './workbench.js';
 
 export const THEMES = [
   ['system', 'Same as my computer', 'Light or dark, following the setting of your computer. Changes when it does.'],
@@ -47,6 +48,7 @@ export function themeDialog() {
   });
   dialog({ title: 'Theme', body: [
     h('div', { class: 'theme-opts', role: 'radiogroup', 'aria-label': 'Theme' }, opts),
-    h('p', { class: 'muted small', style: { margin: 0 } }, 'Your choice is saved with your account, so it follows you to other computers and browsers.')],
+    lookSection(),
+    h('p', { class: 'muted small', style: { margin: 0 } }, 'Your choices are saved with your account, so they follow you to other computers and browsers.')],
   actions: [{ label: 'Done', primary: true }] });
 }

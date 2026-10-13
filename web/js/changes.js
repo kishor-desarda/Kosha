@@ -2,6 +2,7 @@
 // Engineering change orders.
 import { S, h, mount, clear, icon, get, post, patch, del, toast, fail, dialog, confirmDlg, stateChip, ago, fmtDate, can, debounce, typeChip } from './core.js';
 import { mountRecordPanels } from './deviations.js';
+import { favButton } from './workbench.js';
 
 const changed = () => window.dispatchEvent(new Event('kosha:changed'));
 const canApprove = u => ['approver', 'admin'].includes(u.role) || (u.roles || []).includes('quality');
@@ -139,7 +140,7 @@ export async function renderChange(container, [id], _p, { setTitle }) {
       h('div', { class: 'page-head' }, h('div', { style: { flex: 1, minWidth: '300px' } },
         h('div', { class: 'small muted' }, `${c.number} · requested by ${c.requested_by_name} ${ago(c.created_at)} · priority ${c.priority}`,
           c.ecr ? [' · from ', h('a', { href: `#/ecr/${c.ecr.id}` }, c.ecr.number)] : null),
-        h('h1', { style: { margin: '4px 0 10px' } }, c.title), stepper),
+        h('h1', { style: { margin: '4px 0 10px' } }, c.title, ' ', favButton('change', c.id)), stepper),
       h('div', { class: 'row wrap', style: { alignSelf: 'flex-start' } }, buttons)),
       h('div', { class: `banner ${c.state === 'rejected' ? 'err' : c.state === 'implemented' ? 'ok' : 'info'}`, style: { marginBottom: '16px' } }, icon('info'), h('div', null, guide)),
       h('div', { class: 'grid-cards' },

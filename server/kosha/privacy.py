@@ -47,6 +47,10 @@ def export(user_id: int) -> dict:
                             "WHERE c.user_id = ? ORDER BY c.id", (user_id,)),
         "audit": db.rows("SELECT at, action, entity, entity_id, details FROM audit WHERE user_id = ? ORDER BY id",
                          (user_id,)),
+        "favourites": db.rows("SELECT kind, ref_id, created_at FROM user_favourites WHERE user_id = ? ORDER BY id",
+                              (user_id,)),
+        "saved_views": db.rows("SELECT name, hash, created_at FROM saved_views WHERE user_id = ? ORDER BY id", (user_id,)),
+        "screen_preferences": db.scalar("SELECT prefs_json FROM user_prefs WHERE user_id = ?", (user_id,)) or "{}",
     }
 
 
@@ -76,6 +80,8 @@ def erase(admin_id: int, user_id: int, confirm: str) -> dict:
                    "groups_json = '[]', unlinked_at = COALESCE(unlinked_at, ?), unlinked_by = COALESCE(unlinked_by, ?) "
                    "WHERE user_id = ?", (db.now(), admin_id, user_id))
         db.execute("DELETE FROM notify_prefs WHERE user_id = ?", (user_id,))
+        from . import workbench
+        workbench.forget(user_id)
         db.execute("UPDATE users SET delegate_id = NULL, delegate_until = NULL WHERE delegate_id = ?", (user_id,))
         db.audit(admin_id, "personal_data_erased", "user", user_id, "")
     return {"id": user_id, "full_name": f"Former user {user_id}"}

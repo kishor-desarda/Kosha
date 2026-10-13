@@ -701,9 +701,15 @@ async function doRevise(docs) {
 
 async function doDelete(docs) {
   if (!await confirmDlg('Delete', `Delete ${docs.length === 1 ? docs[0].filename : docs.length + ' files'}? They wait in the recycle bin, where they can be put back. Released files cannot be deleted; make them obsolete instead.`, 'Delete', true)) return;
-  for (const d of docs) { try { await del(`/api/documents/${d.id}`); } catch (e) { fail(e); } }
+  const gone = [];
+  for (const d of docs) { try { await del(`/api/documents/${d.id}`); gone.push(d); } catch (e) { fail(e); } }
   E.sel.clear();
   refresh();
+  if (gone.length) toast(`${gone.length === 1 ? gone[0].filename : gone.length + ' files'} moved to the recycle bin.`, 'ok', { label: 'Undo', run: async () => {
+    for (const d of gone) await post(`/api/recycle-bin/${d.id}/restore`);
+    toast(gone.length === 1 ? `${gone[0].filename} is back.` : `${gone.length} files are back.`, 'ok');
+    refresh();
+  } });
 }
 
 async function rename(d) {
