@@ -16,6 +16,7 @@ EVENTS = {
     "bom.released": "a BOM was released",
     "change.implemented": "a change order was implemented",
     "item.created": "a new item was created",
+    "deviation.approved": "a deviation (a temporary departure from the released design) was approved",
 }
 
 Handler = Callable[[Any, dict], None]

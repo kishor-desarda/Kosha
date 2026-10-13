@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Engineering BOMs: list, indented editor, validation, import, compare, ERP push.
 import { S, h, mount, clear, icon, get, post, put, toast, fail, dialog, confirmDlg, stateChip, ago, upload, can, debounce } from './core.js';
+import { bomDeviations, lineDeviationChips, mountRecordPanels } from './deviations.js';
 
 const changed = () => window.dispatchEvent(new Event('kosha:changed'));
 
@@ -66,7 +67,7 @@ function newBomDialog() {
 export async function renderBom(container, [id], _p, { setTitle }) {
   let data, edits = null, view = 'indented';
   const collapsed = new Set();
-  const load = async () => { data = await get(`/api/boms/${id}`); edits = null; setTitle(`BOM ${data.bom.part_number}`); draw(); };
+  const load = async () => { data = await get(`/api/boms/${id}`); data.devs = await bomDeviations(id); edits = null; setTitle(`BOM ${data.bom.part_number}`); draw(); };
 
   const draw = () => {
     const b = data.bom;
@@ -137,6 +138,7 @@ export async function renderBom(container, [id], _p, { setTitle }) {
         'Check the quantities, fix anything listed under ', h('b', null, 'Checks'), ', then an approver presses ', h('b', null, 'Release BOM'),
         `. Released BOMs are sent to ${S.erp} automatically. Sub-assemblies show their own parts indented below them.`)) : null,
       h('div', { class: 'row wrap', style: { alignItems: 'flex-start', gap: '16px' } }, tableWrap, side)));
+    mountRecordPanels(container.firstChild, 'bom', id);
   };
 
   const lineRow = (r, level, idx, lines, editable, issuesBy, indented, key) => {
@@ -150,7 +152,7 @@ export async function renderBom(container, [id], _p, { setTitle }) {
     return h('tr', null,
       h('td', { class: 'lvl', style: { paddingLeft: `${8 + (level - 1) * 18}px`, whiteSpace: 'nowrap' } }, tw, level > 1 ? `L${level}` : ''),
       h('td', { class: 'mono' }, r.find_number),
-      h('td', { class: 'mono nowrap' }, h('a', { href: `#/item/${r.item_id}` }, r.part_number), r.cycle ? ' ⟲' : ''),
+      h('td', { class: 'mono nowrap' }, h('a', { href: `#/item/${r.item_id}` }, r.part_number), r.cycle ? ' ⟲' : '', lineDeviationChips(data.devs, r.item_id)),
       h('td', null, r.description, r.standard_item_id ? h('span', { class: 'chip', style: { marginLeft: '6px', background: '#EEF3FB', color: '#1E3A8A' } }, 'has standard') : null),
       h('td', { class: 'num' }, qty),
       indented && !edits ? h('td', { class: 'num muted' }, r.ext_qty) : null,

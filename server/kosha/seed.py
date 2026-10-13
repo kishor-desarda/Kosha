@@ -57,6 +57,30 @@ def _tb(pn, desc, mat, rev):
     return {"PART_NO": pn, "DESCRIPTION": desc, "MATERIAL": mat, "REV": rev}
 
 
+def _seed_quality(asha, daniel, sofia, shaft_doc, housing_doc) -> None:
+    """Two deviations (one active, one waiting for Sofia) and a discussion with mentions on the agitator shaft."""
+    from datetime import timedelta
+
+    from . import deviations, discussions
+    key = db.one("SELECT id FROM items WHERE part_number = 'MX-100-050'")
+    d1 = deviations.create(asha, {
+        "title": "42CrMo4 instead of C45 for shaft keys, batch 12", "reason": "C45 bar is out of stock until week 48.",
+        "departure": "material 42CrMo4 allowed instead of C45", "serials": "batch 12", "qty_limit": 20,
+        "valid_until": (deviations.today() + timedelta(days=45)).isoformat(),
+        "affected": [{"item_id": key["id"]}], "approver_ids": [daniel["id"]]})
+    deviations.submit(asha, d1)
+    deviations.decide(daniel, d1, "approved", "Fine: 42CrMo4 is stronger; keep the same heat treatment.")
+    deviations.record_usage(asha, d1, 6, "batch 12, first lot")
+    d2 = deviations.create(asha, {
+        "title": "Drive-end housing from EN-GJS-400 castings", "reason": "EN-GJL-250 castings are on back order.",
+        "departure": "housing machined from EN-GJS-400-15 castings instead of EN-GJL-250", "serials": "SN 2041 to 2044",
+        "qty_limit": 4, "affected": [{"document_id": housing_doc["id"]}], "approver_ids": [sofia["id"]]})
+    deviations.submit(asha, d2)
+    tid = discussions.start(asha, "document", shaft_doc["id"], "@daniel the field report shows fretting at the hub "
+                            "seat. Do we go to Ø115 with ECO-0001, or try a shrink fit first?", "Hub seat fretting")
+    discussions.reply(daniel, tid, "Ø115 h6 is the safer fix. @sofia please check the impeller disc bore before we submit.")
+
+
 def seed() -> None:
     if db.scalar("SELECT COUNT(*) FROM documents"):
         log.info("Kosha already has files; demo data not loaded.")
@@ -208,6 +232,7 @@ def seed() -> None:
     co2 = changes.create(asha, "Assembly model first release", "New product variant", "", "normal",
                          [asm["id"]], [daniel["id"], sofia["id"]])
     changes.submit(asha, co2)
+    _seed_quality(asha, daniel, sofia, shaft_doc, de)
 
     # legacy leftovers: a byte-identical copy and look-alike bought-out parts from an old part master
     inlet = db.one("SELECT v.blob_sha FROM documents d JOIN versions v ON v.document_id = d.id WHERE d.part_number = 'CP-80-014'")
