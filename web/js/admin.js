@@ -5,6 +5,7 @@ import { addinsTab } from './addins.js';
 import { backupsTab, securityTab } from './admin_ops.js';
 import { packsTab } from './packs.js';
 import { notifyAdminTab } from './notify.js';
+import { THEMES, themeLabel, applyTheme, currentTheme } from './theme.js';
 
 export async function renderAdmin(container, _m, params, { setTitle }) {
   setTitle('Administration');
@@ -124,7 +125,16 @@ async function legacyImport(body) {
 }
 
 async function users(body, draw) {
-  const r = await get('/api/users');
+  const [r, settings] = await Promise.all([get('/api/users'), get('/api/settings')]);
+  const themeSel = h('select', { class: 'input', id: 'st-theme', style: { width: 'auto', minHeight: '32px' } },
+    THEMES.map(([k, label]) => h('option', { value: k, selected: settings.default_theme === k }, label)));
+  themeSel.addEventListener('change', async () => {
+    try {
+      await put('/api/settings', { default_theme: themeSel.value });
+      S.defaultTheme = themeSel.value; applyTheme(currentTheme());
+      toast(`Saved. Everyone who has not chosen a theme sees ${themeLabel(themeSel.value)} the next time they open Kosha.`, 'ok');
+    } catch (e) { fail(e); }
+  });
   const roleSel = (u) => {
     const s = h('select', { class: 'input', style: { minHeight: '30px', width: 'auto' }, 'aria-label': `Role of ${u.full_name}` },
       ['viewer', 'engineer', 'approver', 'admin'].map(x => h('option', { value: x, selected: u.role === x }, x)));
@@ -135,8 +145,11 @@ async function users(body, draw) {
     h('div', { class: 'row', style: { marginBottom: '12px' } }, h('div', { class: 'muted small', style: { flex: 1 } },
       'Viewer: see and download. Engineer: add, check in/out, revise, build BOMs, raise changes. Approver: also release, approve changes, push to ERP. Admin: everything.'),
     h('button', { class: 'btn primary', onclick: () => addUser(draw) }, icon('plus', 16), 'Add user')),
-    h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ['Name', 'User name', 'Role', 'Mode', 'Status', ''].map(t => h('th', null, t)))),
+    h('div', { class: 'row wrap', style: { marginBottom: '12px' } }, h('label', { for: 'st-theme', style: { fontWeight: 600 } }, 'Theme for everyone who has not chosen one'), themeSel,
+      h('span', { class: 'muted small' }, 'Each person can choose their own theme in the menu behind their initials.')),
+    h('table', { class: 'tbl' }, h('thead', null, h('tr', null, ['Name', 'User name', 'Role', 'Mode', 'Theme', 'Status', ''].map(t => h('th', null, t)))),
       h('tbody', null, r.users.map(u => h('tr', null, h('td', null, u.full_name), h('td', { class: 'mono' }, u.username), h('td', null, roleSel(u)), h('td', null, u.ui_mode),
+        h('td', { class: u.ui_theme ? '' : 'muted' }, u.ui_theme ? themeLabel(u.ui_theme) : 'Installation default'),
         h('td', null, h('span', { class: `chip ${u.active ? 'st-released' : 'st-obsolete'}` }, u.active ? 'Active' : 'Disabled')),
         h('td', { class: 'nowrap' }, h('div', { class: 'row' },
           h('button', { class: 'btn sm', onclick: () => resetPw(u) }, 'Reset password'),

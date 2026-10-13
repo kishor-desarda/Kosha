@@ -20,8 +20,8 @@ export async function openViewer(docOrId, opts = {}) {
     h('div', { class: 'vh' },
       h('button', { class: 'btn', onclick: close, 'aria-label': 'Close viewer' }, icon('back', 16), 'Close'),
       h('div', { style: { minWidth: 0 } }, h('div', { class: 'ellipsis', style: { fontWeight: 600 } }, det.filename),
-        h('div', { class: 'small', style: { color: '#9DA5AC' } }, det.part_number ? `${det.part_number} · ` : '', det.description || det.type_label)),
-      stateChip(det.state), h('span', { class: 'chip', style: { background: '#262B30', color: '#E8EBEE' } }, `Rev ${det.revision}`),
+        h('div', { class: 'small sub' }, det.part_number ? `${det.part_number} · ` : '', det.description || det.type_label)),
+      stateChip(det.state), h('span', { class: 'chip rev' }, `Rev ${det.revision}`),
       h('span', { class: 'spacer' }), tools, verSel,
       h('button', { class: 'btn', onclick: () => downloadDoc(det.id, ver) }, icon('download', 16), 'Download'),
       h('a', { class: 'btn', href: `#/doc/${det.id}`, onclick: close }, icon('info', 16), 'Details')),
@@ -45,7 +45,7 @@ export async function openViewer(docOrId, opts = {}) {
     else {
       stage.appendChild(h('div', { style: { position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '12px', padding: '30px', textAlign: 'center' } },
         icon('file', 48), h('h2', null, 'No preview for this file'),
-        h('p', { style: { color: '#BAC1C7', maxWidth: '560px', lineHeight: 1.5 } }, v.meta.preview_note || `Kosha stores and versions ${det.type_label} files, but cannot draw them in the browser.`),
+        h('p', { class: 'note', style: { maxWidth: '560px', lineHeight: 1.5 } }, v.meta.preview_note || `Kosha stores and versions ${det.type_label} files, but cannot draw them in the browser.`),
         h('button', { class: 'btn primary', onclick: () => downloadDoc(det.id, v.version) }, icon('download'), 'Download to open in CAD')));
     }
   }
@@ -116,15 +116,15 @@ function svgViewer(stage, tools, det, v, versions) {
         old.style.mixBlendMode = 'multiply';
         main.style.mixBlendMode = 'multiply';
         layers = [old, main];
-        wrap.style.background = '#fff';
-      } else wrap.style.background = '';
+      }
+      wrap.classList.toggle('overlay', !!compareWith);
       for (const s of layers) { s.setAttribute('preserveAspectRatio', 'xMidYMid meet'); wrap.appendChild(s); }
       if (compareWith) {
         stage.querySelector('.legend')?.remove();
         stage.appendChild(h('div', { class: 'legend' }, h('b', null, 'Revision overlay'),
-          h('span', null, h('span', { style: { color: '#ff8a80' } }, '■ '), `v${compareWith} (older)`),
-          h('span', null, h('span', { style: { color: '#82b1ff' } }, '■ '), `v${v.version} (this)`),
-          h('span', { style: { color: '#9DA5AC' } }, 'Lines in both look purple')));
+          h('span', null, h('span', { class: 'sw-old' }, '■ '), `v${compareWith} (older)`),
+          h('span', null, h('span', { class: 'sw-new' }, '■ '), `v${v.version} (this)`),
+          h('span', { class: 'sub' }, 'Lines in both look purple')));
       } else stage.querySelector('.legend')?.remove();
       fit();
       hud.textContent = hudText();
@@ -220,7 +220,7 @@ function svgViewer(stage, tools, det, v, versions) {
     const r = vb.w / 160;
     for (const p of pts) {
       const c = document.createElementNS(NS, 'circle');
-      c.setAttribute('cx', p.x); c.setAttribute('cy', p.y); c.setAttribute('r', r); c.setAttribute('fill', '#F2733A');
+      c.setAttribute('cx', p.x); c.setAttribute('cy', p.y); c.setAttribute('r', r); c.setAttribute('class', 'measure-pt');
       mGroup.appendChild(c);
     }
     svg.appendChild(mGroup);
@@ -308,8 +308,16 @@ const M4 = {
   mul(a, b) { const o = new Array(16); for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + j] * b[i * 4 + k]; o[i * 4 + j] = s; } return o; },
 };
 
+// A colour variable from app.css as WebGL wants it: [r, g, b] from 0 to 1 (6-digit hex values only).
+function cssRgb(el, name, fallback) {
+  const m = getComputedStyle(el).getPropertyValue(name).trim().match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  return m ? m.slice(1).map(x => parseInt(x, 16) / 255) : fallback;
+}
+
 function stlViewer(stage, tools, det, v) {
-  stage.style.background = 'radial-gradient(circle at 50% 40%, #2E353C, #121518 75%)';
+  stage.classList.add('model');
+  const modelRgb = cssRgb(stage, '--viewer-model', [0.62, 0.66, 0.70]);
+  const edgeRgb = cssRgb(stage, '--viewer-accent', [0.95, 0.45, 0.23]);
   const canvas = h('canvas', { 'aria-label': `3D view of ${det.filename}` });
   const hud = h('div', { class: 'hud' }, 'Loading model…');
   stage.append(canvas, hud);
@@ -356,14 +364,14 @@ function stlViewer(stage, tools, det, v) {
     gl.bindBuffer(gl.ARRAY_BUFFER, pBuf); gl.enableVertexAttribArray(loc.p); gl.vertexAttribPointer(loc.p, 3, gl.FLOAT, false, 0, 0);
     gl.bindBuffer(gl.ARRAY_BUFFER, nBuf); gl.enableVertexAttribArray(loc.n); gl.vertexAttribPointer(loc.n, 3, gl.FLOAT, false, 0, 0);
     gl.uniform1f(loc.flat, 0);
-    gl.uniform3f(loc.col, 0.62, 0.66, 0.70);
+    gl.uniform3f(loc.col, ...modelRgb);
     gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(1, 1);
     gl.drawArrays(gl.TRIANGLES, 0, mesh.tris * 3);
     gl.disable(gl.POLYGON_OFFSET_FILL);
     if (wire && eBuf) {
       gl.bindBuffer(gl.ARRAY_BUFFER, eBuf); gl.vertexAttribPointer(loc.p, 3, gl.FLOAT, false, 0, 0);
       gl.disableVertexAttribArray(loc.n);
-      gl.uniform1f(loc.flat, 1); gl.uniform3f(loc.col, 0.95, 0.45, 0.23);
+      gl.uniform1f(loc.flat, 1); gl.uniform3f(loc.col, ...edgeRgb);
       gl.drawArrays(gl.LINES, 0, eCount);
     }
   };

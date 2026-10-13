@@ -313,6 +313,9 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "first_revision": "A",
     "require_eco_for_release": False,
     "company_name": "",
+    # Theme of the web client for people who have not chosen one: system (same as their computer), light, dark
+    # or contrast.
+    "default_theme": "system",
     # Kosha's own ERP settings; the connector's address and keys belong to the connector add-in.
     "erp": {
         "enabled": False,

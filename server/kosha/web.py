@@ -108,7 +108,8 @@ def _authenticate(request: Request) -> dict | None:
     if found is None:
         return None
     user_id, request.state.session_id = found
-    user = db.one("SELECT id, username, full_name, email, role, ui_mode, active FROM users WHERE id = ?", (user_id,))
+    user = db.one("SELECT id, username, full_name, email, role, ui_mode, ui_theme, active FROM users WHERE id = ?",
+                  (user_id,))
     if not user or not user["active"]:
         return None
     return user

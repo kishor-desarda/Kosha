@@ -49,7 +49,7 @@ function queue(jobs, draw) {
     const detail = h('tr', { hidden: true }, h('td', { colspan: 7, style: { background: 'var(--panel-2)', padding: '10px 14px' } },
       h('div', { class: 'small' }, h('b', null, 'Response: '), j.response_text || '—'),
       j.error ? h('div', { class: 'small sev-error' }, h('b', null, 'Error: '), j.error) : null,
-      j.payload_json ? h('pre', { class: 'mono small', style: { whiteSpace: 'pre-wrap', maxHeight: '220px', overflow: 'auto', background: '#fff', border: '1px solid var(--line)', padding: '8px', borderRadius: '6px' } }, JSON.stringify(JSON.parse(j.payload_json), null, 2)) : null));
+      j.payload_json ? h('pre', { class: 'mono small', style: { whiteSpace: 'pre-wrap', maxHeight: '220px', overflow: 'auto', background: 'var(--field)', border: '1px solid var(--line)', padding: '8px', borderRadius: '6px' } }, JSON.stringify(JSON.parse(j.payload_json), null, 2)) : null));
     const row = h('tr', { class: 'clickable', onclick: () => { detail.hidden = !detail.hidden; } },
       h('td', { class: 'mono' }, `#${j.id}`), h('td', null, j.kind === 'bom' ? 'BOM' : j.kind === 'refresh' ? 'Stock & cost' : 'Item'), h('td', null, j.label),
       h('td', null, h('span', { class: `chip st-${j.status}` }, j.status.replace('_', ' '))),

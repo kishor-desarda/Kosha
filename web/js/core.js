@@ -6,6 +6,7 @@ export const S = {
   user: null,
   erp: 'ERP',          // display name of the ERP the connector add-in talks to
   mode: 'guided',
+  defaultTheme: 'system',   // the installation's theme for people who have not chosen one
   settings: {},
 };
 
@@ -92,6 +93,7 @@ const P = {
   external: '<path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6"/>',
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.7M12 17v.5"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
+  theme: '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/>',
   sparkle: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6"/>',
 };
 
@@ -114,10 +116,10 @@ export function logo(size = 30) {
 }
 
 const TYPE_LABEL = { sldprt: 'SLDPRT', sldasm: 'SLDASM', slddrw: 'SLDDRW', dwg: 'DWG', dxf: 'DXF', pdf: 'PDF', stl: 'STL', step: 'STEP', stp: 'STEP' };
-const TYPE_COLOR = { sldprt: '#E3EAF4', sldasm: '#DCE5F0', slddrw: '#E8E3F1', dwg: '#F1E4D3', dxf: '#F1E4D3', pdf: '#F6DEDB', stl: '#E1EEE6' };
+const TYPE_TINT = new Set(['sldprt', 'sldasm', 'slddrw', 'dwg', 'dxf', 'pdf', 'stl']);   // .chip.type.t-<ext> in app.css
 export function typeChip(ext) {
   const e = (ext || '').toLowerCase();
-  return h('span', { class: 'chip type', style: { background: TYPE_COLOR[e] || '#E8EBEE' } }, TYPE_LABEL[e] || e.toUpperCase() || 'FILE');
+  return h('span', { class: `chip type${TYPE_TINT.has(e) ? ' t-' + e : ''}` }, TYPE_LABEL[e] || e.toUpperCase() || 'FILE');
 }
 
 export const STATE_LABEL = { in_work: 'In work', in_review: 'In review', released: 'Released', obsolete: 'Obsolete' };
@@ -347,5 +349,5 @@ export function tabs(items, active, onSelect) {
 
 export function thumb(doc, cls = 'mini') {
   if (doc.preview_kind) return h('img', { class: cls, src: fileUrl(doc.id, 'preview', doc.version), alt: '', loading: 'lazy' });
-  return h('span', { class: cls, style: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#8A9197' } }, icon(doc.doc_type === 'assembly' ? 'cube' : 'file', 16));
+  return h('span', { class: `${cls} thumb-ph` }, icon(doc.doc_type === 'assembly' ? 'cube' : 'file', 16));
 }

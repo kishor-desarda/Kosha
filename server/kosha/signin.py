@@ -18,7 +18,7 @@ from .web import ApiError, Req, bad
 
 log = logging.getLogger("kosha.signin")
 
-USER_FIELDS = ("id", "username", "full_name", "email", "role", "ui_mode")
+USER_FIELDS = ("id", "username", "full_name", "email", "role", "ui_mode", "ui_theme")
 
 
 def _now() -> datetime:

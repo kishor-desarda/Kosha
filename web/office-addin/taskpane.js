@@ -145,8 +145,36 @@
     });
   }
 
+  // ------------------------------------------------------------ theme
+  // Inside Office the pane takes Office's own theme (light, or dark such as "Black"), read from the colour Office
+  // gives for the pane background. Without one (test mode, older Office) it follows the computer (taskpane.css).
+  function isDark(colour) {
+    const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(colour || '').trim());
+    if (!m) return null;
+    const [r, g, b] = m.slice(1).map((x) => parseInt(x, 16) / 255);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.5;
+  }
+
+  function followOfficeTheme() {
+    const apply = () => {
+      try {
+        const theme = Office.context.officeTheme;
+        const dark = theme ? isDark(theme.bodyBackgroundColor) : null;
+        if (dark === null) document.documentElement.removeAttribute('data-theme');
+        else document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+      } catch (e) { /* no theme from Office: follow the computer */ }
+    };
+    apply();
+    try {
+      if (Office.EventType && Office.EventType.OfficeThemeChanged && Office.context.document && Office.context.document.addHandlerAsync) {
+        Office.context.document.addHandlerAsync(Office.EventType.OfficeThemeChanged, apply);
+      }
+    } catch (e) { /* this Office cannot tell about theme changes; the pane picks it up when opened again */ }
+  }
+
   function init(host) {
     S.host = DEFAULT_EXT[host] ? host : null;
+    if (S.host) followOfficeTheme();
     $('loading').hidden = true;
     $('testmode').hidden = !!S.host;
     $('testdoc').hidden = !!S.host;
