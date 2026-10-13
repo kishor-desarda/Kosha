@@ -32,6 +32,11 @@ dotnet build addins\gstarcad\Kosha.GstarCad -c Release -p:GstarNet8=true -p:Gsta
 All GStarCAD namespaces are named in one file, `GstarCadApi.cs`. If your SDK version uses
 different namespaces, change them there.
 
+The DWG logic (title-block attributes, drawing properties, `DBMOD`, save, close, open) and the
+palette are shared with the AutoCAD add-in: they are written once in `sdk/dotnet/Kosha.CadCore.Dwg`
+and compiled into this add-in (see the `<Compile Include=...>` line in the project file). A fix
+there helps both programs; build both add-ins when you change it.
+
 ## Install
 
 1. Copy the build output folder to the PC, for example `C:\Program Files\Kosha\GStarCAD`.
@@ -43,7 +48,7 @@ different namespaces, change them there.
 
 ## Status
 
-This is a starter add-in. The shared core it uses is built and tested in CI; the GStarCAD-specific
-classes (`GstarCadHost`, `GstarCadPlugin`) need a GStarCAD installation to build and have to be
-piloted on one PC first. Contributions from GStarCAD users are very welcome: xref check-in,
+This is a starter add-in, and it is not built in CI. The shared core it uses is built and tested in
+CI; the GStarCAD-specific classes (`GstarCadHost`, `GstarCadPlugin`) and the shared DWG code need a
+GStarCAD installation to build and have to be piloted on one PC first. Contributions from GStarCAD users are very welcome: xref check-in,
 title-block mapping settings, and a demand-loading installer.
