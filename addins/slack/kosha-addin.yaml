@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: Apache-2.0
+id: org.kosha.slack
+name: Slack notifier
+version: 0.5.0
+publisher: Kosha project
+licence: Apache-2.0
+kosha: ">=0.5,<2.0"
+kind: [notifier]
+description: >
+  Posts Kosha notices (change orders waiting for approval, failed ERP transfers, releases) to a
+  Slack channel, with an "Open in Kosha" button.
+help: >
+  In Slack, create an app for your workspace (or use an existing one), switch on Incoming Webhooks,
+  add a webhook for the channel and paste its address here. Treat the address like a password:
+  anyone who has it can post to the channel. Set Kosha's own address under Admin › Notifications so
+  the button links to the page.
+entry_points:
+  server: kosha_slack.notifier:SlackNotifier
+permissions: [notify:send]
+events: []
+settings:
+  webhook_url: {type: secret, required: true, label: Webhook address, hint: "Starts with https://"}
+  verify_tls:  {type: bool, default: true, label: Verify the HTTPS certificate}
+  timeout_s:   {type: int, default: 15, label: Time-out (seconds)}
