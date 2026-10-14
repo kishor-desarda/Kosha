@@ -394,7 +394,17 @@ def main() -> int:
                 page.fill("input[autocomplete=username]", user)
                 page.fill("input[type=password]", pw)
                 page.keyboard.press("Enter")
-                page.wait_for_selector("nav.rail", timeout=15000)
+                try:
+                    page.wait_for_selector("nav.rail", timeout=15000)
+                except Exception:
+                    # say why sign-in did not finish: the message on the page and what the form held
+                    state = page.evaluate("""() => ({ url: location.href,
+                      message: (document.querySelector('.banner.err:not([hidden])') || {}).textContent || '',
+                      user: (document.querySelector('input[autocomplete=username]') || {}).value,
+                      password_length: ((document.querySelector('input[type=password]') || {}).value || '').length,
+                      forms: document.querySelectorAll('form').length })""")
+                    print(f"{user}: sign-in did not finish: {state}", file=sys.stderr)
+                    raise
                 close_first_tour(page, user, errors)
                 if not wait_until(page, "window.koshaLive && window.koshaLive.readyState === 1"):
                     errors.append(f"{user}: the live updates connection did not open")
