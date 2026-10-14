@@ -14,11 +14,14 @@ COPY server server
 COPY web web
 COPY addins addins
 COPY packs packs
+COPY deploy/docker/entrypoint.sh /usr/local/bin/kosha-entrypoint
 RUN useradd --system --home /data --shell /usr/sbin/nologin kosha && mkdir -p /data && chown kosha /data
-USER kosha
-ENV KOSHA_DATA_DIR=/data KOSHA_HOST=0.0.0.0 KOSHA_PORT=8080
-VOLUME /data
+# Port: KOSHA_PORT, else PORT (set by hosting platforms), else 8080.
+ENV KOSHA_DATA_DIR=/data KOSHA_HOST=0.0.0.0
+# No VOLUME line: some hosting platforms refuse it. Mount a volume at /data (docker-compose.yml does); the
+# entrypoint gives a root-owned mount to the kosha user and then runs Kosha without root.
 EXPOSE 8080
 WORKDIR /app/server
-HEALTHCHECK --interval=30s --timeout=5s CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=4)"
+HEALTHCHECK --interval=30s --timeout=5s CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/api/health' % (os.environ.get('KOSHA_PORT') or os.environ.get('PORT') or '8080'), timeout=4)"
+ENTRYPOINT ["kosha-entrypoint"]
 CMD ["python", "-m", "kosha"]

@@ -48,7 +48,8 @@ BLOB_DIR = DATA_DIR / "blobs"
 WORK_DIR = DATA_DIR / "work"
 
 HOST = os.environ.get("KOSHA_HOST", "0.0.0.0")
-PORT = int(os.environ.get("KOSHA_PORT", "8080"))
+# KOSHA_PORT wins; PORT is the variable hosting platforms (container clouds) set for the port to listen on.
+PORT = int(os.environ.get("KOSHA_PORT") or os.environ.get("PORT") or "8080")
 
 # DWG support: path to the free ODA File Converter (closed freeware, never bundled)
 ODA_CONVERTER = os.environ.get("KOSHA_ODA_CONVERTER", "")
