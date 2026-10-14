@@ -25,6 +25,12 @@ The release workflow publishes the section for each tag as that release's notes.
   workshop, the `mbom.released` event, and an ERP setting to send manufacturing BOMs with their operations
   (operations in ERPNext when switched on).
 
+### Fixed
+
+- **Container image on hosting platforms:** the image no longer declares a `VOLUME` (some platforms, such as
+  Railway, refuse to build it), listens on the platform's `PORT` when `KOSHA_PORT` is not set, and hands a
+  root-owned data volume to the `kosha` user before starting without root. `railway.json` sets the health check.
+
 ## [1.0.0rc1]
 
 The first release candidate for 1.0: every area of the specification is built and covered by tests, including an

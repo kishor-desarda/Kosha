@@ -9,6 +9,10 @@ links to the longer page.
 - **Docker:** `docker run -p 8080:8080 -v kosha-data:/data ghcr.io/kishor-desarda/kosha:<version>`. The image
   of each release is listed in its release notes, with a software bill of materials (SBOM) and signed build
   provenance attached.
+- **Hosting platform (for example Railway):** deploy the repository; it builds the `Dockerfile` and
+  `railway.json` sets the health check (`/api/health`). Add a volume mounted at `/data`, or every redeploy
+  starts with an empty database, and set `KOSHA_ADMIN_PASSWORD` (or read the first password in the log).
+  Kosha listens on the platform's `PORT`; set `KOSHA_HTTPS=1` when it is reached through HTTPS.
 - **Linux or Windows server:** the installers in `deploy/linux` and `deploy/windows` set Kosha up as a service.
   See the [README](../README.md#install-on-a-server).
 - **PostgreSQL** instead of the built-in SQLite database for larger sites: set `KOSHA_DATABASE_URL`, and copy an
