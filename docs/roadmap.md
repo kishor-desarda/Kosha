@@ -8,8 +8,8 @@ here when merged.
 | Step | Area | What it brings | State |
 | --- | --- | --- | --- |
 | 1 | Manufacturing BOMs and process plans | How the workshop builds each assembly: parts by operation, sub-assemblies built with their parent, parts added for manufacturing, operations with work centres and times, checked against the engineering BOM, sent to the ERP with operations. See [manufacturing BOMs](manufacturing-bom.md). | Merged (#29) |
-| 2 | Products with options and variants | One configurable product with options (motor power, voltage, material), rules on BOM lines, checks on every combination, saved variants with their resolved BOM for an order. See [options and variants](options-and-variants.md). | In progress |
-| 3 | Quality | Nonconformance reports with disposition, corrective and preventive actions with root cause and verification, FMEA with risk numbers. | Planned |
+| 2 | Products with options and variants | One configurable product with options (motor power, voltage, material), rules on BOM lines, checks on every combination, saved variants with their resolved BOM for an order. See [options and variants](options-and-variants.md). | Merged (#30) |
+| 3 | Quality | Nonconformance reports with disposition, corrective and preventive actions with root cause and verification, FMEA with risk numbers. See [quality](quality.md). | Merged (#31) |
 | Later | Compliance | Materials and substances against RoHS, REACH and similar rules. | Later |
 | Later | More CAD programs | Creo, NX, CATIA, Inventor and electronics CAD add-ins. | Later |
 | Later | Plans and requirements | Project schedules and milestones; requirements traced to parts. | Later |

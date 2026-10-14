@@ -8,6 +8,12 @@ The release workflow publishes the section for each tag as that release's notes.
 
 ### Added
 
+- **Quality:** nonconformance reports (NCR-YY-NNNN) with photos and a disposition (use as is, rework, repair,
+  scrap, return to supplier; use as is and repair raise a draft deviation); corrective and preventive actions
+  (CAPA-YY-NNNN) with containment, root cause, actions with owners and due dates, a change request when the design
+  must change, and a four-eyes check that it worked; design and process FMEA with RPN, a company RPN limit,
+  severity 9 and 10 always flagged, scores after the action, and Excel export. A new **Quality** screen and an
+  extra *quality* role for inspectors.
 - **Options and variants:** configurable products with options and choices, rules on BOM lines at any level
   in a small readable language, constraints between options, the BOM of any combination, a check of every
   combination (lines never used, choices that change nothing, empty assemblies), and variants saved for orders with

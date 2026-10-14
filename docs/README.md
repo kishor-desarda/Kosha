@@ -25,6 +25,7 @@
 - [`release-outputs.md`](release-outputs.md): the stamped PDF and release sheet made at each release, printed and superseded marks.
 - [`manufacturing-bom.md`](manufacturing-bom.md): manufacturing BOMs and process plans: parts by operation, built with the parent, checks against the engineering BOM, release and the ERP.
 - [`options-and-variants.md`](options-and-variants.md): configurable products: options, rules on BOM lines, constraints, checking every combination, variants for orders.
+- [`quality.md`](quality.md): nonconformance reports, corrective and preventive actions, FMEA.
 - [`roadmap.md`](roadmap.md): the steps beyond 1.0 (manufacturing BOMs, options and variants, quality) and their state.
 - [`bom-views-and-cost.md`](bom-views-and-cost.md): latest released, in work, as of a date and as-built BOMs, machines, cost roll-up and what-if.
 - [`transmittals.md`](transmittals.md): vendor packages and transmittals, Pack and Go, projects from ERP sales orders.

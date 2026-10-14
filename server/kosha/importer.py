@@ -561,12 +561,15 @@ def start_job(user: dict, source: str, target: str, options: dict, metadata: tup
                 "Options": json.dumps(options)}
             data, _ = report_bytes(rows, summary)
             sha, _ = store.put_bytes(data)
+            if collect and status == "done" and not options.get("dry_run"):
+                # the add-in's copies are in the store now; remove them before anyone is told the job is done
+                shutil.rmtree(source, ignore_errors=True)
             db.update("import_jobs", job_id, {"status": status, "message": msg, "report_sha": sha,
                                               "finished_at": db.now(), "phase": "Finished"})
             db.audit(user["id"], "legacy_import", "import_job", job_id, msg)
         finally:
             if collect and status == "done" and not options.get("dry_run"):
-                shutil.rmtree(source, ignore_errors=True)     # the add-in's copies; the files are in the store now
+                shutil.rmtree(source, ignore_errors=True)     # in case writing the report failed
             db.close_thread_connection()
 
     threading.Thread(target=work, name=f"import-{job_id}", daemon=True).start()

@@ -18,6 +18,7 @@ import { renderCommon } from './common.js';
 import { renderAdmin, renderSearch } from './admin.js';
 import { renderLibrary } from './library.js';
 import { renderDeviations, renderDeviation } from './deviations.js';
+import { renderQuality, renderNcr, renderCapa, renderFmea } from './quality.js';
 import { notificationBell } from './notifications.js';
 import { renderInputs, renderInput, renderProjects, renderProject } from './inputs.js';
 import { applyTheme, currentTheme, themeDialog, themeLabel } from './theme.js';
@@ -31,7 +32,7 @@ import { renderLegacy } from './legacy.js';
 import { maybeStartTour, startTour } from './tour.js';
 
 const NAV_KEY = { home: 'nav.home', kosha: 'nav.explorer', inputs: 'nav.inputs', boms: 'nav.boms', changes: 'nav.changes',
-  deviations: 'nav.deviations', erp: 'nav.erp', common: 'nav.duplicates', library: 'nav.library', projects: 'nav.my_projects' };
+  deviations: 'nav.deviations', quality: 'nav.quality', erp: 'nav.erp', common: 'nav.duplicates', library: 'nav.library', projects: 'nav.my_projects' };
 const NAV = [
   ['home', 'Home', 'home', '#/home'],
   ['kosha', 'Explorer', 'kosha', '#/files'],
@@ -39,6 +40,7 @@ const NAV = [
   ['boms', 'BOMs', 'bom', '#/boms'],
   ['changes', 'Changes', 'change', '#/changes'],
   ['deviations', 'Deviations', 'warn', '#/deviations'],
+  ['quality', 'Quality', 'check', '#/quality'],
   ['erp', 'ERP sync', 'erp', '#/erp'],
   ['common', 'Duplicates', 'common', '#/common'],
   ['library', 'Library', 'grid', '#/library'],
@@ -73,6 +75,10 @@ const ROUTES = [
   [/^#\/ecr\/(\d+)$/, 'changes', () => renderRequest],
   [/^#\/deviations$/, 'deviations', () => renderDeviations],
   [/^#\/deviation\/(\d+)$/, 'deviations', () => renderDeviation],
+  [/^#\/quality$/, 'quality', () => renderQuality],
+  [/^#\/ncr\/(\d+)$/, 'quality', () => renderNcr],
+  [/^#\/capa\/(\d+)$/, 'quality', () => renderCapa],
+  [/^#\/fmea\/(\d+)$/, 'quality', () => renderFmea],
   [/^#\/erp$/, 'erp', () => renderErp],
   [/^#\/common$/, 'common', () => renderCommon],
   [/^#\/library$/, 'library', () => renderLibrary],
@@ -187,6 +193,8 @@ async function refreshBadges() {
     set('common', d.common_parts.length);
     set('home', d.checked_out.length);
     set('deviations', (await get('/api/deviations/summary')).waiting_for_me);
+    const q = await api('GET', '/api/quality', undefined, { background: true });
+    set('quality', q.my_actions + q.verify);
   } catch (e) { /* ignore */ }
 }
 setInterval(refreshBadges, 60000);
