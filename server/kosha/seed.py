@@ -125,6 +125,47 @@ def _seed_mbom(asha, asm_item: int) -> None:
     mbom.save_plan(asha, mid, {"ops": ops, "lines": lines})
 
 
+def _seed_configurable(asha) -> None:
+    """A pump sold with options: motor power, voltage and seal; one variant saved for an order."""
+    from . import configurator
+    uid = asha["id"]
+    with db.tx():
+        for pn, desc, mb in (("PU-300-010", "PUMP CASING", "make"), ("PU-300-021", "MOTOR 5.5 KW", "buy"),
+                             ("PU-300-022", "MOTOR 7.5 KW", "buy"), ("PU-300-023", "MOTOR 11 KW", "buy"),
+                             ("PU-300-031", "MECHANICAL SEAL PTFE", "buy"), ("PU-300-032", "MECHANICAL SEAL VITON", "buy"),
+                             ("PU-300-033", "SEAL SPRING", "buy"), ("PU-300-041", "CABLE SET 230 V", "buy"),
+                             ("PU-300-042", "CABLE SET 415 V", "buy")):
+            boms.ensure_item(pn, desc, uid, "Nos", "", mb)
+    seal = boms.create(uid, boms.ensure_item("PU-300-030", "SEAL KIT", uid), "A", "manual")
+    boms.set_lines(uid, seal, [{"part_number": "PU-300-031", "qty": 1}, {"part_number": "PU-300-032", "qty": 1},
+                               {"part_number": "PU-300-033", "qty": 1}])
+    product = boms.ensure_item("PU-300-000", "CENTRIFUGAL PUMP, CONFIGURABLE", uid)
+    top = boms.create(uid, product, "A", "manual")
+    boms.set_lines(uid, top, [{"part_number": pn, "qty": q} for pn, q in (
+        ("PU-300-010", 1), ("PU-300-021", 1), ("PU-300-022", 1), ("PU-300-023", 1), ("PU-300-030", 1),
+        ("PU-300-041", 1), ("PU-300-042", 1))])
+    now = db.now()
+    for b in (seal, top):
+        db.update("boms", b, {"state": "released", "released_at": now, "updated_at": now})
+    ids = {r["part_number"]: r["id"] for r in db.rows("SELECT id, part_number FROM items WHERE part_number LIKE 'PU-300-%'")}
+    configurator.save_options(asha, product, [
+        {"code": "MOTOR", "name": "Motor power", "choices": [{"code": "5K5", "label": "5.5 kW"},
+                                                             {"code": "7K5", "label": "7.5 kW"},
+                                                             {"code": "11K", "label": "11 kW"}]},
+        {"code": "VOLTAGE", "name": "Voltage", "choices": [{"code": "230", "label": "230 V"}, {"code": "415", "label": "415 V"}]},
+        {"code": "SEAL", "name": "Seal", "choices": [{"code": "PTFE", "label": "PTFE"}, {"code": "VITON", "label": "Viton"}]}])
+    rule = lambda parent, pn, text: {"parent_item_id": parent, "child_item_id": ids[pn], "rule": text}  # noqa: E731
+    configurator.save_rules(asha, product, [
+        rule(product, "PU-300-021", "MOTOR = 5K5"), rule(product, "PU-300-022", "MOTOR = 7K5"),
+        rule(product, "PU-300-023", "MOTOR = 11K"), rule(product, "PU-300-041", "VOLTAGE = 230"),
+        rule(product, "PU-300-042", "VOLTAGE = 415"), rule(ids["PU-300-030"], "PU-300-031", "SEAL = PTFE"),
+        rule(ids["PU-300-030"], "PU-300-032", "SEAL = VITON")])
+    configurator.save_constraints(asha, product, [{"if": "MOTOR = 11K", "then": "VOLTAGE = 415",
+                                                   "message": "The 11 kW motor runs on 415 V only."}])
+    configurator.save_variant(asha, product, {"choice": {"MOTOR": "7K5", "VOLTAGE": "415", "SEAL": "VITON"},
+                                              "customer": "Example Foods", "order_ref": "SO-0042"})
+
+
 def seed() -> None:
     if db.scalar("SELECT COUNT(*) FROM documents"):
         log.info("Kosha already has files; demo data not loaded.")
@@ -258,6 +299,7 @@ def seed() -> None:
     db.execute("UPDATE items SET material = '1.4401 (316)' WHERE part_number = 'MX-100-010'")
     db.execute("UPDATE items SET material = '42CrMo4', weight_kg = 186 WHERE part_number = 'MX-100-020'")
     _seed_mbom(asha, asm_item)
+    _seed_configurable(asha)
 
     # in-work file checked out to Asha
     sleeve = _put(asha, mx, "MX-100-021 Shaft Sleeve.dxf",

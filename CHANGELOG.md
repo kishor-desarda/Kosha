@@ -8,6 +8,10 @@ The release workflow publishes the section for each tag as that release's notes.
 
 ### Added
 
+- **Options and variants:** configurable products with options and choices, rules on BOM lines at any level
+  in a small readable language, constraints between options, the BOM of any combination, a check of every
+  combination (lines never used, choices that change nothing, empty assemblies), and variants saved for orders with
+  their BOM kept as it was; machines can be recorded from a variant.
 - **Manufacturing BOMs and process plans:** how the workshop builds each assembly, made from the engineering BOM:
   operations with work centres, set-up and run times and instructions; each part at the operation that uses it;
   sub-assemblies built with their parent; parts added for manufacturing. Checks against the engineering BOM down

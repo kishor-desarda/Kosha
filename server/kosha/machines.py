@@ -72,10 +72,23 @@ def create(user: dict, body: dict) -> dict:
         item = db.one("SELECT * FROM items WHERE id = ?", (int(body["item_id"]),))
     elif body.get("part_number"):
         item = db.one("SELECT * FROM items WHERE part_number = ?", (str(body["part_number"]).strip().upper(),))
+    elif body.get("variant_id"):
+        item = db.one("SELECT i.* FROM items i JOIN variants v ON v.item_id = i.id WHERE v.id = ?",
+                      (int(body["variant_id"]),))
     if not item:
         raise bad("Choose the machine (its top assembly part number).")
     check_item(item["id"])
-    v = bomviews.view(item["id"], "released")
+    variant = None
+    if body.get("variant_id"):
+        from .configurator import variant_or_404
+        variant = variant_or_404(int(body["variant_id"]))
+        if variant["item_id"] != item["id"]:
+            raise bad(f"Variant {variant['number']} is a variant of another product.")
+        if variant["withdrawn_at"]:
+            raise conflict(f"Variant {variant['number']} was withdrawn.", "variant_withdrawn")
+        v = {"bom_id": variant["bom_id"], "revision": variant["revision"], "rows": variant["lines"]}
+    else:
+        v = bomviews.view(item["id"], "released")
     if not v["bom_id"]:
         raise conflict(f"{item['part_number']} has no released BOM. Release its BOM first, so the machine's as-built "
                        "BOM is the one production built from.", "no_released_bom")
@@ -105,9 +118,11 @@ def create(user: dict, body: dict) -> dict:
             "customer": _clean_text(body, "customer", 120), "site": _clean_text(body, "site", 120),
             "order_ref": _clean_text(body, "order_ref", 60), "built_on": built_on, "commissioned_on": commissioned,
             "note": _clean_text(body, "note", 1000), "lines_json": json.dumps(lines), "created_by": user["id"],
+            "variant_id": variant["id"] if variant else None,
             "created_at": now, "updated_at": now})
         db.audit(user["id"], "machine_build", "machine", bid,
-                 f"{serial}: {item['part_number']} rev {v['revision']}, {len(lines)} BOM rows")
+                 f"{serial}: {item['part_number']} rev {v['revision']}, {len(lines)} BOM rows"
+                 + (f", variant {variant['number']}" if variant else ""))
     return summary(build_or_404(bid))
 
 
@@ -168,7 +183,8 @@ def summary(b: dict) -> dict:
     return {k: b[k] for k in ("id", "serial", "item_id", "part_number", "description", "bom_id", "revision", "customer",
                               "site", "order_ref", "built_on", "commissioned_on", "note", "created_at",
                               "deleted_at")} | {
-        "created_by_name": names.get(b["created_by"]), "rows": len(b["lines"]),
+        "created_by_name": names.get(b["created_by"]), "rows": len(b["lines"]), "variant_id": b.get("variant_id"),
+        "variant": db.scalar("SELECT number FROM variants WHERE id = ?", (b["variant_id"],)) if b.get("variant_id") else None,
         "deviations": [d["number"] for d in deviations_for(b)]}
 
 

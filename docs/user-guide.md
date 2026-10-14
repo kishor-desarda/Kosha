@@ -57,6 +57,9 @@ cost roll-up and what-if prices. See [BOM views and cost](bom-views-and-cost.md)
 **Manufacturing BOM** on a BOM says how the workshop builds the assembly: the operations of the process plan and
 the parts issued at each, checked against the engineering BOM. See [manufacturing BOMs](manufacturing-bom.md).
 
+**Options and variants** on a BOM makes a product configurable: options such as motor power, a rule on each line
+that is not always used, and variants saved for orders. See [options and variants](options-and-variants.md).
+
 ## Changes and deviations
 
 - A **change request** (ECR) records a problem or an idea. An approved request becomes a **change order** (ECO)
