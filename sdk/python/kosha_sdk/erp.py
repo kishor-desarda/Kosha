@@ -58,13 +58,28 @@ class ErpBomLine:
     code: str
     qty: float
     uom: str = ""
+    op_no: int | None = None      # manufacturing BOMs: the operation that uses the part
+
+
+@dataclass(frozen=True)
+class ErpOperation:
+    """One step of a manufacturing BOM's process plan (routing)."""
+    op_no: int
+    work_centre: str
+    description: str
+    setup_min: float = 0.0
+    run_min: float = 0.0
 
 
 @dataclass(frozen=True)
 class ErpBom:
+    """A BOM for the ERP. Engineering BOMs have no operations; a manufacturing BOM (when the ERP settings say the ERP
+    builds from manufacturing BOMs) has its process plan in `operations`. A connector that cannot store operations
+    sends the lines and leaves them out."""
     item: ErpItem
     revision: str
     lines: tuple[ErpBomLine, ...]
+    operations: tuple[ErpOperation, ...] = ()
 
 
 @dataclass(frozen=True)

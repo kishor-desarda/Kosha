@@ -19,7 +19,7 @@ uvicorn = pytest.importorskip("uvicorn")
 import fake_erpnext as FE  # noqa: E402
 from kosha_erpnext.connector import ERPNextConnector, frappe_message, plain_text  # noqa: E402
 from kosha_sdk import AddinContext  # noqa: E402
-from kosha_sdk.erp import ErpBom, ErpBomLine, ErpError, ErpItem, ErpNotSupported  # noqa: E402
+from kosha_sdk.erp import ErpBom, ErpBomLine, ErpError, ErpItem, ErpNotSupported, ErpOperation  # noqa: E402
 from kosha_sdk.testing import check_erp_connector, check_manifest  # noqa: E402
 
 
@@ -104,6 +104,22 @@ def test_bom_is_submitted_and_children_listed(erp_url):
     r = c.upsert_bom(ErpBom(ErpItem("DE-100", "ASSY"), "B", (ErpBomLine("DE-101", 2, "Nos"), ErpBomLine("DE-102", 1, "Nos"))))
     bom = FE.STATE["boms"][r.external_id]
     assert bom["docstatus"] == 1 and len(bom["items"]) == 2 and bom["company"] == "Demo Engineering"
+
+
+def test_manufacturing_bom_sends_operations_only_when_asked(erp_url):
+    ops = (ErpOperation(10, "Assembly bench", "Fit bearings", 15, 30), ErpOperation(20, "Paint shop", "Paint", 0, 45))
+    lines = (ErpBomLine("DE-301", 2, "Nos", 10), ErpBomLine("DE-302", 1, "Nos", 20))
+    for code in ("DE-300", "DE-301", "DE-302"):
+        connector(erp_url).upsert_item(ErpItem(code=code, description=f"PART {code}", uom="Nos"))
+    plain = connector(erp_url).upsert_bom(ErpBom(ErpItem("DE-300", "ASSY"), "A", lines, ops))
+    assert "operations" not in FE.STATE["boms"][plain.external_id]
+    c = connector(erp_url, send_operations=True)
+    r = c.upsert_bom(ErpBom(ErpItem("DE-300", "ASSY"), "A", lines, ops))
+    bom = FE.STATE["boms"][r.external_id]
+    assert r.action == "created" and bom["with_operations"] == 1
+    assert [o["workstation"] for o in bom["operations"]] == ["Assembly bench", "Paint shop"]
+    assert [i.get("operation") for i in bom["items"]] == ["Fit bearings", "Paint"]
+    assert c.upsert_bom(ErpBom(ErpItem("DE-300", "ASSY"), "A", lines, ops)).action == "unchanged"
 
 
 def test_wrong_secret_gives_erpnext_message(erp_url):

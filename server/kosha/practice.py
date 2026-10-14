@@ -71,6 +71,8 @@ def erp_job_is_practice(kind: str, entity_id: int) -> bool:
         return is_practice_item(entity_id)
     if kind == "bom":
         return is_practice_item(db.scalar("SELECT item_id FROM boms WHERE id = ?", (entity_id,)))
+    if kind == "mbom":
+        return is_practice_item(db.scalar("SELECT item_id FROM mboms WHERE id = ?", (entity_id,)))
     if kind == "attach":
         return is_practice_item(db.scalar("SELECT item_id FROM documents WHERE id = ?", (entity_id,)))
     return False

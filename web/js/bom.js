@@ -3,6 +3,7 @@
 import { S, h, mount, clear, icon, get, post, put, toast, fail, dialog, confirmDlg, stateChip, ago, upload, can, debounce, drafts, draftBanner } from './core.js';
 import { bomDeviations, lineDeviationChips, mountRecordPanels } from './deviations.js';
 import { favButton } from './workbench.js';
+import { openMbom } from './mbom.js';
 
 const changed = () => window.dispatchEvent(new Event('kosha:changed'));
 
@@ -26,6 +27,7 @@ export async function renderBoms(container, _m, _p, { setTitle }) {
   mount(container, h('div', { class: 'page-pad' },
     h('div', { class: 'page-head' }, h('div', { style: { flex: 1 } }, h('h1', null, 'Engineering BOMs'),
       h('div', { class: 'sub' }, `Built from SolidWorks assemblies or imported from a SolidWorks BOM table, then released and sent to ${S.erp}.`)),
+    h('a', { class: 'btn', href: '#/mboms' }, 'Manufacturing BOMs'),
     h('a', { class: 'btn', href: '#/machines' }, 'Machines'),
     can('engineer') ? h('button', { class: 'btn primary', onclick: newBomDialog }, icon('plus', 16), 'New BOM') : null),
     h('div', { style: { marginBottom: '12px' } }, q),
@@ -105,6 +107,8 @@ export async function renderBom(container, [id], _p, { setTitle }) {
         eng ? h('button', { class: 'btn', onclick: importDlg }, icon('upload', 16), 'Import SolidWorks BOM') : null,
         h('button', { class: 'btn', onclick: () => compareDlg() }, icon('layers', 16), 'Compare'),
         h('a', { class: 'btn', href: `#/bom-view/${b.item_id}` }, 'Views and cost'),
+        h('button', { class: 'btn', title: 'How the workshop builds it: parts by operation, and the process plan', onclick: () => openMbom(b.item_id, b.revision) }, icon('layers', 16), 'Manufacturing BOM'),
+        h('button', { class: 'btn', title: 'How the workshop builds it: parts by operation, and the process plan', onclick: () => openMbom(b.item_id, b.revision) }, icon('layers', 16), 'Manufacturing BOM'),
         h('button', { class: 'btn', onclick: () => packAndGo(b) }, icon('download', 16), 'Pack and Go'),
         h('a', { class: 'btn', href: `/api/boms/${b.id}/export?format=xlsx&access_token=${encodeURIComponent(S.token)}` }, icon('download', 16), 'Excel'),
         draft && can('approver') ? h('button', { class: 'btn primary', disabled: errors > 0, title: errors ? 'Fix the errors first' : `Lock this BOM and send it to ${S.erp}`, onclick: release }, icon('release', 16), 'Release BOM') : null,

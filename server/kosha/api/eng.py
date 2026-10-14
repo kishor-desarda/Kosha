@@ -221,7 +221,8 @@ def release_bom(req: Req):
     db.audit(req.uid, "bom_release", "bom", bid, f"{b['part_number']} rev {b['revision']}")
     if (erp.settings() or {}).get("auto_push_on_release", True):
         erp.enqueue("item", b["item_id"], req.uid, f"BOM {b['part_number']} rev {b['revision']}")
-        erp.enqueue("bom", bid, req.uid, f"BOM {b['part_number']} rev {b['revision']}")
+        if not erp.planned(b["item_id"]):      # otherwise the ERP gets the manufacturing BOM when that is released
+            erp.enqueue("bom", bid, req.uid, f"BOM {b['part_number']} rev {b['revision']}")
     addins.registry.emit("bom.released", {"bom_id": bid, "part_number": b["part_number"], "revision": b["revision"],
                                           "user_id": req.uid})
     return {"ok": True}
@@ -450,6 +451,8 @@ def put_erp_settings(req: Req):
             v = as_bool(v)
         if k == "category_map":
             v = _category_map(v)
+        if k == "bom_source" and v not in erp.BOM_SOURCES:
+            raise bad("Choose which BOM the ERP builds from: the engineering BOM or the manufacturing BOM.")
         if k == "connector" and v and v not in {a.id for a in addins.registry.by_kind("erp-connector", enabled_only=False)}:
             raise bad("Choose one of the ERP connector add-ins that are installed.")
         generic[k] = v
@@ -537,9 +540,11 @@ def erp_jobs(req: Req):
         elif r["kind"] == "attach":
             it = db.one("SELECT part_number, filename AS description FROM documents WHERE id = ?", (r["entity_id"],))
         else:
-            it = db.one("SELECT i.part_number, i.description, b.revision FROM boms b JOIN items i ON i.id = b.item_id "
+            table = "mboms" if r["kind"] == "mbom" else "boms"
+            it = db.one(f"SELECT i.part_number, i.description, b.revision FROM {table} b JOIN items i ON i.id = b.item_id "
                         "WHERE b.id = ?", (r["entity_id"],))
-        r["label"] = (f"{it['part_number']} {it['description']}" + (f" (BOM rev {it['revision']})" if r["kind"] == "bom" else "")) \
+        what = {"bom": "BOM", "mbom": "manufacturing BOM"}.get(r["kind"])
+        r["label"] = (f"{it['part_number']} {it['description']}" + (f" ({what} rev {it['revision']})" if what else "")) \
             if it else f"#{r['entity_id']}"
     counts = {s: db.scalar("SELECT COUNT(*) FROM erp_jobs WHERE status = ?", (s,))
               for s in ("pending", "running", "sent", "failed", "dry_run", "skipped")}

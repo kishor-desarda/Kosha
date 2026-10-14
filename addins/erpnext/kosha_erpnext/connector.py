@@ -143,18 +143,31 @@ class ERPNextConnector(ErpConnector):
         return self._call("GET", f"/api/resource/BOM/{_q(pick['name'])}").get("data")
 
     def upsert_bom(self, bom: ErpBom) -> ErpResult:
+        with_ops = bool(bom.operations) and bool(self.cfg.get("send_operations"))
         wanted = sorted((ln.code.upper(), round(float(ln.qty), 6)) for ln in bom.lines)
+        wanted_ops = sorted((o.description, o.work_centre, round(float(o.run_min), 2)) for o in bom.operations) \
+            if with_ops else []
         current = self._default_bom(bom.item.code)
         if current:
             have = sorted((str(r.get("item_code", "")).upper(), round(float(r.get("qty", 0)), 6))
                           for r in current.get("items", []))
-            if have == wanted:
+            have_ops = sorted((str(r.get("operation") or ""), str(r.get("workstation") or ""),
+                               round(float(r.get("time_in_mins") or 0), 2)) for r in current.get("operations") or []) \
+                if with_ops else []
+            if have == wanted and have_ops == wanted_ops:
                 return ErpResult.unchanged(f"unchanged ({current['name']})", current["name"])
+        names = {o.op_no: o.description for o in bom.operations}
         payload = {
             "item": bom.item.code, "quantity": 1, "is_active": 1, "is_default": 1,
             "rm_cost_as_per": "Valuation Rate",
-            "items": [{"item_code": ln.code, "qty": ln.qty, "uom": ln.uom or "Nos"} for ln in bom.lines],
+            "items": [{"item_code": ln.code, "qty": ln.qty, "uom": ln.uom or "Nos",
+                       **({"operation": names[ln.op_no]} if with_ops and ln.op_no in names else {})} for ln in bom.lines],
         }
+        if with_ops:     # the Operation and Workstation records must exist in ERPNext under these names
+            payload["with_operations"] = 1
+            payload["operations"] = [{"operation": o.description, "workstation": o.work_centre,
+                                      "time_in_mins": o.run_min, "description": o.description}
+                                     for o in bom.operations]
         if self.cfg.get("company"):
             payload["company"] = self.cfg["company"]
         if self.cfg.get("revision_field"):
