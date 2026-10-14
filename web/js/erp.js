@@ -51,7 +51,7 @@ export async function renderErp(container, _m, params, { setTitle }) {
   return () => { if (stopTab) stopTab(); };
 }
 
-const KIND_LABEL = { item: 'Item', bom: 'BOM', refresh: 'Stock & cost', attach: 'Drawing PDF' };
+const KIND_LABEL = { item: 'Item', bom: 'BOM', mbom: 'Manufacturing BOM', refresh: 'Stock & cost', attach: 'Drawing PDF' };
 
 function queue(jobs, draw) {
   const tbody = h('tbody');
@@ -61,7 +61,7 @@ function queue(jobs, draw) {
       j.error ? h('div', { class: 'small sev-error' }, h('b', null, 'Error: '), j.error) : null,
       j.payload_json ? h('pre', { class: 'mono small', style: { whiteSpace: 'pre-wrap', maxHeight: '220px', overflow: 'auto', background: 'var(--field)', border: '1px solid var(--line)', padding: '8px', borderRadius: '6px' } }, JSON.stringify(JSON.parse(j.payload_json), null, 2)) : null));
     const row = h('tr', { class: 'clickable', onclick: () => { detail.hidden = !detail.hidden; } },
-      h('td', { class: 'mono' }, `#${j.id}`), h('td', null, j.kind === 'bom' ? 'BOM' : j.kind === 'refresh' ? 'Stock & cost' : 'Item'), h('td', null, j.label),
+      h('td', { class: 'mono' }, `#${j.id}`), h('td', null, KIND_LABEL[j.kind] || j.kind), h('td', null, j.label),
       h('td', null, h('span', { class: `chip st-${j.status}` }, j.status.replace('_', ' '))),
       h('td', { class: 'small' }, j.error ? h('span', { class: 'sev-error' }, j.error.slice(0, 120)) : (j.response_text || '').slice(0, 80),
         j.status === 'failed' ? h('div', { class: 'muted' }, j.next_try_at ? `Kosha tries again by itself ${fmtDate(j.next_try_at)}.` : 'Kosha stopped trying by itself. Fix the cause, then press Retry.') : null),
@@ -83,6 +83,8 @@ function settings(cfg, draw) {
   const box = (k, label) => { f[k] = h('input', { type: 'checkbox', checked: !!cfg[k], disabled: !admin }); return h('label', { class: 'check' }, f[k], label); };
   const defUom = h('input', { class: 'input', id: 'erp-default-uom', value: cfg.default_uom || '', disabled: !admin });
   const uom = h('textarea', { class: 'input mono', id: 'erp-uom', disabled: !admin, style: { minHeight: '110px' } });
+  const bomSource = h('select', { class: 'input', id: 'erp-bom-source', disabled: !admin, title: admin ? '' : 'Only administrators can change this.' },
+    [['ebom', 'Engineering BOMs'], ['mbom', 'Manufacturing BOMs (with operations)']].map(([v, l]) => h('option', { value: v, selected: (cfg.bom_source || 'ebom') === v }, l)));
   uom.value = Object.entries(cfg.uom_map || {}).map(([k, v]) => `${k}=${v}`).join('\n');
   const conn = schemaForm(cfg.connector_fields || [], cfg, admin);
   const result = h('div');
@@ -109,6 +111,8 @@ function settings(cfg, draw) {
     cfg.connector && cfg.connector_status !== 'enabled' ? h('div', { class: 'banner small' }, icon('warn'), h('div', null, `The ${name} add-in is switched off. Switch it on under Admin › Add-ins.`)) : null,
     h('div', { class: 'col' }, box('enabled', `Connect to ${name}`), box('dry_run', 'Dry run: prepare the data but do not send it (safe for testing)'),
       box('auto_push_on_release', 'Send automatically when an item or BOM is released')),
+    h('div', { class: 'field', style: { maxWidth: '520px' } }, h('label', { for: 'erp-bom-source' }, `${name} builds from`), bomSource,
+      h('span', { class: 'hint' }, `With manufacturing BOMs, ${name} gets each assembly's released manufacturing BOM with its operations instead of the engineering BOM.`)),
     cfg.connector ? h('div', null, h('h3', { style: { marginBottom: '8px' } }, `${name} connection`),
       cfg.connector_help ? h('div', { class: 'banner info small', style: { marginBottom: '12px' } }, icon('info'), h('div', null, cfg.connector_help)) : null,
       conn.el) : null,
@@ -116,7 +120,7 @@ function settings(cfg, draw) {
     h('div', { class: 'field' }, h('label', { for: 'erp-uom' }, `Unit mapping (Kosha unit = ${name} unit, one per line)`), uom),
     admin ? h('div', { class: 'row' },
       h('button', { class: 'btn primary', onclick: async () => {
-        const body = { ...conn.values(), default_uom: defUom.value.trim() };
+        const body = { ...conn.values(), default_uom: defUom.value.trim(), bom_source: bomSource.value };
         for (const [k, el] of Object.entries(f)) body[k] = el.checked;
         body.uom_map = Object.fromEntries(uom.value.split('\n').map(l => l.split('=').map(s => s.trim())).filter(p => p.length === 2 && p[0]));
         try { await put('/api/erp/settings', body); toast('ERP settings saved', 'ok'); draw(); } catch (e) { fail(e); }

@@ -215,14 +215,20 @@ def _work(run_id: int, cid: str, name: str) -> None:
 
 
 def _released_boms() -> list[dict]:
-    """The released BOM of every released item: the one for the item's current revision, else the newest."""
-    out = {}
-    for b in db.rows("SELECT b.id, b.item_id, b.revision, i.part_number, i.revision AS item_revision FROM boms b "
-                     "JOIN items i ON i.id = b.item_id WHERE b.state = 'released' AND i.state = 'released' "
-                     "ORDER BY b.id"):
-        cur = out.get(b["item_id"])
-        if cur is None or cur["revision"] != cur["item_revision"] or b["revision"] == b["item_revision"]:
-            out[b["item_id"]] = b
+    """The released BOM of every released item: the one for the item's current revision, else the newest. When the
+    ERP builds from manufacturing BOMs, those are what it should hold (``kind`` says which)."""
+    out: dict = {}
+    sources = [("boms", "bom")] + ([("mboms", "mbom")] if erp.takes_mbom() else [])
+    for table, kind in sources:
+        if kind == "mbom":        # a planned assembly: the ERP should hold the manufacturing BOM, not the design's
+            for item_id in [k for k in out if erp.planned(k)]:
+                del out[item_id]
+        for b in db.rows(f"SELECT b.id, b.item_id, b.revision, i.part_number, i.revision AS item_revision, "
+                         f"'{kind}' AS kind FROM {table} b JOIN items i ON i.id = b.item_id WHERE b.state = 'released' "
+                         "AND i.state = 'released' ORDER BY b.id"):
+            cur = out.get(b["item_id"])
+            if cur is None or cur["revision"] != cur["item_revision"] or b["revision"] == b["item_revision"]:
+                out[b["item_id"]] = b
     return sorted(out.values(), key=lambda b: b["part_number"])
 
 
@@ -275,9 +281,12 @@ def _lines(pairs) -> dict[str, tuple[str, float]]:
 
 def _compare_bom(run: _Run, b: dict, rec) -> None:
     name, pn = run.name, b["part_number"]
-    kosha = _lines((ln["part_number"], ln["qty"]) for ln in erp._bom_lines(b["id"]))
-    note = run.job_note("bom", b["id"])
-    common = {"part_number": pn, "scope": "bom", "item_id": b["item_id"], "bom_id": b["id"], "fix": ("bom", b["id"])}
+    kind = b.get("kind") or "bom"
+    source = erp.mbom_lines if kind == "mbom" else erp._bom_lines
+    kosha = _lines((ln["part_number"], ln["qty"]) for ln in source(b["id"]))
+    note = run.job_note(kind, b["id"])
+    common = {"part_number": pn, "scope": "bom", "item_id": b["item_id"], "bom_id": b["id"] if kind == "bom" else None,
+              "fix": (kind, b["id"])}
     resend = f"Send the BOM again to make {name}'s BOM match rev {b['revision']}." + note
     if rec is None:
         run.add(**common, check="bom_missing", kosha=f"rev {b['revision']}, {len(kosha)} lines", erp_value="",
@@ -335,11 +344,11 @@ def _queue_fix(kind: str, entity_id: int, user_id: int | None, ref: str) -> int:
         if not db.one("SELECT id FROM items WHERE id = ?", (entity_id,)):
             raise ReconcileError("The item no longer exists in Kosha.")
         return erp.enqueue("item", entity_id, user_id, ref)
-    b = db.one("SELECT id, item_id FROM boms WHERE id = ?", (entity_id,))
+    b = db.one(f"SELECT id, item_id FROM {'mboms' if kind == 'mbom' else 'boms'} WHERE id = ?", (entity_id,))
     if not b:
         raise ReconcileError("The BOM no longer exists in Kosha.")
     erp.enqueue("item", b["item_id"], user_id, ref)      # the parent first, as a manual push does
-    return erp.enqueue("bom", entity_id, user_id, ref)
+    return erp.enqueue("mbom" if kind == "mbom" else "bom", entity_id, user_id, ref)
 
 
 def _mark(run_id: int, kind: str, entity_id: int, job_id: int, user_id: int | None) -> None:

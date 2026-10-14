@@ -54,6 +54,9 @@ STEP files and videos. See [file previews](file-previews.md).
 between *latest released*, *in work*, *as of a date* and *as built* for a machine, and turn on **Cost** for a
 cost roll-up and what-if prices. See [BOM views and cost](bom-views-and-cost.md).
 
+**Manufacturing BOM** on a BOM says how the workshop builds the assembly: the operations of the process plan and
+the parts issued at each, checked against the engineering BOM. See [manufacturing BOMs](manufacturing-bom.md).
+
 ## Changes and deviations
 
 - A **change request** (ECR) records a problem or an idea. An approved request becomes a **change order** (ECO)

@@ -46,6 +46,7 @@ a browser client, CAD and Office add-ins, and no per-user fees.
 | **Revision control** | Check-out locks a file; check-in creates a version. Revisions run A, B, C… (skipping I, O, Q, S, X, Z as ASME Y14.35 recommends). Lifecycle *In work → In review → Released → Obsolete*, with role checks. Released revisions are locked; **Revise** starts the next one. Everything is in the audit log. |
 | **All engineering data** | Folders by product line hold SolidWorks, DWG, DXF, PDF, STEP, STL, Office files and images. Files link to **items** (the part master) by part number, read from the file name, the DWG/DXF title block or SolidWorks custom properties. |
 | **Engineering BOMs** | Built from CAD assembly structure at check-in, imported from a BOM table (indented numbers create sub-assemblies), or edited by hand. Validation (unreleased parts, missing material, duplicates, loops), comparison between revisions, Excel export, copy forward on revise. |
+| **Manufacturing BOMs** | How the workshop builds each assembly: parts issued at each operation of a process plan (work centres, set-up and run times, instructions), sub-assemblies built with their parent, parts added for manufacturing. Checked against the engineering BOM down to every part, released after it, carried to the next revision, and sent to the ERP with its operations when the ERP builds from manufacturing BOMs. See [manufacturing BOMs](docs/manufacturing-bom.md). |
 | **ERP sync** | On release, items and BOMs are queued and sent to the ERP through a connector add-in (ERPNext, Odoo and Dolibarr today, and a file-exchange connector that writes CSV/JSON files for any other ERP): children first, unchanged BOMs not sent again, dry-run by default, failures kept with the ERP's own message and a **Retry** button. Stock and cost are read back. **Reconciliation** compares released items and BOMs with the ERP and lists the differences in plain words, with **Send again** and an Excel export. |
 | **Notifications** | Change orders waiting for approval, failed ERP transfers and (for those who ask) new releases reach people by e-mail or in Teams, Slack or Telegram. Each person chooses under **My notifications**; an outbox delivers in the background and retries, so a broken mail server never holds up work. |
 | **Change orders** | ECOs collect the affected files, start new revisions, route to named approvers, and **Implement** releases everything and triggers the ERP push. |
@@ -295,6 +296,8 @@ The full specification and the development guide are maintained alongside the pr
 - **1.0:** pilots at real design offices, then hardening: the newer features proven on PostgreSQL in daily
   use, the Dolibarr connector checked against live Dolibarr versions, the AI prompts tuned on real models,
   and the AutoCAD and GStarCAD add-ins out of preview.
+- **Beyond 1.0:** manufacturing BOMs and process plans, products with options and variants, and quality
+  (nonconformance, corrective actions, FMEA); see the [roadmap](docs/roadmap.md).
 - **Later:** more ERP connectors and CAD add-ins, AI features that use embeddings (similar-part search),
   and a documentation site.
 

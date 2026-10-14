@@ -104,6 +104,27 @@ def _seed_item_master(sofia) -> None:
                                                      "source": "reverse_engineered", "fit": "direct"})
 
 
+def _seed_mbom(asha, asm_item: int) -> None:
+    """How the workshop builds the agitator: four operations, the paint the design does not list."""
+    from . import mbom
+    mid = mbom.create(asha, asm_item, "A")["mbom_id"]
+    ops = [
+        {"op_no": 10, "work_centre": "Assembly bench 1", "description": "Fit bearings, lock nuts and key on the shaft",
+         "setup_min": 15, "run_min": 50, "instructions": "Heat the bearings to 110 °C on the induction heater."},
+        {"op_no": 20, "work_centre": "Assembly bench 1", "description": "Fit the bearing housings", "run_min": 35},
+        {"op_no": 30, "work_centre": "Assembly bay", "description": "Mount the impeller disc and bolt up",
+         "setup_min": 20, "run_min": 45, "instructions": "Torque M16 bolts to 210 Nm in a cross pattern."},
+        {"op_no": 40, "work_centre": "Paint shop", "description": "Paint and final check", "setup_min": 10,
+         "run_min": 90},
+    ]
+    at = {"MX-100-020": 10, "STD-BRG-22220": 10, "MX-100-040": 10, "MX-100-050": 10, "MX-100-030": 20,
+          "MX-100-031": 20, "MX-100-010": 30, "STD-BLT-M16X60": 30, "STD-WSH-M16": 30}
+    lines = [{"item_id": ln["item_id"], "qty": ln["qty"], "op_no": at.get(ln["part_number"])} for ln in mbom.lines(mid)]
+    lines.append({"part_number": "MX-PAINT-5015", "description": "PAINT RAL 5015 SKY BLUE", "uom": "L", "qty": 1.5,
+                  "op_no": 40, "note": "Not on the drawing: two coats"})
+    mbom.save_plan(asha, mid, {"ops": ops, "lines": lines})
+
+
 def seed() -> None:
     if db.scalar("SELECT COUNT(*) FROM documents"):
         log.info("Kosha already has files; demo data not loaded.")
@@ -236,6 +257,7 @@ def seed() -> None:
     db.execute("UPDATE items SET state = 'released' WHERE part_number LIKE 'STD-%' OR part_number IN ('MX-100-040')")
     db.execute("UPDATE items SET material = '1.4401 (316)' WHERE part_number = 'MX-100-010'")
     db.execute("UPDATE items SET material = '42CrMo4', weight_kg = 186 WHERE part_number = 'MX-100-020'")
+    _seed_mbom(asha, asm_item)
 
     # in-work file checked out to Asha
     sleeve = _put(asha, mx, "MX-100-021 Shaft Sleeve.dxf",

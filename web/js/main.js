@@ -11,6 +11,7 @@ import { renderErp } from './erp.js';
 import { renderBin } from './recyclebin.js';
 import { renderShares, renderShareOutside } from './share.js';
 import { renderBomView, renderMachines } from './bomviews.js';
+import { renderMboms, renderMbom } from './mbom.js';
 import { renderTransmittals } from './transmittals.js';
 import { renderCommon } from './common.js';
 import { renderAdmin, renderSearch } from './admin.js';
@@ -60,6 +61,8 @@ const ROUTES = [
   [/^#\/bom\/(\d+)$/, 'boms', () => renderBom],
   [/^#\/bom-view\/(\d+)$/, 'boms', () => renderBomView],
   [/^#\/machines$/, 'boms', () => renderMachines],
+  [/^#\/mboms$/, 'boms', () => renderMboms],
+  [/^#\/mbom\/(\d+)$/, 'boms', () => renderMbom],
   [/^#\/changes$/, 'changes', () => renderChanges],
   [/^#\/change\/(\d+)$/, 'changes', () => renderChange],
   [/^#\/ecrs$/, 'changes', () => renderRequests],

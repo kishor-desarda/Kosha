@@ -14,6 +14,7 @@ from typing import Any, Callable
 EVENTS = {
     "revision.released": "a file revision was released",
     "bom.released": "a BOM was released",
+    "mbom.released": "a manufacturing BOM (with its process plan) was released",
     "change.implemented": "a change order was implemented",
     "item.created": "a new item was created",
     "deviation.approved": "a deviation (a temporary departure from the released design) was approved",

@@ -43,6 +43,7 @@ EVENTS = {
     "revision.released": "A revision was released",
     "revision.obsoleted": "A revision was made obsolete or spares only",
     "bom.released": "A BOM was released",
+    "mbom.released": "A manufacturing BOM (with its process plan) was released",
     "ecr.raised": "A change request was raised",
     "eco.submitted": "A change order was sent for approval",
     "eco.approved": "A change order was approved by everyone",

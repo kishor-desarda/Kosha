@@ -4,6 +4,17 @@ All notable changes to Kosha are listed here, newest first. Versions follow [sem
 a release candidate (`rc`) is feature-complete and waits for pilot feedback before the final release.
 The release workflow publishes the section for each tag as that release's notes.
 
+## [Unreleased]
+
+### Added
+
+- **Manufacturing BOMs and process plans:** how the workshop builds each assembly, made from the engineering BOM:
+  operations with work centres, set-up and run times and instructions; each part at the operation that uses it;
+  sub-assemblies built with their parent; parts added for manufacturing. Checks against the engineering BOM down
+  to every part, release after the engineering BOM, carry-over to the next revision, an Excel export for the
+  workshop, the `mbom.released` event, and an ERP setting to send manufacturing BOMs with their operations
+  (operations in ERPNext when switched on).
+
 ## [1.0.0rc1]
 
 The first release candidate for 1.0: every area of the specification is built and covered by tests, including an

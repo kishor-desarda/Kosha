@@ -18,17 +18,18 @@ from . import config, db
 from .addins import registry
 
 from kosha_sdk import AddinError  # noqa: E402
-from kosha_sdk.erp import ErpBom, ErpBomLine, ErpItem, ErpNotSupported  # noqa: E402
+from kosha_sdk.erp import ErpBom, ErpBomLine, ErpItem, ErpNotSupported, ErpOperation  # noqa: E402
 
 log = logging.getLogger("kosha.erp")
 MAX_ATTEMPTS = 5
 RETRY_FIRST_SECONDS = 60          # a failed job is tried again after 1, 4, 16 and 64 minutes, then waits for a person
 GENERIC_KEYS = ("enabled", "dry_run", "auto_push_on_release", "connector", "default_uom", "uom_map", "category_map",
-                "attach_pdfs", "nightly_reconcile")
+                "attach_pdfs", "nightly_reconcile", "bom_source")
+BOM_SOURCES = ("ebom", "mbom")   # which BOM the ERP builds from: the engineering one, or the manufacturing one
 GENERIC_DEFAULTS = {"enabled": False, "dry_run": True, "auto_push_on_release": True, "connector": "",
                     "default_uom": "Nos",
                     "uom_map": {"EA": "Nos", "PCS": "Nos", "NOS": "Nos", "KG": "Kg", "M": "Meter", "MM": "Millimeter"},
-                    "category_map": {}, "attach_pdfs": True, "nightly_reconcile": True}
+                    "category_map": {}, "attach_pdfs": True, "nightly_reconcile": True, "bom_source": "ebom"}
 ERPNEXT_ID = "org.kosha.erpnext"
 
 
@@ -143,10 +144,27 @@ def on_release(item_id: int, user_id: int | None, ref: str) -> None:
     if not item:
         return
     enqueue("item", item_id, user_id, ref)
+    if planned(item_id):
+        m = db.one("SELECT id FROM mboms WHERE item_id = ? AND revision = ? AND state = 'released'",
+                   (item_id, item["revision"]))
+        if m:
+            enqueue("mbom", m["id"], user_id, ref)
+        return
     bom = db.one("SELECT id FROM boms WHERE item_id = ? AND revision = ? AND state = 'released'",
                  (item_id, item["revision"]))
     if bom:
         enqueue("bom", bom["id"], user_id, ref)
+
+
+def takes_mbom() -> bool:
+    """The ERP builds from manufacturing BOMs (with their operations) instead of engineering BOMs."""
+    return settings().get("bom_source") == "mbom"
+
+
+def planned(item_id: int) -> bool:
+    """The ERP gets this assembly's manufacturing BOM rather than its engineering BOM: the ERP takes manufacturing
+    BOMs and the assembly has one. Assemblies nobody planned (sub-assemblies built as designed) still go as designed."""
+    return takes_mbom() and bool(db.scalar("SELECT 1 FROM mboms WHERE item_id = ?", (item_id,)))
 
 
 def on_status(item_id: int, user_id: int | None, ref: str) -> None:
@@ -184,6 +202,24 @@ def _bom_lines(bom_id: int) -> list[dict]:
     return db.rows(
         "SELECT i.part_number, i.description, i.uom AS item_uom, bl.qty, bl.uom FROM bom_lines bl "
         "JOIN items i ON i.id = bl.child_item_id WHERE bl.bom_id = ? ORDER BY bl.line_no", (bom_id,))
+
+
+def mbom_lines(mbom_id: int) -> list[dict]:
+    return db.rows(
+        "SELECT i.part_number, i.description, i.uom AS item_uom, ml.qty, ml.uom, ml.op_no FROM mbom_lines ml "
+        "JOIN items i ON i.id = ml.child_item_id WHERE ml.mbom_id = ? ORDER BY ml.op_no, ml.line_no", (mbom_id,))
+
+
+def _send_components(cfg: dict, lines: list[dict], parent_id: int, parent_code: str) -> None:
+    """The ERP needs every component, and the parent, to exist before the BOM."""
+    for ln in lines:
+        child = db.one("SELECT * FROM items WHERE part_number = ? COLLATE NOCASE", (ln["part_number"],))
+        if child and not child["erp_synced_at"]:
+            call("upsert_item", to_erp_item(cfg, child))
+            db.update("items", child["id"], {"erp_item_code": child["part_number"], "erp_synced_at": db.now()})
+    if not db.scalar("SELECT erp_synced_at FROM items WHERE id = ?", (parent_id,)):
+        call("upsert_item", to_erp_item(cfg, db.one("SELECT * FROM items WHERE id = ?", (parent_id,))))
+        db.update("items", parent_id, {"erp_item_code": parent_code, "erp_synced_at": db.now()})
 
 
 def run_job(job_id: int) -> dict:
@@ -226,17 +262,32 @@ def run_job(job_id: int) -> dict:
             if not live:
                 _finish(job_id, "dry_run", _bom_preview(erp_bom), "Dry run: ERP push is switched off, nothing was sent.")
                 return db.one("SELECT * FROM erp_jobs WHERE id = ?", (job_id,))
-            # the ERP needs every component, and the parent, to exist first
-            for ln in lines:
-                child = db.one("SELECT * FROM items WHERE part_number = ? COLLATE NOCASE", (ln["part_number"],))
-                if child and not child["erp_synced_at"]:
-                    call("upsert_item", to_erp_item(cfg, child))
-                    db.update("items", child["id"], {"erp_item_code": child["part_number"], "erp_synced_at": db.now()})
-            if not db.scalar("SELECT erp_synced_at FROM items WHERE id = ?", (bom["item_id"],)):
-                call("upsert_item", to_erp_item(cfg, db.one("SELECT * FROM items WHERE id = ?", (bom["item_id"],))))
-                db.update("items", bom["item_id"], {"erp_item_code": bom["part_number"], "erp_synced_at": db.now()})
+            _send_components(cfg, lines, bom["item_id"], bom["part_number"])
             result = call("upsert_bom", erp_bom)
             _finish(job_id, "sent", result.payload, f"BOM {result.message}")
+        elif job["kind"] == "mbom":
+            m = db.one("SELECT m.*, i.part_number, i.description, i.revision AS item_revision, i.uom, i.material, "
+                       "i.weight_kg, i.item_group FROM mboms m JOIN items i ON i.id = m.item_id WHERE m.id = ?",
+                       (job["entity_id"],))
+            if not m:
+                raise ErpError("Manufacturing BOM no longer exists in Kosha")
+            lines = mbom_lines(m["id"])
+            if not lines:
+                raise ErpError("The manufacturing BOM has no lines")
+            parent = to_erp_item(cfg, m, revision=m["revision"])
+            ops = db.rows("SELECT op_no, work_centre, description, setup_min, run_min FROM mbom_ops WHERE mbom_id = ? "
+                          "ORDER BY op_no", (m["id"],))
+            erp_bom = ErpBom(item=parent, revision=m["revision"],
+                             lines=tuple(ErpBomLine(ln["part_number"], float(ln["qty"]), uom(cfg, ln["uom"] or ln["item_uom"]),
+                                                    ln["op_no"]) for ln in lines),
+                             operations=tuple(ErpOperation(o["op_no"], o["work_centre"], o["description"],
+                                                           float(o["setup_min"]), float(o["run_min"])) for o in ops))
+            if not live:
+                _finish(job_id, "dry_run", _bom_preview(erp_bom), "Dry run: ERP push is switched off, nothing was sent.")
+                return db.one("SELECT * FROM erp_jobs WHERE id = ?", (job_id,))
+            _send_components(cfg, lines, m["item_id"], m["part_number"])
+            result = call("upsert_bom", erp_bom)
+            _finish(job_id, "sent", result.payload, f"Manufacturing BOM {result.message}")
         elif job["kind"] == "refresh":
             row = db.one("SELECT * FROM items WHERE id = ?", (job["entity_id"],))
             if not row:
@@ -301,8 +352,13 @@ def _item_preview(item: ErpItem) -> dict:
 
 
 def _bom_preview(bom: ErpBom) -> dict:
-    return {"item": bom.item.code, "revision": bom.revision, "quantity": 1,
-            "items": [{"item_code": ln.code, "qty": ln.qty, "uom": ln.uom} for ln in bom.lines]}
+    out = {"item": bom.item.code, "revision": bom.revision, "quantity": 1,
+           "items": [{"item_code": ln.code, "qty": ln.qty, "uom": ln.uom, **({"operation": ln.op_no} if ln.op_no else {})}
+                     for ln in bom.lines]}
+    if bom.operations:
+        out["operations"] = [{"op_no": o.op_no, "work_centre": o.work_centre, "description": o.description,
+                              "setup_min": o.setup_min, "run_min": o.run_min} for o in bom.operations]
+    return out
 
 
 def _finish(job_id: int, status: str, payload, response: str) -> None:

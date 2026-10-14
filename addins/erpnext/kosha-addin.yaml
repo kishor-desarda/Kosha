@@ -31,6 +31,7 @@ settings:
   customer_field:     {type: string, label: Customer restriction custom field, hint: "Optional, e.g. custom_kosha_customer"}
   spares_only_field:  {type: string, label: Spares only custom field, hint: "Optional check field, e.g. custom_kosha_spares_only"}
   submit_boms:        {type: bool, default: true, label: Submit BOMs in ERPNext after creating them}
+  send_operations:    {type: bool, default: false, label: Send the operations of manufacturing BOMs, hint: "Only when ERP sync sends manufacturing BOMs. Each operation's description must exist in ERPNext as an Operation and its work centre as a Workstation."}
   verify_tls:         {type: bool, default: true, label: Verify the HTTPS certificate}
   timeout_s:          {type: int, default: 30, label: Time-out per call (seconds)}
   webhook_secret:     {type: secret, label: Webhook secret, hint: "The same value goes in ERPNext › Kosha Settings. Leave empty to refuse calls from ERPNext."}
