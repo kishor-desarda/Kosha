@@ -44,7 +44,8 @@ ROLE_HELP = {
     "admin": "Everything: users, access, backups, add-ins and settings.",
     "data_steward": "Numbering rules, categories, duplicates and allowing a locked customer part to be reused.",
     "spares": "Find parts by OEM number or customer and build spare lists.",
-    "quality": "Attach inspection reports and certificates; send drawing packages to vendors.",
+    "quality": "Report nonconformances and decide what happens to the parts; check corrective actions; FMEA; attach "
+               "inspection reports and certificates; send drawing packages to vendors.",
 }
 
 KINDS = {"person": "Person", "vendor": "Vendor or outside designer", "service": "Service account (programs)"}

@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from . import db, notifications
 from .web import ROLE_LEVEL, bad, conflict, forbidden, not_found
 
-ENTITY_TYPES = ("item", "document", "change_order", "change_request", "deviation", "bom")
+ENTITY_TYPES = ("item", "document", "change_order", "change_request", "deviation", "bom", "ncr", "capa", "fmea")
 EDIT_WINDOW = timedelta(minutes=15)
 MAX_BODY = 4000
 MAX_TITLE = 200
@@ -75,6 +75,13 @@ def entity_info(entity_type: str, entity_id: int) -> dict:
         if not r:
             raise not_found("Deviation not found")
         return {"label": r["number"], "link": f"#/deviation/{eid}", "revision": ""}
+    if entity_type in ("ncr", "capa", "fmea"):
+        from . import quality
+        if entity_type == "fmea":
+            f = quality.fmea_or_404(eid)
+            return {"label": f["title"], "link": f"#/fmea/{eid}", "revision": ""}
+        r = (quality.ncr_or_404 if entity_type == "ncr" else quality.capa_or_404)(eid)
+        return {"label": r["number"], "link": f"#/{entity_type}/{eid}", "revision": ""}
     r = db.one("SELECT b.revision, i.part_number FROM boms b JOIN items i ON i.id = b.item_id WHERE b.id = ?", (eid,))
     if not r:
         raise not_found("BOM not found")

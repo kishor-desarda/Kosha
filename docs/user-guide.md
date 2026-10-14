@@ -60,6 +60,10 @@ the parts issued at each, checked against the engineering BOM. See [manufacturin
 **Options and variants** on a BOM makes a product configurable: options such as motor power, a rule on each line
 that is not always used, and variants saved for orders. See [options and variants](options-and-variants.md).
 
+**Quality** in the menu holds nonconformance reports (a part that does not match its drawing, and what happens to
+it), corrective actions (the cause found and removed, checked by someone else) and FMEA (how a part can fail, with
+risk numbers). See [quality](quality.md).
+
 ## Changes and deviations
 
 - A **change request** (ECR) records a problem or an idea. An approved request becomes a **change order** (ECO)

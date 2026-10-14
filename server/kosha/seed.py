@@ -125,6 +125,50 @@ def _seed_mbom(asha, asm_item: int) -> None:
     mbom.save_plan(asha, mid, {"ops": ops, "lines": lines})
 
 
+def _seed_ncr_capa_fmea(asha, daniel) -> None:
+    """Quality records: a bore out of tolerance from a supplier, decided and followed by a corrective action; a
+    paint defect waiting for a decision; a design FMEA of the agitator."""
+    from datetime import date, timedelta
+
+    from . import quality
+    item = lambda pn: db.scalar("SELECT id FROM items WHERE part_number = ?", (pn,))  # noqa: E731
+    soon = lambda days: (date.today() + timedelta(days=days)).isoformat()  # noqa: E731
+    n1 = quality.create_ncr(asha, {"title": "Bearing seat Ø100 k6 measured 100.041, above the limit",
+                                   "item_id": item("MX-100-020"), "found_at": "incoming", "batch": "Lot 2611",
+                                   "qty": 4, "supplier": "Example Machining",
+                                   "description": "4 of 4 shafts measured at goods-in with the 100 mm micrometer; "
+                                                  "the seat is 0.005 mm over the top limit of k6."})
+    quality.disposition(daniel, n1, {"disposition": "rework", "note": "Grind the seats back to k6 and measure again."})
+    quality.create_ncr(asha, {"title": "Paint chipped on the bearing housing flange", "item_id": item("MX-100-040"),
+                              "found_at": "assembly", "qty": 1, "description": "Found while fitting the housing."})
+    c = quality.create_capa(asha, {"title": "Shaft bearing seats ground oversize at the supplier",
+                                   "item_id": item("MX-100-020"), "owner_id": asha["id"], "due_date": soon(30),
+                                   "problem": "Bearing seats above k6 on a whole lot.",
+                                   "containment": "Lot 2611 held at goods-in; shafts in stock measured, all fine.",
+                                   "ncr_ids": [n1]})
+    quality.advance(asha, c, {"root_cause": "The supplier measured with a worn gauge that was not in the "
+                                            "calibration plan."})
+    quality.add_action(asha, c, {"text": "Supplier adds the gauge to its calibration plan", "owner_id": asha["id"],
+                                 "due_date": soon(-3)})
+    quality.add_action(asha, c, {"text": "Measurement report for the first 3 shafts of every lot",
+                                 "owner_id": daniel["id"], "due_date": soon(14)})
+    first = quality.actions(c)[0]
+    quality.finish_action(asha, c, first["id"], "Certificate received")
+    f = quality.create_fmea(asha, {"item_id": item("MX-100-000"), "kind": "design", "team": "Asha Menon, Daniel Okafor"})
+    quality.save_fmea_rows(asha, f, [
+        {"function": "Carry the impeller load", "failure_mode": "Shaft breaks at the keyway", "effect": "Impeller "
+         "falls into the vessel; injury risk", "severity": 10, "cause": "Fatigue at the keyway root",
+         "occurrence": 2, "prevention": "Keyway with root radius", "detection_control": "FEA of the shaft",
+         "detection": 3, "action": "Raise the root radius to 0.6 mm", "owner_id": asha["id"], "due_date": soon(21)},
+        {"function": "Support the shaft", "failure_mode": "Bearing runs hot", "effect": "Stop of the line",
+         "severity": 6, "cause": "Seat out of tolerance", "occurrence": 4, "prevention": "k6 seat on the drawing",
+         "detection_control": "Goods-in measurement", "detection": 5},
+        {"function": "Seal the vessel", "failure_mode": "Sleeve wears", "effect": "Product leaks slowly",
+         "severity": 4, "cause": "Abrasive product", "occurrence": 3, "prevention": "Hardened sleeve",
+         "detection_control": "Visual check at service", "detection": 3},
+    ])
+
+
 def _seed_configurable(asha) -> None:
     """A pump sold with options: motor power, voltage and seal; one variant saved for an order."""
     from . import configurator
@@ -300,6 +344,7 @@ def seed() -> None:
     db.execute("UPDATE items SET material = '42CrMo4', weight_kg = 186 WHERE part_number = 'MX-100-020'")
     _seed_mbom(asha, asm_item)
     _seed_configurable(asha)
+    _seed_ncr_capa_fmea(asha, daniel)
 
     # in-work file checked out to Asha
     sleeve = _put(asha, mx, "MX-100-021 Shaft Sleeve.dxf",
