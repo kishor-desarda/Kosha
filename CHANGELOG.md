@@ -7,6 +7,8 @@ The release workflow publishes the section for each tag as that release's notes.
 
 ### Backlog
 
+- [ ] **SolidWorks: rebuild missing 3D previews and viewer meshes:** add an admin-triggered, resumable batch operation (similar to Refresh Missing BOM) that finds existing `.SLDPRT` and `.SLDASM` versions missing preview/viewer assets, uses a dedicated Windows worker with SolidWorks installed to open files programmatically and export STL meshes and optional PNG previews, then attaches the generated assets to the existing version records without check-in, new revisions, version increments, or changes to lifecycle state or original CAD files. Include per-file progress, failures, and a retryable report.
+
 - [ ] **SolidWorks plugin: revise file:** add a **Revise** action so users can start a new revision of a released document directly from the SolidWorks add-in.
 - [ ] **Explorer: All in-work files view:** add a view listing every document currently in `in_work`, across all folders, with useful metadata and navigation to each document and its containing folder.
 - [ ] **Items: Parts and assemblies not used in any BOM:** add a view listing parts and assemblies that are not referenced as components by any BOM, based on actual BOM relationships.
