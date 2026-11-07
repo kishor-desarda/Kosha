@@ -9,12 +9,14 @@ The release workflow publishes the section for each tag as that release's notes.
 
 - [ ] **SolidWorks: rebuild missing 3D previews and viewer meshes:** add an admin-triggered, resumable batch operation (similar to Refresh Missing BOM) that finds existing `.SLDPRT` and `.SLDASM` versions missing preview/viewer assets, uses a dedicated Windows worker with SolidWorks installed to open files programmatically and export STL meshes and optional PNG previews, then attaches the generated assets to the existing version records without check-in, new revisions, version increments, or changes to lifecycle state or original CAD files. Include per-file progress, failures, and a retryable report.
 
+- [ ] **SolidWorks: generate missing drawing PDFs:** add an admin-triggered, resumable batch operation that finds existing `.SLDDRW` versions without PDF outputs, uses the dedicated Windows SolidWorks worker to open each drawing with its referenced models available, exports all drawing sheets into a PDF, and attaches the PDF to the existing version without check-in, new revisions, version increments, lifecycle changes, or modifications to the source drawing or referenced CAD files. Include per-file progress, missing-reference diagnostics, failures, and retryable reporting.
+
 - [ ] **SolidWorks plugin: revise file:** add a **Revise** action so users can start a new revision of a released document directly from the SolidWorks add-in.
 - [ ] **Explorer: All in-work files view:** add a view listing every document currently in `in_work`, across all folders, with useful metadata and navigation to each document and its containing folder.
 - [ ] **Items: Parts and assemblies not used in any BOM:** add a view listing parts and assemblies that are not referenced as components by any BOM, based on actual BOM relationships.
 - [ ] **Recycle Bin: Select All:** add a button to select every item when purging the recycle bin.
 - [ ] **Items: Select All:** add a button to select every purged item when permanently deleting items.
-- [ ] **Delete unreleased revision:** allow an unreleased revision to be deleted independently, subject to dependency and lifecycle safeguards.
+- [ ] **Download/Open in SolidWorks:** download a part into its correct folder and open it in SolidWorks. For assemblies, download the complete recursive dependency set, including parts nested in subassemblies and other referenced documents, reconstruct the required directory structure, and preserve relative file references so the assembly, subassemblies, parts, and drawings open without broken links. Handle filename collisions and missing dependencies explicitly.
 - [ ] **SolidWorks plugin: check out file:** add a check-out action to the SolidWorks plugin so a user can check out a document directly from the CAD workflow.
 - [ ] **Open in SolidWorks:** download a part into its correct folder and open it in SolidWorks. For assemblies, download the complete recursive BOM, including parts nested in subassemblies.
 - [ ] **Pack and Go backup:** export selected items with their complete revision histories, associated files and the relevant database records into a self-contained backup.
