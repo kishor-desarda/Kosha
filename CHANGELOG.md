@@ -1,12 +1,30 @@
 # Changelog
 
-All notable changes to Kosha are listed here, newest first. Versions follow [semantic versioning](https://semver.org/):
-a release candidate (`rc`) is feature-complete and waits for pilot feedback before the final release.
+All notable changes to Kosha are listed here, newest first. Versions follow [semantic versioning](https://semver.org/): a release candidate (`rc`) is feature-complete and waits for pilot feedback before the final release.
 The release workflow publishes the section for each tag as that release's notes.
 
 ## [Unreleased]
 
+### Backlog
+
+- [ ] **Recycle Bin: Select All:** add a button to select every item when purging the recycle bin.
+- [ ] **Items: Select All:** add a button to select every purged item when permanently deleting items.
+- [ ] **Delete unreleased revision:** allow an unreleased revision to be deleted independently, subject to dependency and lifecycle safeguards.
+- [ ] **SolidWorks plugin: check out file:** add a check-out action to the SolidWorks plugin so a user can check out a document directly from the CAD workflow.
+- [ ] **Open in SolidWorks:** download a part into its correct folder and open it in SolidWorks. For assemblies, download the complete recursive BOM, including parts nested in subassemblies.
+- [ ] **Pack and Go backup:** export selected items with their complete revision histories, associated files and the relevant database records into a self-contained backup.
+- [ ] **Pack and Go restore:** inspect conflicts before restoring and allow the user to rename or overwrite conflicting records.
+- [ ] **Deletion-log tamper protection:** add exclusive file locking, shutdown backups, startup comparison and tamper detection. This is deliberately deferred from the current round.
+- [ ] **Permanent-deletion verification and hardening:** revisit post-delete verification of database records and content blobs; distinguish expected orphaned import reports from unexpected leftovers; use pre-deletion snapshots to verify blob cleanup; log cleanup failures and add regression coverage for interrupted or partial cleanup.
+
+## [1.0.0rc1]
+
+The first release candidate for 1.0: every area of the specification is built and covered by tests, including an
+acceptance suite that walks through the specification's acceptance scenarios end to end.
+
 ### Added
+- **SolidWorks legacy import:** read native custom properties (`PartNo`, `Part Number`, Description, Material and Revision) and assembly component trees; preserve repeated instances and respect suppression and BOM-exclusion flags, with filename fallback when the component-tree stream is unavailable.
+- **Permanent deletion:** permanently remove eligible unreleased items, their exclusively owned documents and versions, and unshared BOM descendants; retain shared dependencies and blobs, protect released or ERP-linked records, and record outcomes in an independent deletion log with startup recovery.
 
 - **Quality:** nonconformance reports (NCR-YY-NNNN) with photos and a disposition (use as is, rework, repair,
   scrap, return to supplier; use as is and repair raise a draft deviation); corrective and preventive actions
@@ -24,19 +42,6 @@ The release workflow publishes the section for each tag as that release's notes.
   to every part, release after the engineering BOM, carry-over to the next revision, an Excel export for the
   workshop, the `mbom.released` event, and an ERP setting to send manufacturing BOMs with their operations
   (operations in ERPNext when switched on).
-
-### Fixed
-
-- **Container image on hosting platforms:** the image no longer declares a `VOLUME` (some platforms, such as
-  Railway, refuse to build it), listens on the platform's `PORT` when `KOSHA_PORT` is not set, and hands a
-  root-owned data volume to the `kosha` user before starting without root. `railway.json` sets the health check.
-
-## [1.0.0rc1]
-
-The first release candidate for 1.0: every area of the specification is built and covered by tests, including an
-acceptance suite that walks through the specification's acceptance scenarios end to end.
-
-### Added
 
 - **Part numbers:** number formats from the specification, bulk reservation, voiding with a reason, and near
   matches shown before a new number is taken.
@@ -72,6 +77,14 @@ acceptance suite that walks through the specification's acceptance scenarios end
 - **Releases:** a release workflow that checks readiness, runs the full CI, scans dependencies for known
   vulnerabilities, builds the packages and the server image with a software bill of materials (SBOM) and signed
   build provenance, and publishes a GitHub release. User and admin guides.
+
+
+### Fixed
+
+- **Permanent deletion:** remove item-specific legacy import records and source references, including imported part rows with no document link; remove historical audit entries for draft BOMs deleted before their parent item, without touching later audit history if a BOM ID is reused.
+- **Container image on hosting platforms:** the image no longer declares a `VOLUME` (some platforms, such as
+  Railway, refuse to build it), listens on the platform's `PORT` when `KOSHA_PORT` is not set, and hands a
+  root-owned data volume to the `kosha` user before starting without root. `railway.json` sets the health check.
 
 ### Changed
 

@@ -102,6 +102,7 @@ def main():
     serve("kosha.app:app", PORT)
     serve("fake_erpnext:app", ERP_PORT)
     import fake_erpnext as FE
+    from kosha import auditchain, db, deletionlog, store
 
     admin, _ = login("admin", "admin-pass-1")
     Client().call("POST", "/api/auth/login", {"username": "admin", "password": "nope"}, expect=400)
@@ -184,6 +185,273 @@ def main():
     b = eng.call("PUT", f"/api/boms/{bom_id}/lines", {"lines": lines})
     assert b["lines"][0]["qty"] == 4
 
+    # --- deletion: BOM lines cascade, component items remain, orphan items can be removed
+    child = eng.call("POST", "/api/items", {"part_number": "TMP-DELETE-CHILD", "description": "Temporary child"})["item"]
+    parent = eng.call("POST", "/api/items", {"part_number": "TMP-DELETE-PARENT", "description": "Temporary assembly"})["item"]
+    disposable_bom = eng.call("POST", "/api/boms", {"item_id": parent["id"]})["bom_id"]
+    eng.call("PUT", f"/api/boms/{disposable_bom}/lines", {"lines": [{"item_id": child["id"], "qty": 2}]})
+    eng.call("DELETE", f"/api/items/{child['id']}", expect=409)  # still used by a BOM
+    eng.call("DELETE", f"/api/boms/{disposable_bom}")
+    eng.call("GET", f"/api/boms/{disposable_bom}", expect=404)
+    assert eng.call("GET", f"/api/items/{child['id']}")["item"]["part_number"] == "TMP-DELETE-CHILD"
+    eng.call("DELETE", f"/api/items/{parent['id']}")
+    assert db.scalar("SELECT 1 FROM audit WHERE entity = 'bom' AND entity_id = ?",
+                     (disposable_bom,)) is None, "Pre-deleted BOM audit history must be removed with its item."
+    eng.call("DELETE", f"/api/items/{child['id']}")
+    eng.call("GET", f"/api/items/{child['id']}", expect=404)
+
+    # --- change-order associations: consequential ECOs block deletion; draft ECOs detach cleanly
+    eco_item = eng.call("POST", "/api/items", {"part_number": "TMP-ECO-DELETE",
+                                               "description": "Temporary ECO-linked item"})["item"]
+    eco_upload = eng.call("POST", "/api/documents/upload", fields={"folder_id": str(f)},
+                          files={"file": ("TMP-ECO-DELETE Drawing.txt", b"temporary ECO-linked document")})
+    eco_doc = eco_upload["documents"][0]
+    db.execute("UPDATE documents SET item_id = ? WHERE id = ?", (eco_item["id"], eco_doc["id"]))
+    eco = eng.call("POST", "/api/changes", {
+        "title": "Temporary deletion protection test",
+        "reason": "Test consequential ECO protection",
+        "document_ids": [eco_doc["id"]],
+        "approver_ids": [appr_u["id"]],
+    })
+    db.execute("UPDATE change_orders SET state = 'submitted' WHERE id = ?", (eco["id"],))
+    eng.call("DELETE", f"/api/items/{eco_item['id']}", expect=409)
+    assert db.scalar("SELECT 1 FROM items WHERE id = ?", (eco_item["id"],))
+    assert db.scalar("SELECT 1 FROM co_items WHERE co_id = ? AND document_id = ?",
+                     (eco["id"], eco_doc["id"]))
+    db.execute("UPDATE change_orders SET state = 'draft' WHERE id = ?", (eco["id"],))
+    eco_delete = eng.call("DELETE", f"/api/items/{eco_item['id']}")
+    assert eco_delete["deletion_log_status"] == "COMMITTED"
+    assert db.scalar("SELECT 1 FROM change_orders WHERE id = ?", (eco["id"],))
+    assert db.scalar("SELECT 1 FROM co_items WHERE co_id = ?", (eco["id"],)) is None
+    assert auditchain.verify()["ok"]
+
+    # An unresolved PREPARED entry is classified as ABORTED when the original item remains.
+    recovery_item = eng.call("POST", "/api/items", {"part_number": "TMP-DELETE-RECOVERY",
+                                                     "description": "Recovery test item"})["item"]
+    pending = deletionlog.DeletionJournal()
+    pending.prepare(actor="Test Engineer", reason="Startup recovery test",
+                    items=[db.one("SELECT * FROM items WHERE id = ?", (recovery_item["id"],))], documents=[])
+    assert deletionlog.reconcile() == 1
+    recovered_events = deletionlog.read_events()
+    recovered_prepare = next(e for e in reversed(recovered_events)
+                             if e["event"] == "PREPARED" and
+                             any(i["part_number"] == "TMP-DELETE-RECOVERY" for i in e["items"]))
+    assert any(e["operation_id"] == recovered_prepare["operation_id"] and e["event"] == "ABORTED"
+               for e in recovered_events)
+
+    # If the database committed but the terminal log record was lost, startup marks it COMMITTED.
+    committed_recovery_item = eng.call("POST", "/api/items", {
+        "part_number": "TMP-DELETE-RECOVERY-COMMIT", "description": "Committed recovery test item"
+    })["item"]
+    pending_commit = deletionlog.DeletionJournal()
+    pending_commit.prepare(
+        actor="Test Engineer", reason="Committed startup recovery test",
+        items=[db.one("SELECT * FROM items WHERE id = ?", (committed_recovery_item["id"],))], documents=[]
+    )
+    with db.tx():
+        db.execute("DELETE FROM audit WHERE entity = 'item' AND entity_id = ?", (committed_recovery_item["id"],))
+        db.execute("DELETE FROM items WHERE id = ?", (committed_recovery_item["id"],))
+        auditchain.rebuild()
+    assert deletionlog.reconcile() == 1
+    committed_events = deletionlog.read_events()
+    committed_prepare = next(e for e in reversed(committed_events)
+                             if e["event"] == "PREPARED" and
+                             any(i["part_number"] == "TMP-DELETE-RECOVERY-COMMIT" for i in e["items"]))
+    assert any(e["operation_id"] == committed_prepare["operation_id"] and e["event"] == "COMMITTED"
+               for e in committed_events)
+    eng.call("DELETE", f"/api/items/{recovery_item['id']}")
+    # --- cascade item deletion: owned BOM descendants, document rows, versions and blobs
+    cascade_parent = eng.call("POST", "/api/items", {"part_number": "TMP-CASCADE-PARENT",
+                                                     "description": "Temporary assembly"})["item"]
+    cascade_child = eng.call("POST", "/api/items", {"part_number": "TMP-CASCADE-CHILD",
+                                                    "description": "Temporary component"})["item"]
+    cascade_bom = eng.call("POST", "/api/boms", {"item_id": cascade_parent["id"]})["bom_id"]
+    # Simulate a prior BOM generation whose integer ID was later reused. Its
+    # audit history must survive deletion of the current generation.
+    db.audit(eng_u["id"], "bom_edit", "bom", cascade_bom, "OLD-UNRELATED rev A")
+    db.audit(eng_u["id"], "bom_delete", "bom", cascade_bom, "OLD-UNRELATED rev A")
+    eng.call("PUT", f"/api/boms/{cascade_bom}/lines",
+             {"lines": [{"item_id": cascade_child["id"], "qty": 1}]})
+    current_bom_audit_id = db.scalar(
+        "SELECT MAX(id) FROM audit WHERE entity = 'bom' AND entity_id = ?", (cascade_bom,)
+    )
+    folder_id = eng.call("GET", "/api/folders")["folders"][0]["id"]
+    uploaded = eng.call("POST", "/api/documents/upload", fields={"folder_id": str(folder_id)},
+                        files={"file": (["cascade-parent.txt", "cascade-child.txt"],
+                                        [b"parent file content", b"child file content"])})
+    assert len(uploaded["documents"]) == 2 and not uploaded["errors"], uploaded
+    cascade_docs = uploaded["documents"]
+    db.execute("UPDATE documents SET item_id = ? WHERE id = ?",
+               (cascade_parent["id"], cascade_docs[0]["id"]))
+    db.execute("UPDATE documents SET item_id = ? WHERE id = ?",
+               (cascade_child["id"], cascade_docs[1]["id"]))
+    # Legacy source rows can identify an item even when they have no document link.
+    legacy_batch = db.insert("import_jobs", {
+        "source": "test", "target": "test", "status": "complete", "started_at": db.now(),
+    })
+    parent_source = r"C:\\legacy\\cascade-parent.SLDPRT"
+    child_source = r"C:\\legacy\\cascade-child.step"
+    unrelated_source = r"C:\\legacy\\unrelated.SLDPRT"
+    db.insert("legacy_records", {
+        "batch_id": legacy_batch, "source_path": parent_source, "status": "imported",
+        "part_number": cascade_parent["part_number"], "description": cascade_parent["description"],
+        "revision": "A", "created_at": db.now(),
+    })
+    db.insert("legacy_records", {
+        "batch_id": legacy_batch, "source_path": child_source, "status": "imported",
+        "document_id": cascade_docs[1]["id"], "part_number": "", "description": "Cascade child",
+        "revision": "A", "created_at": db.now(),
+    })
+    db.insert("legacy_records", {
+        "batch_id": legacy_batch, "source_path": unrelated_source, "status": "imported",
+        "part_number": "TMP-KEEP-LEGACY", "description": "Unrelated import row",
+        "revision": "A", "created_at": db.now(),
+    })
+    db.insert("legacy_refs", {
+        "batch_id": legacy_batch, "kind": "path", "value": parent_source, "created_at": db.now(),
+    })
+    db.insert("legacy_refs", {
+        "batch_id": legacy_batch, "document_id": cascade_docs[1]["id"], "kind": "path",
+        "value": child_source, "created_at": db.now(),
+    })
+    db.insert("legacy_refs", {
+        "batch_id": legacy_batch, "kind": "path", "value": unrelated_source, "created_at": db.now(),
+    })
+    # The allocation belongs to the in-work item and is removed so its part number can be reused.
+    db.execute("INSERT INTO number_allocations (part_number, scheme, values_json, allocated_at, item_id) "
+               "VALUES (?, 'test', '{}', datetime('now'), ?)",
+               (cascade_parent["part_number"], cascade_parent["id"]))
+    allocation_id = db.scalar("SELECT id FROM number_allocations WHERE part_number = ?",
+                              (cascade_parent["part_number"],))
+    # The item register must retain visibility of documents whose content was purged.
+    db.execute("UPDATE documents SET deleted = 1, deleted_at = datetime('now'), purged_at = datetime('now') WHERE id = ?",
+               (cascade_docs[0]["id"],))
+    listed = eng.call("GET", "/api/items?q=TMP-CASCADE-PARENT")["items"]
+    listed_parent = next(x for x in listed if x["id"] == cascade_parent["id"])
+    assert listed_parent["purged_documents"] == 1
+    assert listed_parent["active_documents"] == 0 and listed_parent["recycle_bin_documents"] == 0
+    cascade_versions = db.rows(
+        "SELECT v.document_id, v.blob_sha FROM versions v WHERE v.document_id IN (?, ?)",
+        (cascade_docs[0]["id"], cascade_docs[1]["id"]))
+    assert len(cascade_versions) == 2, cascade_versions
+    assert all(store.exists(v["blob_sha"]) for v in cascade_versions)
+    # Seed indirect audit references to prove they are purged along with direct item/document events.
+    db.audit(eng_u["id"], "project_link_item", "project", 900001, str(cascade_parent["id"]))
+    db.audit(eng_u["id"], "input_link", "input", 900002,
+             f"items=[{cascade_parent['id']}] projects=[]")
+    db.audit(eng_u["id"], "deviation_affected_add", "deviation", 900003,
+             f"{cascade_parent['part_number']} rev A")
+    db.audit(eng_u["id"], "deviation_affected_add", "deviation", 900004,
+             f"{cascade_docs[0]['filename']} rev A")
+    cascade_result = eng.call("DELETE", f"/api/items/{cascade_parent['id']}",
+                              {"reason": "Temporary assembly cleanup"})
+    assert set(cascade_result["deleted_items"]) == {cascade_parent["id"], cascade_child["id"]}, cascade_result
+    assert set(cascade_result["deleted_documents"]) == {d["id"] for d in cascade_docs}, cascade_result
+    assert cascade_result["deletion_log_status"] == "COMMITTED"
+    deleted_item_ids = tuple(cascade_result["deleted_items"])
+    deleted_doc_ids = tuple(cascade_result["deleted_documents"])
+    assert db.scalar(
+        "SELECT 1 FROM audit WHERE (entity = 'item' AND entity_id IN (?, ?)) "
+        "OR (entity = 'document' AND entity_id IN (?, ?))",
+        (*deleted_item_ids, *deleted_doc_ids),
+    ) is None
+    assert db.scalar("SELECT 1 FROM audit WHERE id = ?", (current_bom_audit_id,)) is None
+    assert db.scalar("SELECT 1 FROM audit WHERE entity = 'bom' AND entity_id = ? "
+                     "AND action = 'bom_edit' AND details = 'OLD-UNRELATED rev A'",
+                     (cascade_bom,)) is not None
+    assert db.scalar("SELECT 1 FROM audit WHERE entity = 'bom' AND entity_id = ? "
+                     "AND action = 'bom_delete' AND details = 'OLD-UNRELATED rev A'",
+                     (cascade_bom,)) is not None
+    assert db.scalar("SELECT 1 FROM audit WHERE entity = 'project' AND action = 'project_link_item' "
+                     "AND details = ?", (str(cascade_parent["id"]),)) is None
+    assert db.scalar("SELECT 1 FROM audit WHERE entity = 'input' AND action = 'input_link' "
+                     "AND details LIKE ?", (f"%{cascade_parent['id']}%",)) is None
+    assert db.scalar("SELECT 1 FROM audit WHERE entity = 'deviation' AND action = 'deviation_affected_add' "
+                     "AND (details LIKE ? OR details LIKE ?)",
+                     (f"{cascade_parent['part_number']} rev %", f"{cascade_docs[0]['filename']} rev %")) is None
+    assert db.scalar(
+        "SELECT 1 FROM legacy_records WHERE part_number IN (?, ?) OR document_id IN (?, ?)",
+        (cascade_parent["part_number"], cascade_child["part_number"],
+         cascade_docs[0]["id"], cascade_docs[1]["id"]),
+    ) is None, "Item-specific legacy import records must be deleted."
+    assert db.scalar(
+        "SELECT 1 FROM legacy_refs WHERE value IN (?, ?)",
+        (parent_source, child_source),
+    ) is None, "Item-specific legacy source references must be deleted."
+    assert db.scalar("SELECT 1 FROM legacy_records WHERE source_path = ?", (unrelated_source,)) is not None
+    assert db.scalar("SELECT 1 FROM legacy_refs WHERE value = ?", (unrelated_source,)) is not None
+    assert auditchain.verify()["ok"]
+
+    deletion_events = deletionlog.read_events()
+    cascade_prepare = next(
+        e for e in reversed(deletion_events)
+        if e["event"] == "PREPARED"
+        and any(i["part_number"] == "TMP-CASCADE-PARENT" for i in e["items"])
+    )
+    assert cascade_prepare["actor"] == "Asha Menon"
+    assert cascade_prepare["reason"] == "Temporary assembly cleanup"
+    assert cascade_prepare["item_count"] == 2 and cascade_prepare["document_count"] == 2
+    assert any(d["filename"] == "cascade-parent.txt" for d in cascade_prepare["documents"])
+    assert any(d["filename"] == "cascade-child.txt" for d in cascade_prepare["documents"])
+    assert any(e["operation_id"] == cascade_prepare["operation_id"] and e["event"] == "COMMITTED"
+               for e in deletion_events)
+    forbidden_log_keys = {"id", "item_id", "document_id", "entity_id", "user_id", "bom_id"}
+    log_keys = set(cascade_prepare)
+    for entry in cascade_prepare["items"] + cascade_prepare["documents"]:
+        log_keys.update(entry)
+    assert not (log_keys & forbidden_log_keys)
+    assert db.scalar("SELECT 1 FROM number_allocations WHERE id = ?", (allocation_id,)) is None
+    # Deleting an unreleased item releases its number for a fresh allocation.
+    replacement = eng.call("POST", "/api/items", {"part_number": cascade_parent["part_number"],
+                                                   "description": "Replacement assembly"})["item"]
+    assert replacement["part_number"] == cascade_parent["part_number"]
+    eng.call("DELETE", f"/api/items/{replacement['id']}")
+    for item_id in (cascade_parent["id"], cascade_child["id"]):
+        eng.call("GET", f"/api/items/{item_id}", expect=404)
+    for cascade_doc in cascade_docs:
+        assert db.scalar("SELECT 1 FROM documents WHERE id = ?", (cascade_doc["id"],)) is None
+        assert db.scalar("SELECT 1 FROM versions WHERE document_id = ?", (cascade_doc["id"],)) is None
+    assert all(not store.exists(v["blob_sha"]) for v in cascade_versions)
+    assert db.connect().execute("PRAGMA foreign_key_check").fetchall() == []
+
+    # Identical content-addressed blobs remain while any surviving document references them.
+    blob_item_a = eng.call("POST", "/api/items", {
+        "part_number": "TMP-SHARED-BLOB-A", "description": "Shared blob owner A"
+    })["item"]
+    blob_item_b = eng.call("POST", "/api/items", {
+        "part_number": "TMP-SHARED-BLOB-B", "description": "Shared blob owner B"
+    })["item"]
+    shared_upload = eng.call(
+        "POST", "/api/documents/upload", fields={"folder_id": str(f)},
+        files={"file": (["shared-a.txt", "shared-b.txt"], [b"identical shared content", b"identical shared content"])}
+    )
+    shared_docs = shared_upload["documents"]
+    assert len(shared_docs) == 2 and not shared_upload["errors"], shared_upload
+    db.execute("UPDATE documents SET item_id = ? WHERE id = ?", (blob_item_a["id"], shared_docs[0]["id"]))
+    db.execute("UPDATE documents SET item_id = ? WHERE id = ?", (blob_item_b["id"], shared_docs[1]["id"]))
+    shared_sha_a = db.scalar("SELECT blob_sha FROM versions WHERE document_id = ?", (shared_docs[0]["id"],))
+    shared_sha_b = db.scalar("SELECT blob_sha FROM versions WHERE document_id = ?", (shared_docs[1]["id"],))
+    assert shared_sha_a == shared_sha_b and store.exists(shared_sha_a)
+    eng.call("DELETE", f"/api/items/{blob_item_a['id']}")
+    assert store.exists(shared_sha_a), "The surviving document must retain its shared blob."
+    eng.call("DELETE", f"/api/items/{blob_item_b['id']}")
+    assert not store.exists(shared_sha_a), "The blob should be removed after its final reference is deleted."
+
+    # A shared BOM child must survive deletion of one parent.
+    shared = eng.call("POST", "/api/items", {"part_number": "TMP-CASCADE-SHARED",
+                                             "description": "Shared component"})["item"]
+    parent_a = eng.call("POST", "/api/items", {"part_number": "TMP-CASCADE-A",
+                                               "description": "Parent A"})["item"]
+    parent_b = eng.call("POST", "/api/items", {"part_number": "TMP-CASCADE-B",
+                                               "description": "Parent B"})["item"]
+    for parent in (parent_a, parent_b):
+        bid = eng.call("POST", "/api/boms", {"item_id": parent["id"]})["bom_id"]
+        eng.call("PUT", f"/api/boms/{bid}/lines", {"lines": [{"item_id": shared["id"], "qty": 1}]})
+    shared_result = eng.call("DELETE", f"/api/items/{parent_a['id']}")
+    assert parent_a["id"] in shared_result["deleted_items"]
+    assert shared["id"] not in shared_result["deleted_items"]
+    assert eng.call("GET", f"/api/items/{shared['id']}")["item"]["id"] == shared["id"]
+
     # --- ERPNext push through the fake server
     admin.call("PUT", "/api/erp/settings", {"enabled": True, "dry_run": False, "base_url": f"http://127.0.0.1:{ERP_PORT}",
                                             "api_key": FE.KEY, "api_secret": FE.SECRET, "company": "Demo Engineering"})
@@ -192,6 +460,7 @@ def main():
     masked = admin.call("GET", "/api/erp/settings")
     assert masked["api_secret"] != FE.SECRET
     appr.call("POST", f"/api/boms/{bom_id}/release")
+    eng.call("DELETE", f"/api/boms/{bom_id}", expect=409)  # released BOMs are immutable
     appr.call("POST", "/api/erp/process")
     jobs = admin.call("GET", "/api/erp/jobs")["jobs"]
     bom_job = next(j for j in jobs if j["kind"] == "bom" and j["entity_id"] == bom_id)

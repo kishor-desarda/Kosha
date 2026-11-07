@@ -10,8 +10,8 @@ clean-up of files that were never fully stored.
 * **Purge.** Removing a file's content for good needs two admins: one asks, another confirms. The record, its
   history and the audit entries stay; only the stored content goes (when nothing else uses it).
 * **Clean-up.** A file whose upload or database transaction never finished is moved out of the store after seven
-  days (into ``orphans/``, deleted 30 days later). Nothing that a user was told is safe is ever touched: a file
-  counts as used when any ``*_sha`` column of any table names it.
+  days (into ``orphans/``, deleted 30 days later). Only columns representing live content references protect a
+  blob. Integrity-check and import-history hashes are metadata, not live references.
 """
 from __future__ import annotations
 
@@ -244,10 +244,12 @@ def decide_purge(admin_id: int, request_id: int, confirm: bool) -> dict:
 
 
 def _sha_columns() -> list[tuple[str, str]]:
+    # These hashes describe past checks/imports; they do not mean the content is still stored or in use.
+    metadata_only = {"blob_checks", "legacy_records"}
     tables = [r["name"] for r in db.rows("SELECT name FROM sqlite_master WHERE type = 'table'")]
     out = []
     for t in tables:
-        if t.startswith("sqlite_"):
+        if t.startswith("sqlite_") or t in metadata_only:
             continue
         for c in db.rows(f"PRAGMA table_info({t})"):
             if c["name"] == "sha" or c["name"].endswith("_sha"):
@@ -273,14 +275,16 @@ def _remove_unused_content(doc_ids: list[int]) -> int:
     mine = set()
     for v in db.rows(f"SELECT blob_sha, preview_sha, viewer_sha FROM versions WHERE document_id IN ({marks})", doc_ids):
         mine.update(s for s in v.values() if s)
-    keep = used_shas(skip_documents=doc_ids)
     n = 0
-    for sha in mine - keep:
-        try:
-            store.path_for(sha).unlink(missing_ok=True)
-            n += 1
-        except (OSError, ValueError):
-            log.exception("Could not remove purged file %s", sha)
+    # Serialize with check-in/store writes, then recheck references while holding the lock.
+    with store.LOCK:
+        keep = used_shas(skip_documents=doc_ids)
+        for sha in mine - keep:
+            try:
+                store.path_for(sha).unlink(missing_ok=True)
+                n += 1
+            except (OSError, ValueError):
+                log.exception("Could not remove purged file %s", sha)
     return n
 
 

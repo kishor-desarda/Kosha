@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // File details page and item (part master) page.
 import {
-  S, h, mount, clear, icon, get, post, patch, toast, fail, dialog, confirmDlg, stateChip, typeChip, fmtDate, ago, fmtSize,
+  S, h, mount, clear, icon, get, post, patch, del, toast, fail, dialog, confirmDlg, stateChip, typeChip, fmtDate, ago, fmtSize,
   fileUrl, downloadDoc, tabs, can, thumb, STATE_PLAIN, keepDraft,
 } from './core.js';
 import { openViewer } from './viewer.js';
@@ -277,6 +277,10 @@ export async function renderItem(container, [id], _p, { setTitle }) {
         h('div', { class: 'row', style: { marginTop: '8px' } }, stateChip(it.state), h('span', { class: 'muted' }, `Revision ${it.revision} · ${it.item_type} · ${it.make_buy}`), ...itemBadges(r))),
       S.user.kind === 'vendor' ? null : h('button', { class: 'btn', id: 'item-qr', title: 'A QR code for the job card or nameplate; scanning it opens the released drawing in the shop view', onclick: () => import('./shop.js').then(m => m.qrLabelDialog(it)).catch(fail) }, icon('qr', 16), 'Print QR label'),
       can('engineer') ? h('button', { class: 'btn', title: 'Start a new design from this one, with new part numbers', onclick: () => import('./copydesign.js').then(m => m.copyDesignDialog({ item_id: it.id })).catch(fail) }, icon('copy', 16), 'Copy design…') : null,
+      can('engineer') && it.state === 'in_work' && (it.created_by === S.user.id || can('approver')) ? h('button', { class: 'btn danger', title: 'Delete this item and its owned files and unshared BOM descendants', onclick: async () => {
+        if (!await confirmDlg('Delete item and linked records', `Permanently delete ${it.part_number}, its linked documents and versions, and BOM descendants that are not shared by another assembly? Released or ERP-synced records are protected. This cannot be undone.`, 'Delete', true)) return;
+        try { const result = await del(`/api/items/${it.id}`); toast(`Deleted ${result.deleted_items?.length || 1} item(s) and ${result.deleted_documents?.length || 0} file(s)`, 'ok'); location.hash = '#/'; } catch (e) { fail(e); }
+      } }, icon('trash', 16), 'Delete item') : null,
       can('approver') ? h('div', { class: 'row' },
         h('button', { class: 'btn primary', onclick: () => erpPush('item', it.id, load) }, icon('erp', 16), `Send to ${S.erp}`),
         h('button', { class: 'btn', onclick: () => erpPush('refresh', it.id, load) }, icon('refresh', 16), 'Stock & cost')) : null),

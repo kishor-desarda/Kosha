@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Item page sections for the item master: product family, spare flags, customer part, OEM cross-references and
 // allowing a locked customer part to be reused.
-import { h, icon, get, post, patch, del, toast, fail, dialog, confirmDlg, can, fmtDate } from './core.js';
+import { h, mount, icon, get, post, patch, del, toast, fail, dialog, confirmDlg, can, fmtDate } from './core.js';
 
 const DISABLED_WHY = 'Only an approver can change who a part belongs to and whether it may be reused.';
 
@@ -118,4 +118,92 @@ async function addRef(it, reload) {
       toast('Added', 'ok'); reload();
     } }],
   });
+}
+
+
+/** Standalone item register. It deliberately includes items whose documents are all in the recycle bin or purged. */
+export async function renderItems(container, _m, _p, { setTitle }) {
+  setTitle('Items');
+  const load = async () => {
+    const r = await get('/api/items?limit=100');
+    draw(r.items || []);
+  };
+  let rows = [];
+  const selected = new Set();
+  const search = h('input', { class: 'input', type: 'search', placeholder: 'Filter by part number or description',
+    'aria-label': 'Filter items', style: { maxWidth: '360px' } });
+  const body = h('tbody');
+  const count = h('span', { class: 'muted small' });
+  const bulk = h('button', { class: 'btn danger', disabled: true, onclick: () => deleteSelected() }, icon('trash', 16), 'Delete selected');
+  const draw = list => {
+    rows = list;
+    selected.clear();
+    body.replaceChildren();
+    const q = search.value.trim().toLowerCase();
+    const visible = rows.filter(x => !q || `${x.part_number} ${x.description || ''}`.toLowerCase().includes(q));
+    count.textContent = `${rows.length} items`;
+    for (const it of visible) {
+      const checkbox = h('input', { type: 'checkbox', 'aria-label': `Select ${it.part_number}` });
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) selected.add(it.id); else selected.delete(it.id);
+        bulk.disabled = selected.size === 0;
+        bulk.textContent = `Delete selected (${selected.size})`;
+      });
+      const active = Number(it.active_documents || 0);
+      const bin = Number(it.recycle_bin_documents || 0);
+      const purged = Number(it.purged_documents || 0);
+      const row = h('tr', null,
+        h('td', null, checkbox),
+        h('td', { class: 'mono' }, it.part_number),
+        h('td', null, it.description || '—'),
+        h('td', null, it.state),
+        h('td', { class: 'num' }, String(active)),
+        h('td', { class: 'num' }, String(bin)),
+        h('td', { class: 'num' }, String(purged)),
+        h('td', { class: 'num' }, can('engineer') ? h('button', { class: 'btn danger sm',
+          onclick: () => deleteItems([it]) }, icon('trash', 14), 'Delete') : null));
+      body.appendChild(row);
+    }
+    if (!visible.length) body.appendChild(h('tr', null,
+      h('td', { colspan: 8 }, h('div', { class: 'empty' }, rows.length ? 'No items match this filter.' : 'No item records.'))));
+    bulk.disabled = selected.size === 0;
+    bulk.textContent = `Delete selected (${selected.size})`;
+  };
+  const deleteItems = async items => {
+    if (!can('engineer') || !items.length) return;
+    const names = items.map(x => x.part_number);
+    const ok = await confirmDlg('Permanently delete items',
+      `Delete ${items.length} item(s): ${names.join(', ')}? This permanently removes each item, its linked documents and versions (including purged document metadata), and BOM descendants owned exclusively by it. Shared items and protected released or ERP-synced records will not be deleted. This cannot be undone.`,
+      'Permanently delete', true);
+    if (!ok) return;
+    const deleted = [];
+    const deletedIds = new Set();
+    const errors = [];
+    for (const it of items) {
+      if (deletedIds.has(it.id)) continue; // an earlier parent deletion may already have removed this descendant
+      try {
+        const result = await del(`/api/items/${it.id}`);
+        const removed = result.deleted_items || [it.id];
+        deleted.push(...removed);
+        removed.forEach(id => deletedIds.add(id));
+      } catch (e) { errors.push(`${it.part_number}: ${e.message}`); }
+    }
+    if (deleted.length) toast(`Deleted ${deleted.length} item record(s).`, 'ok');
+    if (errors.length) toast(`Some items were not deleted: ${errors.join(' | ')}`, 'err');
+    window.dispatchEvent(new Event('kosha:changed'));
+    await load();
+  };
+  const deleteSelected = () => deleteItems(rows.filter(x => selected.has(x.id)));
+  search.addEventListener('input', () => draw(rows));
+  mount(container, h('div', { class: 'page-pad' },
+    h('div', { class: 'page-head' },
+      h('div', { style: { flex: 1 } }, h('h1', null, 'Items'),
+        h('div', { class: 'sub' }, 'Item master records, independent of whether their associated files are active, in the recycle bin, or purged.')),
+      can('engineer') ? bulk : null),
+    h('div', { class: 'row wrap', style: { justifyContent: 'space-between', marginBottom: '12px' } }, search, count),
+    h('div', { class: 'panel', style: { overflow: 'auto' } },
+      h('table', { class: 'tbl' },
+        h('thead', null, h('tr', null, ['Select', 'Part number', 'Description', 'State', 'Active files', 'In recycle bin', 'Purged files', ''].map(x => h('th', null, x)))),
+        body))));
+  await load();
 }

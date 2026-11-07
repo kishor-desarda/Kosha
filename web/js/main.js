@@ -29,15 +29,17 @@ import { loadLocale, t } from './locale.js';
 import { helpDialog, languageDialog } from './help.js';
 import { renderShop } from './shop.js';
 import { renderLegacy } from './legacy.js';
+import { renderItems } from './itemmaster.js';
 import { maybeStartTour, startTour } from './tour.js';
 
-const NAV_KEY = { home: 'nav.home', kosha: 'nav.explorer', inputs: 'nav.inputs', boms: 'nav.boms', changes: 'nav.changes',
+const NAV_KEY = { items: 'nav.items', home: 'nav.home', kosha: 'nav.explorer', inputs: 'nav.inputs', boms: 'nav.boms', changes: 'nav.changes',
   deviations: 'nav.deviations', quality: 'nav.quality', erp: 'nav.erp', common: 'nav.duplicates', library: 'nav.library', projects: 'nav.my_projects' };
 const NAV = [
   ['home', 'Home', 'home', '#/home'],
   ['kosha', 'Explorer', 'kosha', '#/files'],
   ['inputs', 'Inputs', 'layers', '#/inputs'],
   ['boms', 'BOMs', 'bom', '#/boms'],
+  ['items', 'Items', 'cube', '#/items'],
   ['changes', 'Changes', 'change', '#/changes'],
   ['deviations', 'Deviations', 'warn', '#/deviations'],
   ['quality', 'Quality', 'check', '#/quality'],
@@ -60,6 +62,7 @@ const ROUTES = [
   [/^#\/shares$/, 'kosha', () => renderShares],
   [/^#\/transmittals$/, 'kosha', () => renderTransmittals],
   [/^#\/item\/(\d+)$/, 'boms', () => renderItem],
+  [/^#\/items$/, 'items', () => renderItems],
   [/^#\/boms$/, 'boms', () => renderBoms],
   [/^#\/bom\/(\d+)$/, 'boms', () => renderBom],
   [/^#\/bom-view\/(\d+)$/, 'boms', () => renderBomView],

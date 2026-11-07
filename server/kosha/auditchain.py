@@ -32,3 +32,34 @@ def verify() -> dict:
             checked += 1
             last_id = r["id"]
     return {"ok": True, "checked": checked, "broken_at": None, "at": None, "reason": ""}
+
+
+def rebuild() -> dict:
+    """Recompute the chain after deliberate removal of records for permanently deleted entities.
+
+    This restores internal consistency for surviving entries. It does not preserve the
+    original chain's value as proof that its history was never rewritten.
+    """
+    with db.tx():
+        prev = db.AUDIT_GENESIS
+        last_id = 0
+        rebuilt = 0
+        while True:
+            rows = db.rows(
+                "SELECT id, at, user_id, action, entity, entity_id, details FROM audit "
+                "WHERE id > ? ORDER BY id LIMIT ?", (last_id, BATCH)
+            )
+            if not rows:
+                break
+            for row in rows:
+                digest = db.audit_hash(
+                    prev, row["at"], row["user_id"], row["action"], row["entity"],
+                    row["entity_id"], row["details"],
+                )
+                db.execute("UPDATE audit SET prev_hash = ?, hash = ? WHERE id = ?",
+                           (prev, digest, row["id"]))
+                prev = digest
+                last_id = row["id"]
+                rebuilt += 1
+    return {"ok": True, "rebuilt": rebuilt}
+

@@ -14,7 +14,7 @@ from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from . import addins, config, db, erp, notify_outbox, security, sessions, web
+from . import addins, config, db, deletionlog, erp, notify_outbox, security, sessions, web
 from .apisafety import ApiMiddleware
 from .headers import SecurityHeadersMiddleware
 from .api import load_all as _load_api
@@ -31,6 +31,10 @@ class StartupError(RuntimeError):
 def bootstrap() -> None:
     config.ensure_dirs()
     db.init()
+    try:
+        deletionlog.reconcile()  # finish or abort any deletion interrupted by a server crash
+    except deletionlog.DeletionLogError as exc:
+        raise StartupError(f"Permanent-deletion recovery could not be completed safely: {exc}") from exc
     if not db.scalar("SELECT COUNT(*) FROM users"):
         pw = os.environ.get("KOSHA_ADMIN_PASSWORD") or ""
         if pw:

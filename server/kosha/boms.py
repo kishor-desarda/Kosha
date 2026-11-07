@@ -8,7 +8,7 @@ import json
 import re
 
 from . import db, itemmaster, lifecycle
-from .web import bad, conflict, not_found
+from .web import bad, conflict, forbidden, not_found
 
 BUY_HINT = re.compile(r"\b(BOLT|NUT|WASHER|SCREW|BEARING|SEAL|GASKET|O-RING|ORING|MOTOR|GEARBOX|COUPLING|"
                       r"CIRCLIP|KEY|PIN|SPRING|VALVE|SENSOR|GREASE|PAINT)\b", re.I)
@@ -180,16 +180,29 @@ def generate_from_document(user: dict, doc_id: int) -> dict:
     unresolved: list[str] = []
     new_lines: list[dict] = []
     source = "solidworks"
-    if structure:
+    if structure is not None:
         for k, comp in enumerate(structure, start=1):
-            pn = (comp.get("part_number") or "").strip()
-            if not pn:
-                pn, _ = lifecycle.parse_name(comp.get("file", ""))
-            if not pn:
-                unresolved.append(comp.get("file") or "?")
+            if comp.get("suppressed") or comp.get("exclude_from_bom"):
                 continue
-            new_lines.append({"part_number": pn, "description": comp.get("description", ""), "qty": comp.get("qty", 1),
-                              "material": comp.get("material", ""), "find_number": str(k)})
+            name = comp.get("file") or ""
+            doc = db.one("SELECT item_id, part_number, description FROM documents WHERE filename = ? COLLATE NOCASE "
+                         "AND deleted = 0 ORDER BY updated_at DESC LIMIT 1", (name,)) if name else None
+            pn = (comp.get("part_number") or "").strip()
+            if not pn and doc:
+                pn = (doc.get("part_number") or "").strip()
+            parsed_pn, parsed_desc = lifecycle.parse_name(name)
+            if not pn:
+                pn = parsed_pn
+            if not pn:
+                unresolved.append(name or "?")
+                continue
+            new_lines.append({
+                "part_number": pn,
+                "description": comp.get("description") or (doc or {}).get("description", "") or parsed_desc,
+                "qty": comp.get("qty", 1),
+                "material": comp.get("material", ""),
+                "find_number": str(k),
+            })
     else:
         refs = meta.get("references") or []
         source = "file_references"
@@ -203,8 +216,8 @@ def generate_from_document(user: dict, doc_id: int) -> dict:
             new_lines.append({"part_number": pn, "description": (doc or {}).get("description", "") or
                               lifecycle.parse_name(name)[1], "qty": 1})
         if not refs:
-            raise bad("Kosha could not read the component list from this file. Check it in from SolidWorks with the "
-                      "Kosha add-in, or import the BOM table exported from SolidWorks.")
+            raise bad("Kosha could not read the component list from this file. Check it in with the Kosha SolidWorks "
+                      "add-in, or import the BOM table exported from SolidWorks.")
     # merge duplicate part numbers
     merged: dict[str, dict] = {}
     for ln in new_lines:
@@ -216,7 +229,21 @@ def generate_from_document(user: dict, doc_id: int) -> dict:
     bom_id = create(user["id"], d["item_id"], d["revision"], source)
     set_lines(user["id"], bom_id, list(merged.values()), source)
     return {"bom_id": bom_id, "lines": len(merged), "unresolved": unresolved, "source": source,
-            "quantities_verified": bool(structure)}
+            "quantities_verified": structure is not None}
+
+
+def delete(user: dict, bom_id: int, is_approver: bool) -> None:
+    """Delete a draft BOM and its lines; component item records are deliberately retained."""
+    with db.tx():
+        bom = bom_or_404(bom_id)
+        if bom["state"] == "released":
+            raise conflict("Released BOMs cannot be deleted. Create a new revision instead.", "bom_released")
+        if bom["created_by"] != user["id"] and not is_approver:
+            raise forbidden("Only the BOM creator or an approver can delete this BOM.")
+        if db.scalar("SELECT 1 FROM erp_jobs WHERE kind = 'bom' AND entity_id = ? LIMIT 1", (bom_id,)):
+            raise conflict("This BOM has ERP sync history and cannot be deleted.", "bom_erp_history")
+        db.execute("DELETE FROM boms WHERE id = ?", (bom_id,))
+        db.audit(user["id"], "bom_delete", "bom", bom_id, f"{bom['part_number']} rev {bom['revision']}")
 
 
 # ---------------------------------------------------------------- import --

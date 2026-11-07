@@ -60,10 +60,52 @@ def _bmp_from_ole_stream(data: bytes) -> bytes | None:
     return None
 
 
+
+
+def custom_properties(path: str) -> dict[str, str]:
+    """Read document-level SolidWorks custom properties without SolidWorks."""
+    from swformat.api.properties import read_properties
+
+    return read_properties(path)
+
+
 _REF_UTF16 = re.compile(
     rb"((?:[\x20-\x7e]\x00){1,255}?\.\x00[sS]\x00[lL]\x00[dD]\x00(?:[pP]\x00[rR]\x00[tT]|[aA]\x00[sS]\x00[mM])\x00)"
 )
 _REF_ASCII = re.compile(rb"([\x20-\x7e]{1,255}?\.(?:[sS][lL][dD][pP][rR][tT]|[sS][lL][dD][aA][sS][mM]))")
+
+
+def referenced_components(data: bytes) -> list[dict] | None:
+    """Read assembly component instances from the native COMPINSTANCETREE stream.
+
+    None means the stream is unavailable (legacy/unsupported file); an empty
+    list means the stream was present and contained no component instances.
+    """
+    from swformat.api.components import parse_component_tree
+    from swformat.io.reader import read_document_bytes
+
+    streams = read_document_bytes(data).streams()
+    xml = streams.get("swXmlContents/COMPINSTANCETREE")
+    if xml is None:
+        return None
+
+    components = parse_component_tree(xml)
+    result = []
+    for comp in components:
+        raw_path = str(comp.path or "")
+        filename = re.split(r"[\\/]", raw_path)[-1]
+        if not filename:
+            continue
+        result.append({
+            "file": filename,
+            "component": comp.name or filename,
+            "config": comp.config or "",
+            "suppressed": bool(comp.suppressed),
+            "exclude_from_bom": bool(comp.exclude_from_bom),
+            "hidden": bool(comp.hidden),
+            "virtual": bool(comp.virtual),
+        })
+    return result
 
 
 def referenced_files(data: bytes) -> list[str]:

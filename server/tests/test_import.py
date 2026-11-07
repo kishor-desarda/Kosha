@@ -19,6 +19,8 @@ import test_api as T  # noqa: E402  (sets up a temporary data folder)
 
 from kosha import db  # noqa: E402
 from kosha.cad import dxfwriter as W  # noqa: E402
+from kosha.cad import solidworks as SW  # noqa: E402
+from kosha.importer import map_solidworks_properties  # noqa: E402
 
 
 def build_legacy(root: Path) -> Path:
@@ -64,7 +66,72 @@ def wait_job(c, job_id):
     raise AssertionError("import did not finish")
 
 
+def test_solidworks_property_mapping():
+    props, warnings = map_solidworks_properties({
+        "PartNo": "BB-ASM-001",
+        "Part Number": "BB-ASM-001",
+        "Description": "Body assembly",
+        "Material": "Steel",
+        "Revision": "B",
+    })
+    assert props == {
+        "part_number": "BB-ASM-001",
+        "description": "Body assembly",
+        "material": "Steel",
+        "revision": "B",
+    }, props
+    assert warnings == [], warnings
+
+    props, warnings = map_solidworks_properties({
+        "PartNo": "BB-ASM-001",
+        "Part Number": "BB-ASM-002",
+    })
+    assert props["part_number"] == "BB-ASM-001", props
+    assert len(warnings) == 1 and "Conflicting" in warnings[0], warnings
+
+    props, _ = map_solidworks_properties({"Material": "Material <not specified>"})
+    assert "material" not in props, props
+
+
+
+def test_solidworks_property_reader():
+    from unittest.mock import patch
+
+    expected = {"PartNo": "P2", "Part Number": "P2"}
+    with patch("swformat.api.properties.read_properties", return_value=expected) as reader:
+        result = SW.custom_properties(Path("cabinet.SLDPRT"))
+    assert result == expected, result
+    reader.assert_called_once_with(Path("cabinet.SLDPRT"))
+
+
+def test_solidworks_component_tree_reader():
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    component = SimpleNamespace(
+        path=r"D:\\CAD\\cabinet.SLDPRT", name="cabinet-1", config="Default",
+        suppressed=False, exclude_from_bom=False, hidden=False, virtual=False,
+    )
+    document = SimpleNamespace(streams=lambda: {
+        "swXmlContents/COMPINSTANCETREE": b"<assembly/>",
+    })
+    with patch("swformat.io.reader.read_document_bytes", return_value=document):
+        with patch("swformat.api.components.parse_component_tree", return_value=[component]):
+            result = SW.referenced_components(b"assembly bytes")
+    assert result == [{
+        "file": "cabinet.SLDPRT", "component": "cabinet-1", "config": "Default",
+        "suppressed": False, "exclude_from_bom": False, "hidden": False, "virtual": False,
+    }], result
+
+    empty_document = SimpleNamespace(streams=lambda: {})
+    with patch("swformat.io.reader.read_document_bytes", return_value=empty_document):
+        assert SW.referenced_components(b"legacy bytes") is None
+
+
 def main():
+    test_solidworks_property_mapping()
+    test_solidworks_property_reader()
+    test_solidworks_component_tree_reader()
     T.serve("kosha.app:app", T.PORT)
     admin, _ = T.login("admin", "admin-pass-1")
     tmp = Path(tempfile.mkdtemp(prefix="legacy_"))

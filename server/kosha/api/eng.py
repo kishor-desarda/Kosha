@@ -7,9 +7,9 @@ import logging
 
 from starlette.responses import Response
 
-from .. import access, addins, apisafety, boms, changes, db, erp, erp_inbound, itemmaster, lifecycle, similarity
+from .. import access, addins, apisafety, auditchain, boms, changes, db, deletionlog, erp, erp_inbound, itemmaster, lifecycle, similarity
 from ..cad import process as cadproc
-from ..web import ApiError, Req, api, as_bool, bad, conflict, not_found
+from ..web import ApiError, Req, api, as_bool, bad, conflict, forbidden, not_found
 from ..packs import PackConfig
 from .core import DOC_SELECT, _with_preview
 
@@ -26,33 +26,43 @@ ITEM_EDITABLE = ("description", "material", "uom", "make_buy", "weight_kg", "ite
 def items(req: Req):
     q = (req.q("q") or "").strip()
     paged, after, limit = apisafety.cursor_args(req, 100)
-    if paged:       # programs reading every part: newest first, page by page (?cursor=)
-        sql = "SELECT * FROM items i WHERE 1 = 1" + access.scope().items()
+    select = """SELECT i.*,
+        (SELECT COUNT(*) FROM documents d WHERE d.item_id = i.id AND d.deleted = 0 AND d.purged_at IS NULL) AS active_documents,
+        (SELECT COUNT(*) FROM documents d WHERE d.item_id = i.id AND d.deleted = 1 AND d.purged_at IS NULL) AS recycle_bin_documents,
+        (SELECT COUNT(*) FROM documents d WHERE d.item_id = i.id AND d.purged_at IS NOT NULL) AS purged_documents
+        FROM items i WHERE 1 = 1"""
+    if paged:
+        sql = select + access.scope().items()
         params: list = []
         if q:
-            sql += " AND (part_number LIKE ? OR description LIKE ?)"
+            sql += " AND (i.part_number LIKE ? OR i.description LIKE ?)"
             params += [f"%{q}%"] * 2
-        for f in ("state", "item_type", "family"):
-            if req.q(f):
-                sql += f" AND {f} = ?"
-                params.append(req.q(f))
+        for field in ("state", "item_type", "family"):
+            if req.q(field):
+                sql += f" AND i.{field} = ?"
+                params.append(req.q(field))
         if req.q("category"):
-            sql += " AND part_number LIKE ?"
+            sql += " AND i.part_number LIKE ?"
             params.append(req.q("category").upper() + "-%")
         if after is not None:
-            sql += " AND id < ?"
+            sql += " AND i.id < ?"
             params.append(after)
-        rows, nxt = apisafety.next_cursor(db.rows(sql + " ORDER BY id DESC LIMIT ?", [*params, limit + 1]), limit)
+        rows, nxt = apisafety.next_cursor(
+            db.rows(sql + " ORDER BY i.id DESC LIMIT ?", [*params, limit + 1]), limit)
         return {"items": rows, "next_cursor": nxt}
     if q:
-        # an OEM part number or the customer's part number finds the company's part as well
-        rows = db.rows("SELECT * FROM items i WHERE (part_number LIKE ? OR description LIKE ? OR customer_part_number "
-                       "LIKE ? OR id IN (SELECT item_id FROM item_oem_refs WHERE deleted = 0 AND (oem_part_number LIKE ? "
-                       "OR oem_model LIKE ?)))" + access.scope().items() + " ORDER BY part_number LIMIT ?",
+        sql = """SELECT i.*,
+            (SELECT COUNT(*) FROM documents d WHERE d.item_id = i.id AND d.deleted = 0 AND d.purged_at IS NULL) AS active_documents,
+            (SELECT COUNT(*) FROM documents d WHERE d.item_id = i.id AND d.deleted = 1 AND d.purged_at IS NULL) AS recycle_bin_documents,
+            (SELECT COUNT(*) FROM documents d WHERE d.item_id = i.id AND d.purged_at IS NOT NULL) AS purged_documents
+            FROM items i
+            WHERE (i.part_number LIKE ? OR i.description LIKE ? OR i.customer_part_number LIKE ?
+              OR i.id IN (SELECT item_id FROM item_oem_refs WHERE deleted = 0
+                          AND (oem_part_number LIKE ? OR oem_model LIKE ?)))"""
+        rows = db.rows(sql + access.scope().items() + " ORDER BY i.part_number LIMIT ?",
                        (*[f"%{q}%"] * 5, limit))
     else:
-        rows = db.rows("SELECT * FROM items i WHERE 1 = 1" + access.scope().items() + " ORDER BY updated_at DESC LIMIT ?",
-                       (limit,))
+        rows = db.rows(select + access.scope().items() + " ORDER BY i.updated_at DESC LIMIT ?", (limit,))
     return {"items": rows}
 
 
@@ -72,6 +82,339 @@ def create_item(req: Req):
         db.audit(req.uid, "item_create", "item", iid, pn)
     addins.registry.emit("item.created", {"item_id": iid, "part_number": pn, "user_id": req.uid})
     return {"item": db.one("SELECT * FROM items WHERE id = ?", (iid,))}
+
+
+@api("DELETE", "/api/items/{id:int}", role="engineer")
+def delete_item(req: Req):
+    """Permanently delete an in-work item and its exclusively owned file/BOM tree.
+
+    Shared BOM children are retained. Consequential change orders, released records,
+    ERP history and other protected dependencies prevent deletion.
+    """
+    iid = req.int_param("id")
+    from .. import filesafety, store
+
+    document_ids: list[int] = []
+    deleted_documents: list[dict] = []
+    owned_bom_ids: list[int] = []
+    content_shas: set[str] = set()
+    deleted_items: list[dict] = []
+    journal = deletionlog.DeletionJournal()
+
+    # The journal wraps the DB transaction. COMMITTED is written only after the
+    # transaction has actually committed; an exception is classified after rollback.
+    with journal:
+        with db.tx():
+            root = db.one("SELECT * FROM items WHERE id = ?", (iid,))
+            if not root:
+                raise not_found("Item not found")
+            access.check_item(iid)
+
+            candidate_ids = {iid}
+            pending = [iid]
+            while pending:
+                parent_id = pending.pop()
+                for row in db.rows(
+                    "SELECT DISTINCT bl.child_item_id FROM bom_lines bl JOIN boms b ON b.id = bl.bom_id "
+                    "WHERE b.item_id = ?", (parent_id,)
+                ):
+                    child_id = row["child_item_id"]
+                    if child_id not in candidate_ids:
+                        candidate_ids.add(child_id)
+                        pending.append(child_id)
+
+            # Keep a child if any BOM outside this deletion tree still uses it.
+            owned = set(candidate_ids)
+            changed = True
+            while changed:
+                changed = False
+                for child_id in list(owned - {iid}):
+                    outside = db.scalar(
+                        "SELECT 1 FROM bom_lines bl JOIN boms b ON b.id = bl.bom_id "
+                        "WHERE bl.child_item_id = ? AND b.item_id NOT IN (" +
+                        ",".join("?" for _ in owned) + ") LIMIT 1",
+                        (child_id, *sorted(owned)),
+                    )
+                    if outside:
+                        owned.remove(child_id)
+                        changed = True
+
+            if db.scalar(
+                "SELECT 1 FROM bom_lines bl JOIN boms b ON b.id = bl.bom_id "
+                "WHERE bl.child_item_id = ? AND b.item_id NOT IN (" +
+                ",".join("?" for _ in owned) + ") LIMIT 1",
+                (iid, *sorted(owned)),
+            ):
+                raise conflict("This item is still used by another assembly. Remove that relationship first.",
+                               "item_in_use", reference="external BOM")
+
+            marks = ",".join("?" for _ in owned)
+            params = tuple(sorted(owned))
+            if db.scalar(
+                f"SELECT 1 FROM items WHERE standard_item_id IN ({marks}) AND id NOT IN ({marks}) LIMIT 1",
+                (*params, *params),
+            ):
+                raise conflict("An item in this BOM tree is still used as a standard part by another item.",
+                               "item_in_use", reference="standard-part links")
+
+            for item_id in sorted(owned):
+                item = db.one("SELECT * FROM items WHERE id = ?", (item_id,))
+                access.check_item(item_id)
+                if item["state"] != "in_work":
+                    raise conflict(f"{item['part_number']} is not in work and cannot be deleted.",
+                                   "item_lifecycle", part_number=item["part_number"])
+                if item["created_by"] != req.uid and not req.has("approver"):
+                    raise forbidden(f"Only the creator or an approver can delete {item['part_number']}.")
+
+                bom_ids = [r["id"] for r in db.rows("SELECT id FROM boms WHERE item_id = ?", (item_id,))]
+                owned_bom_ids.extend(bom_ids)
+                if bom_ids:
+                    bm = ",".join("?" for _ in bom_ids)
+                    if db.scalar(f"SELECT 1 FROM boms WHERE id IN ({bm}) AND state = 'released' LIMIT 1", bom_ids):
+                        raise conflict(f"{item['part_number']} has a released BOM and cannot be deleted.",
+                                       "bom_released")
+                    if db.scalar(f"SELECT 1 FROM erp_jobs WHERE kind = 'bom' AND entity_id IN ({bm}) LIMIT 1", bom_ids):
+                        raise conflict(f"{item['part_number']} has BOM ERP sync history and cannot be deleted.",
+                                       "bom_erp_history")
+                if db.scalar("SELECT 1 FROM erp_jobs WHERE kind IN ('item', 'refresh') AND entity_id = ? LIMIT 1",
+                             (item_id,)):
+                    raise conflict(f"{item['part_number']} has ERP sync history and cannot be deleted.",
+                                   "item_erp_history")
+
+                docs = db.rows("SELECT * FROM documents WHERE item_id = ?", (item_id,))
+                for doc in docs:
+                    if db.scalar("SELECT 1 FROM lifecycle_events WHERE document_id = ? AND to_state = 'released' LIMIT 1",
+                                 (doc["id"],)):
+                        raise conflict(f"{doc['filename']} has been released and cannot be deleted.",
+                                       "document_released")
+                    if doc["checked_out_by"] and doc["checked_out_by"] != req.uid:
+                        raise conflict(f"{doc['filename']} is checked out by another user.", "checked_out_by_other")
+                    if doc["created_by"] != req.uid and not req.has("approver"):
+                        raise forbidden(f"Only the creator or an approver can delete {doc['filename']}.")
+                    document_ids.append(doc["id"])
+                    deleted_documents.append(doc)
+                deleted_items.append(item)
+
+            if document_ids:
+                dm = ",".join("?" for _ in document_ids)
+                linked_cos = db.rows(
+                    f"SELECT DISTINCT c.number, c.state FROM co_items ci "
+                    f"JOIN change_orders c ON c.id = ci.co_id WHERE ci.document_id IN ({dm})",
+                    document_ids,
+                )
+                blocking_cos = [c for c in linked_cos if c["state"] not in ("draft", "rejected", "cancelled")]
+                if blocking_cos:
+                    labels = ", ".join(f"{c['number']} ({c['state']})" for c in blocking_cos)
+                    raise conflict(
+                        f"Documents linked to consequential change orders cannot be permanently deleted: {labels}.",
+                        "document_in_change_order",
+                    )
+                if db.scalar(f"SELECT 1 FROM release_outputs WHERE document_id IN ({dm}) LIMIT 1", document_ids):
+                    raise conflict("A linked document has release outputs and cannot be permanently deleted.",
+                                   "document_release_output")
+
+            # These records have mandatory item references and require their own workflow.
+            protected_tables = (
+                ("machine_builds", "item_id"),
+                ("mboms", "item_id"),
+                ("mbom_lines", "child_item_id"),
+                ("config_options", "item_id"),
+                ("config_rules", "item_id"),
+                ("config_rules", "parent_item_id"),
+                ("config_rules", "child_item_id"),
+                ("config_constraints", "item_id"),
+                ("variants", "item_id"),
+                ("fmeas", "item_id"),
+            )
+            for table, column in protected_tables:
+                if db.scalar(f"SELECT 1 FROM {table} WHERE {column} IN ({marks}) LIMIT 1", params):
+                    raise conflict(
+                        f"An item in this deletion tree is referenced by {table.replace('_', ' ')} history or configuration. "
+                        "Resolve that record through its own workflow first.",
+                        "item_has_dependent_records", reference=table,
+                    )
+
+            actor = db.scalar("SELECT full_name FROM users WHERE id = ?", (req.uid,)) or "Unknown user"
+            reason = str(req.b("reason") or "User initiated permanent deletion").strip()[:500]
+            journal.prepare(actor=actor, reason=reason, items=deleted_items, documents=deleted_documents)
+
+            # The number allocation belongs to the in-work item and is removed with it.
+            db.execute(f"DELETE FROM number_allocations WHERE item_id IN ({marks})", params)
+
+            # Preserve quality/deviation records, but detach their optional item/file links.
+            for table in ("deviation_affected", "ncrs", "capas"):
+                db.execute(f"UPDATE {table} SET item_id = NULL WHERE item_id IN ({marks})", params)
+            if document_ids:
+                dm = ",".join("?" for _ in document_ids)
+                db.execute(f"UPDATE deviation_affected SET document_id = NULL WHERE document_id IN ({dm})",
+                           document_ids)
+
+            # Remove project and reference-library associations owned by these items.
+            for table in ("project_items", "input_items"):
+                db.execute(f"DELETE FROM {table} WHERE item_id IN ({marks})", params)
+
+            # Remove legacy-import traces for these items, including source rows that
+            # were imported as part records without a document_id. Keep other rows in
+            # the same import batch untouched.
+            part_numbers = [item["part_number"] for item in deleted_items]
+            legacy_clauses = []
+            legacy_params = []
+            if document_ids:
+                legacy_clauses.append("document_id IN (" + ",".join("?" for _ in document_ids) + ")")
+                legacy_params.extend(document_ids)
+            if part_numbers:
+                legacy_clauses.append("part_number COLLATE NOCASE IN (" +
+                                      ",".join("?" for _ in part_numbers) + ")")
+                legacy_params.extend(part_numbers)
+            legacy_rows = db.rows(
+                "SELECT id, source_path FROM legacy_records WHERE " + " OR ".join(legacy_clauses),
+                legacy_params,
+            ) if legacy_clauses else []
+            legacy_record_ids = [row["id"] for row in legacy_rows]
+            legacy_source_paths = sorted({row["source_path"] for row in legacy_rows if row["source_path"]})
+            if document_ids or legacy_source_paths:
+                ref_clauses = []
+                ref_params = []
+                if document_ids:
+                    ref_clauses.append("document_id IN (" + ",".join("?" for _ in document_ids) + ")")
+                    ref_params.extend(document_ids)
+                if legacy_source_paths:
+                    ref_clauses.append("(kind = 'path' AND value IN (" +
+                                        ",".join("?" for _ in legacy_source_paths) + "))")
+                    ref_params.extend(legacy_source_paths)
+                db.execute("DELETE FROM legacy_refs WHERE " + " OR ".join(ref_clauses), ref_params)
+            if legacy_record_ids:
+                db.execute("DELETE FROM legacy_records WHERE id IN (" +
+                           ",".join("?" for _ in legacy_record_ids) + ")", legacy_record_ids)
+
+            if document_ids:
+                dm = ",".join("?" for _ in document_ids)
+                db.execute(f"DELETE FROM cp_members WHERE document_id IN ({dm})", document_ids)
+                db.execute(f"DELETE FROM lifecycle_events WHERE document_id IN ({dm})", document_ids)
+                # Draft/rejected/cancelled ECO associations are explicitly detached.
+                db.execute(f"DELETE FROM co_items WHERE document_id IN ({dm})", document_ids)
+                db.execute(f"UPDATE cp_groups SET standard_document_id = NULL WHERE standard_document_id IN ({dm})",
+                           document_ids)
+                for version in db.rows(
+                    f"SELECT blob_sha, preview_sha, viewer_sha FROM versions WHERE document_id IN ({dm})",
+                    document_ids,
+                ):
+                    content_shas.update(sha for sha in version.values() if sha)
+                db.execute(f"UPDATE change_requests SET document_id = NULL WHERE document_id IN ({dm})",
+                           document_ids)
+                # Legacy import rows are item/document-specific source records, not
+                # reusable history. Remove them rather than leaving detached rows behind.
+                db.execute(f"DELETE FROM versions WHERE document_id IN ({dm})", document_ids)
+                db.execute(f"DELETE FROM documents WHERE id IN ({dm})", document_ids)
+
+            db.execute(f"DELETE FROM cp_item_members WHERE item_id IN ({marks})", params)
+            db.execute(f"UPDATE cp_groups SET standard_item_id = NULL WHERE standard_item_id IN ({marks})", params)
+            db.execute(f"DELETE FROM item_oem_refs WHERE item_id IN ({marks})", params)
+            db.execute(f"DELETE FROM item_reuse_approvals WHERE item_id IN ({marks}) OR parent_item_id IN ({marks})",
+                       (*params, *params))
+            db.execute(f"UPDATE items SET standard_item_id = NULL WHERE standard_item_id IN ({marks})", params)
+            db.execute(f"DELETE FROM bom_lines WHERE bom_id IN (SELECT id FROM boms WHERE item_id IN ({marks})) "
+                       f"OR child_item_id IN ({marks})", (*params, *params))
+            db.execute(f"DELETE FROM boms WHERE item_id IN ({marks})", params)
+            for item in reversed(deleted_items):
+                db.execute("DELETE FROM items WHERE id = ?", (item["id"],))
+
+            # A draft BOM may have been deleted before its parent item. Its delete
+            # event preserves the BOM id and part/revision label. Use that event to
+            # remove the earlier audit history for that BOM as well. Bound deletion
+            # by the bom_delete audit id so a later BOM that reuses the integer id
+            # cannot lose its unrelated audit history.
+            item_prefixes = tuple(f'{item["part_number"]} rev ' for item in deleted_items)
+            historical_bom_deletes = []
+            for entry in db.rows(
+                "SELECT id, entity_id, details FROM audit "
+                "WHERE entity = 'bom' AND action = 'bom_delete' AND entity_id IS NOT NULL"
+            ):
+                details = entry["details"] or ""
+                if details.startswith(item_prefixes):
+                    historical_bom_deletes.append((entry["entity_id"], entry["id"]))
+
+            # Remove all direct audit records for deleted items, documents and BOMs
+            # still present, plus the bounded history of previously deleted BOMs.
+            for entity, entity_ids in (
+                ("item", sorted(owned)),
+                ("document", document_ids),
+            ):
+                if entity_ids:
+                    audit_marks = ",".join("?" for _ in entity_ids)
+                    db.execute(f"DELETE FROM audit WHERE entity = ? AND entity_id IN ({audit_marks})",
+                               (entity, *entity_ids))
+            for bom_id in owned_bom_ids:
+                previous_generation_end = db.scalar(
+                    "SELECT MAX(id) FROM audit WHERE entity = 'bom' AND entity_id = ? AND action = 'bom_delete'",
+                    (bom_id,),
+                ) or 0
+                db.execute(
+                    "DELETE FROM audit WHERE entity = 'bom' AND entity_id = ? AND id > ?",
+                    (bom_id, previous_generation_end),
+                )
+            for historical_bom_id, deleted_audit_id in historical_bom_deletes:
+                db.execute(
+                    "DELETE FROM audit WHERE entity = 'bom' AND entity_id = ? AND id <= ?",
+                    (historical_bom_id, deleted_audit_id),
+                )
+
+            # Remove audit entries in other entities whose details encode item/document references.
+            item_add_prefixes = tuple(f'{item["part_number"]} rev ' for item in deleted_items)
+            doc_add_prefixes = tuple(f'{doc["filename"]} rev ' for doc in deleted_documents)
+            item_remove_details = {f'item {item["id"]}' for item in deleted_items}
+            doc_remove_prefixes = tuple(f'document {doc["id"]} rev ' for doc in deleted_documents)
+            item_id_strings = {str(item_id) for item_id in owned}
+            indirect_audit_ids = []
+            for entry in db.rows(
+                "SELECT id, entity, action, details FROM audit WHERE "
+                "(entity = 'deviation' AND action IN ('deviation_affected_add', 'deviation_affected_remove')) "
+                "OR (entity = 'project' AND action IN ('project_link_item', 'project_unlink_item')) "
+                "OR (entity = 'input' AND action IN ('input_link', 'input_unlink', "
+                "'input_bulk_link', 'input_bulk_unlink'))"
+            ):
+                details = entry["details"] or ""
+                matches = False
+                if entry["entity"] == "deviation":
+                    if entry["action"] == "deviation_affected_add":
+                        matches = details.startswith(item_add_prefixes + doc_add_prefixes)
+                    else:
+                        matches = details in item_remove_details or details.startswith(doc_remove_prefixes)
+                elif entry["entity"] == "project":
+                    matches = details in item_id_strings
+                elif entry["entity"] == "input":
+                    # Input-link audit details use "items=[1, 2] projects=[...]".
+                    marker = "items=["
+                    start = details.find(marker)
+                    end = details.find("]", start + len(marker)) if start >= 0 else -1
+                    if end >= 0:
+                        raw_ids = details[start + len(marker):end]
+                        try:
+                            referenced_ids = {int(value.strip()) for value in raw_ids.split(",") if value.strip()}
+                        except ValueError:
+                            referenced_ids = set()
+                        matches = bool(referenced_ids & owned)
+                if matches:
+                    indirect_audit_ids.append(entry["id"])
+            if indirect_audit_ids:
+                audit_marks = ",".join("?" for _ in indirect_audit_ids)
+                db.execute(f"DELETE FROM audit WHERE id IN ({audit_marks})", indirect_audit_ids)
+
+            # Rebuild the surviving chain after intentional audit-record removal.
+            auditchain.rebuild()
+
+    # Remove only content no remaining record references. Shared blobs survive.
+    if content_shas:
+        with store.LOCK:
+            still_used = filesafety.used_shas()
+            for sha in content_shas - still_used:
+                try:
+                    store.path_for(sha).unlink(missing_ok=True)
+                except (OSError, ValueError):
+                    # Database deletion has succeeded; leave an orphan for normal store cleanup.
+                    pass
+    return {"ok": True, "deleted_items": [x["id"] for x in deleted_items],
+            "deleted_documents": document_ids, "deletion_log_status": journal.status or "pending_recovery"}
 
 
 @api("GET", "/api/items/{id:int}")
@@ -150,6 +493,12 @@ def list_boms(req: Req):
         "SELECT b.id, b.revision, b.state, b.source, b.updated_at, i.id AS item_id, i.part_number, i.description, "
         "(SELECT COUNT(*) FROM bom_lines WHERE bom_id = b.id) AS lines FROM boms b JOIN items i ON i.id = b.item_id "
         "ORDER BY b.updated_at DESC LIMIT 500")}
+
+
+@api("DELETE", "/api/boms/{id:int}", role="engineer")
+def delete_bom(req: Req):
+    boms.delete(req.user, req.int_param("id"), req.has("approver"))
+    return {"ok": True}
 
 
 @api("POST", "/api/boms", role="engineer")

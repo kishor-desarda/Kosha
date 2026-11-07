@@ -24,6 +24,7 @@ classifiers = [
   "Topic :: Office/Business",
 ]
 dependencies = [
+  "swformat @ git+https://github.com/KenM76/swformat.git@69b80c860241fdcbfa334f67cb951f76398c1a71",
   "starlette>=0.37",
   "uvicorn>=0.29",
   "python-multipart>=0.0.9",

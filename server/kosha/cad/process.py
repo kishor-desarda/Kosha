@@ -72,9 +72,20 @@ def process(filename: str, data: bytes) -> dict:
             else:
                 out["meta"]["preview_note"] = ("No embedded preview found. Check the file in with the "
                                                "Kosha SolidWorks add-in to get a 3D preview.")
-            if ext in ("sldasm", "slddrw"):
+            if ext == "sldasm":
+                try:
+                    structure = solidworks.referenced_components(data)
+                    if structure is not None:
+                        out["meta"]["structure"] = structure
+                except Exception:
+                    log.exception("SolidWorks component tree extraction failed for %s", filename)
+                    out["meta"]["structure_note"] = (
+                        "The native component tree could not be parsed; filename scanning was used instead."
+                    )
                 refs = solidworks.referenced_files(data)
                 out["meta"]["references"] = refs
+            elif ext == "slddrw":
+                out["meta"]["references"] = solidworks.referenced_files(data)
         elif ext == "stl":
             st = mesh.stats(data)
             if st:

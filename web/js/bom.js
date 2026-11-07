@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Engineering BOMs: list, indented editor, validation, import, compare, ERP push.
-import { S, h, mount, clear, icon, get, post, put, toast, fail, dialog, confirmDlg, stateChip, ago, upload, can, debounce, drafts, draftBanner } from './core.js';
+import { S, h, mount, clear, icon, get, post, put, del, toast, fail, dialog, confirmDlg, stateChip, ago, upload, can, debounce, drafts, draftBanner } from './core.js';
 import { bomDeviations, lineDeviationChips, mountRecordPanels } from './deviations.js';
 import { favButton } from './workbench.js';
 import { openMbom } from './mbom.js';
@@ -115,7 +115,8 @@ export async function renderBom(container, [id], _p, { setTitle }) {
         h('button', { class: 'btn', onclick: () => packAndGo(b) }, icon('download', 16), 'Pack and Go'),
         h('a', { class: 'btn', href: `/api/boms/${b.id}/export?format=xlsx&access_token=${encodeURIComponent(S.token)}` }, icon('download', 16), 'Excel'),
         draft && can('approver') ? h('button', { class: 'btn primary', disabled: errors > 0, title: errors ? 'Fix the errors first' : `Lock this BOM and send it to ${S.erp}`, onclick: release }, icon('release', 16), 'Release BOM') : null,
-        !draft && can('approver') ? h('button', { class: 'btn primary', onclick: pushErp }, icon('erp', 16), `Send to ${S.erp}`) : null));
+        !draft && can('approver') ? h('button', { class: 'btn primary', onclick: pushErp }, icon('erp', 16), `Send to ${S.erp}`) : null,
+        eng && (b.created_by === S.user.id || can('approver')) ? h('button', { class: 'btn danger', title: 'Delete this draft BOM and its lines; parts remain in the item master', onclick: deleteBom }, icon('trash', 16), 'Delete BOM') : null));
 
     const lines = edits || data.lines.map(l => ({ ...l }));
     const tableWrap = h('div', { class: 'panel', style: { overflow: 'auto', flex: '1 1 640px', minWidth: 0 } });
@@ -268,6 +269,17 @@ export async function renderBom(container, [id], _p, { setTitle }) {
     sel.addEventListener('change', run);
     dialog({ title: `Compare with another revision`, body: [h('div', { class: 'field' }, h('label', { for: 'cmp' }, 'Compare this BOM with'), sel), out], actions: [{ label: 'Close' }] });
     run();
+  };
+
+  const deleteBom = async () => {
+    if (!await confirmDlg('Delete BOM', `Delete ${data.bom.part_number} revision ${data.bom.revision}? Its BOM lines will be removed. The part records will remain in the item master.`, 'Delete', true)) return;
+    try {
+      await del(`/api/boms/${id}`);
+      drafts.clear(draftKey);
+      toast('BOM deleted', 'ok');
+      changed();
+      location.hash = '#/boms';
+    } catch (e) { fail(e); }
   };
 
   const release = async () => {

@@ -71,6 +71,37 @@ META_ALIASES = {
     "make_buy": ("make/buy", "make buy", "make_buy", "procurement", "type"),
 }
 
+
+SW_PROPERTY_ALIASES = {
+    "part_number": ("partno", "part number", "part_number", "part no", "part no."),
+    "description": ("description",),
+    "material": ("material",),
+    "revision": ("revision", "rev"),
+}
+
+
+def map_solidworks_properties(raw: dict) -> tuple[dict, list[str]]:
+    """Map SolidWorks custom-property names to Kosha fields and report conflicts."""
+    normalized = {
+        re.sub(r"[^a-z0-9]", "", str(k).lower()): str(v).strip()
+        for k, v in (raw or {}).items()
+        if v is not None
+        and str(v).strip()
+        and str(v).strip().casefold() not in {"material <not specified>", "<not specified>"}
+    }
+    props: dict = {}
+    warnings: list[str] = []
+    for field, aliases in SW_PROPERTY_ALIASES.items():
+        keys = [re.sub(r"[^a-z0-9]", "", name.lower()) for name in aliases]
+        matches = [(key, normalized[key]) for key in keys if normalized.get(key)]
+        if matches:
+            props[field] = matches[0][1]
+            distinct = list(dict.fromkeys(value for _, value in matches))
+            if len(distinct) > 1:
+                warnings.append(f"Conflicting SolidWorks {field} properties; used {matches[0][1]!r}.")
+    return props, warnings
+
+
 META_EXTRA = ("item_type", "weight_kg")      # also accepted from importer add-ins
 
 
@@ -447,7 +478,14 @@ class Importer:
                      msg="Same content as a file already imported; not imported again")
             return
         meta = self.meta_by_file.get(p.name.lower()) or self.meta_by_file.get(p.stem.lower()) or {}
-        props = {k: meta.get(k) for k in ("part_number", "description", "material", "revision") if meta.get(k)}
+        sw_props, sw_warnings = ({}, [])
+        if p.suffix.lower() in (".sldprt", ".sldasm", ".slddrw"):
+            try:
+                sw_props, sw_warnings = map_solidworks_properties(cadproc.solidworks.custom_properties(str(p)))
+            except Exception as e:
+                sw_warnings = [f"Could not read SolidWorks custom properties: {e}"]
+        # An explicitly supplied part-master row takes precedence over embedded properties.
+        props = {**sw_props, **{k: meta.get(k) for k in ("part_number", "description", "material", "revision") if meta.get(k)}}
         if self.keep_revision:
             props["use_title_block_revision"] = True
         if self.dry_run:
@@ -477,8 +515,9 @@ class Importer:
             seen[sha] = f"{kosha_folder}/{p.name}"
             self.doc_of_sha[sha] = d["id"]
             scored, material = self.score(d, props)
+            notes = [self.note_for(d), *sw_warnings]
             self.add(p, "imported", folder=kosha_folder, pn=d["part_number"], desc=d["description"], rev=d["revision"],
-                     doc_id=d["id"], msg=self.note_for(d), sha=sha, scored=scored, material=material)
+                     doc_id=d["id"], msg="; ".join(n for n in notes if n), sha=sha, scored=scored, material=material)
             if self.job_id:
                 self.cross_references(d)
         except Exception as e:

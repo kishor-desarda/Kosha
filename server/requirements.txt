@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Kosha server — Python 3.10 or newer. The same list is in pyproject.toml.
+swformat @ git+https://github.com/KenM76/swformat.git@69b80c860241fdcbfa334f67cb951f76398c1a71  # Native SolidWorks properties
 starlette>=0.37
 uvicorn>=0.29
 python-multipart>=0.0.9
