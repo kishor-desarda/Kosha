@@ -17,6 +17,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import test_api as T  # noqa: E402  (sets up a temporary data folder)
 
+from kosha import db  # noqa: E402
 from kosha.cad import dxfwriter as W  # noqa: E402
 
 
@@ -40,7 +41,9 @@ def build_legacy(root: Path) -> Path:
     put("2015/Pump/CP-FL-150.dxf.bak", b"junk")
     put("2015/Pump/~$notes.docx", b"junk")
     put("2015/Pump/Thumbs.db", b"junk")
-    put("2015/Pump/CP-200-000 Pump.SLDASM", b"stored as-is")
+    # The fallback parser finds component filenames, but cannot recover quantities.
+    assembly_refs = "CP-200-001 Part A.SLDPRT CP-200-002 Part B.SLDPRT".encode("utf-16-le")
+    put("2015/Pump/CP-200-000 Pump.SLDASM", assembly_refs)
     meta = root.parent / "part_master.csv"
     meta.write_text("Item Code,Item Name,Material,UOM,Make/Buy\n"
                     "P-1001,BLT HEX M16 X 60 8.8,,Nos,Buy\n"
@@ -85,11 +88,17 @@ def main():
                            "state": "released"}, files={"metadata": ("part_master.csv", meta.read_bytes())})
     j = wait_job(admin, r["job"]["id"])
     assert j["status"] == "done" and j["imported"] == 6 and j["duplicates"] == 2 and j["errors"] == 0, j
+    assert "1 assembly BOMs generated" in j["message"], j
     rep, ctype = admin.call("GET", f"/api/import/jobs/{j['id']}/report", raw=True)
     assert rep[:2] == b"PK"
     docs = admin.call("GET", "/api/search?q=AG-BH-01")["documents"]
     assert [d["filename"] for d in docs] == ["AG-BH-01 Bearing housing.dxf"], docs  # best-named copy kept
     assert docs[0]["state"] == "released" and docs[0]["revision"] == "2"
+    assembly = admin.call("GET", "/api/search?q=CP-200-000")["documents"][0]
+    bom = db.one("SELECT id FROM boms WHERE item_id = ? AND revision = ?", (assembly["item_id"], assembly["revision"]))
+    assert bom, "Legacy import did not generate an assembly BOM"
+    bom_lines = db.rows("SELECT i.part_number, bl.qty FROM bom_lines bl JOIN items i ON i.id = bl.child_item_id WHERE bl.bom_id = ? ORDER BY i.part_number", (bom["id"],))
+    assert [(r["part_number"], r["qty"]) for r in bom_lines] == [("CP-200-001", 1.0), ("CP-200-002", 1.0)], bom_lines
     shaft = admin.call("GET", "/api/search?q=CONVEYOR%20SHAFT")["documents"][0]
     assert shaft["revision"] == "3"
     items = {i["part_number"]: i for i in admin.call("GET", "/api/items?q=P-")["items"]}

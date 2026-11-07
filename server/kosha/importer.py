@@ -40,7 +40,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from . import config, db, legacy, lifecycle, store
+from . import boms, config, db, legacy, lifecycle, store
 from .cad import dwg as dwgmod
 from .cad import process as cadproc
 
@@ -193,6 +193,7 @@ class Importer:
         self.shown_as: dict[Path, str] = {}      # files unpacked from an archive: "archive.zip!/inner/path"
         self.reldirs: dict[Path, str] = {}       # ... and the folder they go to, relative to the target
         self.doc_of_sha: dict[str, int] = {}
+        self.assembly_doc_ids: set[int] = set()
         self.found = self.junk = self.unpacked = 0
 
     # -- helpers
@@ -366,15 +367,57 @@ class Importer:
             cadproc.DWG_CACHE.clear()
         for other, rep in sorted(copies.items(), key=lambda kv: self.shown(kv[0]).lower()):
             folder = "/".join(x for x in (self.target, self.reldir(other)) if x)
-            self.add(other, "identical copy", folder=folder, sha=hashes[rep], doc_id=self.doc_of_sha.get(hashes[rep]),
+            duplicate_doc_id = self.doc_of_sha.get(hashes[rep])
+            self.queue_assembly_bom(duplicate_doc_id)
+            self.add(other, "identical copy", folder=folder, sha=hashes[rep], doc_id=duplicate_doc_id,
                      dup=seen_in_run.get(hashes[rep]) or known.get(hashes[rep]) or self.shown(rep),
                      msg="Same content as another file; only one copy was imported")
+        bom_results = self.build_assembly_boms() if not self.dry_run else {"boms_generated": 0, "boms_skipped": 0, "bom_errors": 0}
         if self.staging:
             shutil.rmtree(self.staging, ignore_errors=True)
         if self.job_id:
             db.update("import_jobs", self.job_id, {"found": self.found, "junk": self.junk, "unpacked": self.unpacked})
         self.progress(phase="Finished", done=total, **self.counts)
-        return {"total": total, **self.counts}
+        return {"total": total, **self.counts, **bom_results}
+
+    def queue_assembly_bom(self, document_id: int | None) -> None:
+        """Queue an assembly once all files have been imported, so its references can resolve."""
+        if not document_id or self.dry_run:
+            return
+        d = db.one("SELECT id, item_id, doc_type, revision FROM documents WHERE id = ? AND deleted = 0", (document_id,))
+        if not d or d["doc_type"] != "assembly" or not d["item_id"]:
+            return
+        exists = db.scalar("SELECT 1 FROM boms WHERE item_id = ? AND revision = ?", (d["item_id"], d["revision"]))
+        if not exists:
+            self.assembly_doc_ids.add(d["id"])
+
+    def build_assembly_boms(self) -> dict:
+        """Generate draft BOMs after import; filename-only references have unverified quantities."""
+        result = {"boms_generated": 0, "boms_skipped": 0, "bom_errors": 0}
+        if not self.assembly_doc_ids:
+            return result
+        self.progress(phase="Generating assembly BOMs")
+        for document_id in sorted(self.assembly_doc_ids):
+            try:
+                d = lifecycle.doc_or_404(document_id)
+                generated = boms.generate_from_document(self.user, document_id)
+                result["boms_generated"] += 1
+                if generated["quantities_verified"]:
+                    detail = f"Generated draft BOM #{generated['bom_id']} with {generated['lines']} verified lines."
+                else:
+                    detail = (f"Generated draft BOM #{generated['bom_id']} with {generated['lines']} lines from "
+                              f"{generated['source']}. Quantities are unverified.")
+                status = "BOM generated"
+            except Exception as e:
+                result["bom_errors"] += 1
+                detail = getattr(e, "message", None) or str(e)
+                status = "BOM error"
+                log.warning("Could not generate BOM for %s: %s", d["filename"], detail)
+            self.report.append({"status": status, "source": "", "kosha_folder": "", "file": d["filename"],
+                                "part_number": d["part_number"], "description": d["description"],
+                                "revision": d["revision"], "duplicate_of": "", "message": detail,
+                                "document_id": document_id})
+        return result
 
     def name_quality(self, p: Path):
         """Lower is better: avoid 'Copy of', '(1)', backup/old folders; prefer descriptive names."""
@@ -392,11 +435,15 @@ class Importer:
         kosha_folder = "/".join(x for x in (self.target, rel_dir) if x)
         dup = known.get(sha) or seen.get(sha)
         if dup and dup.lower() == f"kosha/{kosha_folder}/{p.name}".lower():
-            self.add(p, "already in Kosha", folder=kosha_folder, sha=sha, doc_id=self.doc_of_sha.get(sha),
+            existing_id = self.doc_of_sha.get(sha)
+            self.queue_assembly_bom(existing_id)
+            self.add(p, "already in Kosha", folder=kosha_folder, sha=sha, doc_id=existing_id,
                      msg="Imported in an earlier run (unchanged)")
             return
         if dup and self.skip_identical:
-            self.add(p, "identical copy", folder=kosha_folder, dup=dup, sha=sha, doc_id=self.doc_of_sha.get(sha),
+            existing_id = self.doc_of_sha.get(sha)
+            self.queue_assembly_bom(existing_id)
+            self.add(p, "identical copy", folder=kosha_folder, dup=dup, sha=sha, doc_id=existing_id,
                      msg="Same content as a file already imported; not imported again")
             return
         meta = self.meta_by_file.get(p.name.lower()) or self.meta_by_file.get(p.stem.lower()) or {}
@@ -415,6 +462,7 @@ class Importer:
                               (fid, p.name))
             if existing:
                 seen[sha] = f"{kosha_folder}/{p.name}"
+                self.queue_assembly_bom(existing["id"])
                 self.add(p, "already in Kosha", folder=kosha_folder, doc_id=existing["id"], sha=sha,
                          msg="A file with this name is already in the target folder (skipped; resumable import)")
                 return
@@ -425,6 +473,7 @@ class Importer:
                                                   "imported": True})
             if self.state == "released":
                 self.release_quietly(d)
+            self.queue_assembly_bom(d["id"])
             seen[sha] = f"{kosha_folder}/{p.name}"
             self.doc_of_sha[sha] = d["id"]
             scored, material = self.score(d, props)
@@ -497,7 +546,7 @@ def report_bytes(rows: list[dict], summary: dict) -> tuple[bytes, str]:
         c.font = Font(bold=True)
     ws.column_dimensions["A"].width = 22
     ws.column_dimensions["B"].width = 80
-    order = ["error", "identical copy", "imported", "would import", "already in Kosha", "ignored"]
+    order = ["error", "BOM error", "BOM generated", "identical copy", "imported", "would import", "already in Kosha", "ignored"]
     for status in order:
         sel = [r for r in rows if r["status"] == status]
         if not sel:
@@ -551,6 +600,9 @@ def start_job(user: dict, source: str, target: str, options: dict, metadata: tup
             status = "cancelled" if cancelled else "done"
             msg = (f"{'Dry run: ' if imp.dry_run else ''}{res['imported']} {'would be ' if imp.dry_run else ''}imported, "
                    f"{res['duplicates']} identical copies, {res['skipped']} skipped, {res['errors']} errors")
+            if not imp.dry_run:
+                msg += (f", {res['boms_generated']} assembly BOMs generated, "
+                        f"{res['bom_errors']} BOM errors")
         except Exception as e:
             log.exception("Import job %s failed", job_id)
             status, msg = "failed", str(e)
