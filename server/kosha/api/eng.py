@@ -1013,7 +1013,15 @@ def addin_status(req: Req):
     from .files import actions_for
     s = lifecycle.doc_summary(d, lifecycle.user_names())
     s["exists"] = True
-    # The browser action map also contains scalar metadata (for example,\n    # release_needs_reason and next_revision). The SolidWorks add-in deserializes\n    # this field as Dictionary<string, ActionCheck>, so expose only ActionCheck\n    # entries on the add-in endpoint.\n    s["actions"] = {\n        key: value for key, value in actions_for(d, req.user).items()\n        if isinstance(value, dict) and "ok" in value and "why" in value\n    }\n    s["latest_sha"] = db.scalar("SELECT blob_sha FROM versions WHERE document_id = ? AND version = ?",
+    # The browser action map also contains scalar metadata (for example,
+    # release_needs_reason and next_revision). The SolidWorks add-in deserializes
+    # this field as Dictionary<string, ActionCheck>, so expose only ActionCheck
+    # entries on the add-in endpoint.
+    s["actions"] = {
+        key: value for key, value in actions_for(d, req.user).items()
+        if isinstance(value, dict) and "ok" in value and "why" in value
+    }
+    s["latest_sha"] = db.scalar("SELECT blob_sha FROM versions WHERE document_id = ? AND version = ?",
                                 (d["id"], d["latest_version"]))
     return s
 
