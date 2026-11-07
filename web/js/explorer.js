@@ -672,16 +672,26 @@ async function doUndo(docs) {
 
 async function doState(docs, to) {
   const labels = { in_review: 'Submit for review', released: 'Release', in_work: 'Send back to In work', obsolete: 'Make obsolete' };
-  const comment = h('textarea', { class: 'input', id: 'st-c', placeholder: to === 'in_work' ? 'What needs fixing?' : 'Optional note' });
+  const isRelease = to === 'released';
+  const note = h('textarea', { class: 'input', id: 'st-c', placeholder: isRelease ? 'Why is this release approved?' : to === 'in_work' ? 'What needs fixing?' : 'Optional note' });
   dialog({
     title: labels[to],
     body: [h('p', { style: { margin: 0 } }, docs.length === 1 ? `${docs[0].filename}, revision ${docs[0].revision}` : `${docs.length} files`),
       to === 'released' ? h('div', { class: 'banner ok small' }, icon('release'), h('div', null, `Released revisions are locked and become available to production. Items with an ERP link are queued for ${S.erp}.`)) : null,
       to === 'obsolete' ? h('div', { class: 'banner small' }, icon('warn'), h('div', null, 'Obsolete files stay in Kosha for history but are marked "do not use".')) : null,
-      h('div', { class: 'field' }, h('label', { for: 'st-c' }, 'Comment'), comment)],
+      h('div', { class: 'field' }, h('label', { for: 'st-c' }, isRelease ? 'Reason (kept in the audit log)' : 'Comment'), note)],
     actions: [{ label: 'Cancel' }, { label: labels[to], primary: true, onClick: async () => {
+      const value = note.value.trim();
+      if (isRelease && value.length < 5) { toast('Write a short reason first.', 'err'); return false; }
       let n = 0;
-      for (const d of docs) { try { await post(`/api/documents/${d.id}/state`, { to, comment: comment.value }); n++; } catch (e) { fail(e); } }
+      for (const d of docs) {
+        try {
+          await post(`/api/documents/${d.id}/state`, isRelease
+            ? { to, comment: value, reason: value }
+            : { to, comment: note.value });
+          n++;
+        } catch (e) { fail(e); }
+      }
       if (n) toast(`${labels[to]}: ${n} file${n > 1 ? 's' : ''} done.`, 'ok');
       await refresh();
     } }],
