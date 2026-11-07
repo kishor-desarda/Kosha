@@ -171,20 +171,46 @@ namespace Kosha.SolidWorks
             return ExportCopy(doc, ".stl");
         }
 
-        static byte[] ExportCopy(CadDocument doc, string extension)
+        byte[] ExportCopy(CadDocument doc, string extension)
         {
             string tmp = Path.Combine(Path.GetTempPath(), "Kosha_" + Guid.NewGuid().ToString("N") + extension);
+            ModelDoc2 previous = null;
+            bool restorePrevious = false;
             try
             {
+                // SOLIDWORKS requires the document being exported to be active for STL/STEP/IGES.
+                // Referenced assembly components are often loaded but not active.
+                previous = app.ActiveDoc as ModelDoc2;
+                ModelDoc2 target = M(doc);
+                restorePrevious = previous != null &&
+                    !string.Equals(previous.GetPathName(), target.GetPathName(), StringComparison.OrdinalIgnoreCase);
+
+                int activateErrors = 0;
+                var active = app.ActivateDoc3(target.GetTitle(), false,
+                    (int)swRebuildOnActivation_e.swDontRebuildActiveDoc, out activateErrors) as ModelDoc2;
+                if (active == null ||
+                    !string.Equals(active.GetPathName(), target.GetPathName(), StringComparison.OrdinalIgnoreCase))
+                    return null;
+
                 int errors = 0, warnings = 0;
-                bool ok = M(doc).Extension.SaveAs(tmp, (int)swSaveAsVersion_e.swSaveAsCurrentVersion,
+                bool ok = active.Extension.SaveAs(tmp, (int)swSaveAsVersion_e.swSaveAsCurrentVersion,
                     (int)(swSaveAsOptions_e.swSaveAsOptions_Silent | swSaveAsOptions_e.swSaveAsOptions_Copy), null, ref errors, ref warnings);
-                return ok && File.Exists(tmp) ? File.ReadAllBytes(tmp) : null;
+                return ok && errors == 0 && File.Exists(tmp) ? File.ReadAllBytes(tmp) : null;
             }
             catch (Exception) { return null; }
             finally
             {
                 try { if (File.Exists(tmp)) File.Delete(tmp); } catch (Exception) { }
+                if (restorePrevious && previous != null)
+                {
+                    try
+                    {
+                        int restoreErrors = 0;
+                        app.ActivateDoc3(previous.GetTitle(), false,
+                            (int)swRebuildOnActivation_e.swDontRebuildActiveDoc, out restoreErrors);
+                    }
+                    catch (Exception) { }
+                }
             }
         }
 
