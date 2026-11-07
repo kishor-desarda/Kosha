@@ -187,7 +187,7 @@ namespace Kosha.SolidWorks
 
                 int activateErrors = 0;
                 var active = app.ActivateDoc3(target.GetTitle(), false,
-                    (int)swRebuildOnActivation_e.swDontRebuildActiveDoc, out activateErrors) as ModelDoc2;
+                    (int)swRebuildOnActivation_e.swDontRebuildActiveDoc, ref activateErrors) as ModelDoc2;
                 if (active == null ||
                     !string.Equals(active.GetPathName(), target.GetPathName(), StringComparison.OrdinalIgnoreCase))
                     return null;
@@ -207,7 +207,7 @@ namespace Kosha.SolidWorks
                     {
                         int restoreErrors = 0;
                         app.ActivateDoc3(previous.GetTitle(), false,
-                            (int)swRebuildOnActivation_e.swDontRebuildActiveDoc, out restoreErrors);
+                            (int)swRebuildOnActivation_e.swDontRebuildActiveDoc, ref restoreErrors);
                     }
                     catch (Exception) { }
                 }
