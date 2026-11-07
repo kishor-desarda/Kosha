@@ -35,6 +35,7 @@ namespace Kosha.CadCore
         public bool CanGetLatest { get; set; }
         public bool CanOpenInBrowser { get; set; }
         public bool OffersComponents => Document != null && Document.Kind == CadDocumentKind.Assembly;
+        public bool CanRecoverBom => OffersComponents && IsInKosha;
     }
 
     public sealed class CheckinOutcome
@@ -145,7 +146,10 @@ namespace Kosha.CadCore
             st.CanCheckOut = checkout.Ok;
             st.CanCheckIn = st.CheckedOutToMe;
             st.CanUndo = st.CheckedOutToMe;
-            st.CanGetLatest = !st.CheckedOutToMe;
+            // Getting latest is also useful while the current user holds the checkout.
+            // The local file must remain writable in that case; files not checked out to
+            // this user are reopened read-only.
+            st.CanGetLatest = true;
             if (!st.CheckedOutToMe && LocalDiffers(doc.Path, s.LatestSha))
                 st.Warning = "Your local copy is different from the latest version in Kosha. Use Get latest version before editing.";
             else if (!checkout.Ok && !st.CheckedOutToMe)
@@ -225,7 +229,7 @@ namespace Kosha.CadCore
             var kind = doc.Kind;
             host.Close(doc);
             string kept = LocalFiles.ReplaceKeepingOld(path, bytes, KeepFolder);
-            LocalFiles.SetReadOnly(path, true);
+            LocalFiles.SetReadOnly(path, !st.CheckedOutToMe);
             host.Open(path, kind);
             return kept;
         }
@@ -261,6 +265,30 @@ namespace Kosha.CadCore
             }
             outcome.Result = await CheckInOneAsync(doc, st.Folder, comment, isActive: true, keep: keepCheckedOut);
             return outcome;
+        }
+
+        public async Task<BomRecoveryResult> RecoverBomAsync(DocumentState st)
+        {
+            if (st == null || st.Document == null || st.Document.Kind != CadDocumentKind.Assembly ||
+                st.Status == null || !st.Status.Exists)
+                throw new KoshaException("Open an assembly that already exists in Kosha.", 0, "invalid_document");
+
+            var structure = host.ReadStructure(st.Document).Select(ToLine).ToList();
+            var preview = await api.PreviewBomRecoveryAsync(st.Status.Id, structure);
+            if (preview.ExistingBomId.HasValue || !preview.CanApply)
+                return preview;
+
+            string details = "Assembly: " + preview.PartNumber + " (revision " + preview.Revision + ")" +
+                Environment.NewLine + "Components: " + preview.Lines.Count +
+                Environment.NewLine + Environment.NewLine +
+                string.Join(Environment.NewLine, preview.Lines.Select(x =>
+                    string.Format(CultureInfo.InvariantCulture, "{0}  x {1}", x.PartNumber, x.Quantity))) +
+                Environment.NewLine + Environment.NewLine +
+                "This creates a BOM only. It does not upload or revise any CAD file.";
+            if (!prompts.Confirm("Preview BOM recovery", details))
+                return preview;
+
+            return await api.ApplyBomRecoveryAsync(st.Status.Id, structure);
         }
 
         async Task<DocStatus> CheckInOneAsync(CadDocument doc, string folder, string comment, bool isActive, bool keep)

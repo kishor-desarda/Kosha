@@ -219,6 +219,104 @@ def generate_from_document(user: dict, doc_id: int) -> dict:
             "quantities_verified": bool(structure)}
 
 
+def preview_from_structure(user: dict, doc_id: int, structure: list[dict]) -> dict:
+    """Validate a CAD-extracted assembly structure without changing Kosha data."""
+    d = lifecycle.doc_or_404(doc_id)
+    if d["doc_type"] != "assembly":
+        raise bad("Choose an assembly document.")
+    if not d["item_id"]:
+        raise bad("The assembly has no part number in Kosha.")
+    if not isinstance(structure, list) or not structure:
+        raise bad("SOLIDWORKS returned no component structure.")
+    if len(structure) > 5000:
+        raise bad("The assembly structure exceeds the 5,000-line safety limit.")
+
+    existing = db.one("SELECT id, state FROM boms WHERE item_id = ? AND revision = ?",
+                      (d["item_id"], d["revision"]))
+    merged: dict[str, dict] = {}
+    unresolved: list[str] = []
+    for index, comp in enumerate(structure, start=1):
+        if not isinstance(comp, dict):
+            unresolved.append(f"Component row {index} (invalid data)")
+            continue
+        filename = str(comp.get("file") or "?").strip()
+        pn = str(comp.get("part_number") or "").strip()
+        if not pn:
+            pn, _ = lifecycle.parse_name(filename)
+        if not pn:
+            unresolved.append(filename)
+            continue
+
+        item = db.one(
+            "SELECT i.id, i.part_number, i.description FROM items i "
+            "WHERE i.part_number = ? COLLATE NOCASE AND EXISTS "
+            "(SELECT 1 FROM documents d2 WHERE d2.item_id = i.id AND d2.deleted = 0) "
+            "LIMIT 1", (pn,))
+        if not item:
+            unresolved.append(f"{filename} [{pn}: no matching Kosha document]")
+            continue
+
+        try:
+            qty = float(comp.get("qty", 1))
+        except (TypeError, ValueError):
+            unresolved.append(f"{filename} [invalid quantity]")
+            continue
+        if qty <= 0:
+            unresolved.append(f"{filename} [quantity must be above zero]")
+            continue
+
+        key = item["part_number"].upper()
+        if key in merged:
+            merged[key]["qty"] += qty
+        else:
+            merged[key] = {
+                "item_id": item["id"],
+                "part_number": item["part_number"],
+                "description": str(comp.get("description") or item["description"] or ""),
+                "qty": qty,
+                "find_number": str(index),
+            }
+
+    lines_out = list(merged.values())
+    return {
+        "document_id": doc_id,
+        "part_number": d["part_number"],
+        "revision": d["revision"],
+        "existing_bom_id": existing["id"] if existing else None,
+        "existing_bom_state": existing["state"] if existing else None,
+        "lines": lines_out,
+        "unresolved": unresolved,
+        "can_apply": not existing and not unresolved and bool(lines_out),
+    }
+
+
+def generate_from_structure(user: dict, doc_id: int, structure: list[dict]) -> dict:
+    """Create a BOM from live CAD structure, without changing document versions or metadata."""
+    preview = preview_from_structure(user, doc_id, structure)
+    if preview["existing_bom_id"]:
+        raise conflict(
+            f"A BOM already exists for {preview['part_number']} revision {preview['revision']}; it was not changed.",
+            "bom_exists")
+    if preview["unresolved"]:
+        raise conflict("BOM recovery stopped because some components could not be matched: " +
+                       "; ".join(preview["unresolved"][:20]), "bom_unresolved")
+    if not preview["lines"]:
+        raise bad("The assembly has no resolvable BOM lines.")
+
+    d = lifecycle.doc_or_404(doc_id)
+    with db.tx():
+        # Recheck inside the write transaction so a concurrent recovery cannot be overwritten.
+        existing = db.one("SELECT id FROM boms WHERE item_id = ? AND revision = ?",
+                          (d["item_id"], d["revision"]))
+        if existing:
+            raise conflict("A BOM already exists for this assembly revision; it was not changed.", "bom_exists")
+        bom_id = create(user["id"], d["item_id"], d["revision"], "solidworks_recovery",
+                        "Recovered from live SOLIDWORKS assembly structure")
+        set_lines(user["id"], bom_id, preview["lines"], "solidworks_recovery")
+    return {"bom_id": bom_id, "lines": len(preview["lines"]), "unresolved": [],
+            "source": "solidworks_recovery", "quantities_verified": True}
+
+
 # ---------------------------------------------------------------- import --
 
 HEADER_ALIASES = {

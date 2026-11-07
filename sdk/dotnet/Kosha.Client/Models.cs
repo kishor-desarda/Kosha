@@ -84,4 +84,27 @@ namespace Kosha.Client
         public string Configuration { get; set; } = "";
         public string Source { get; set; } = "cad-addin";
     }
+
+    /// <summary>Read-only BOM recovery preview and apply result.</summary>
+    public sealed class BomRecoveryResult
+    {
+        [JsonProperty("document_id")] public int DocumentId { get; set; }
+        [JsonProperty("part_number")] public string PartNumber { get; set; }
+        [JsonProperty("revision")] public string Revision { get; set; }
+        [JsonProperty("existing_bom_id")] public int? ExistingBomId { get; set; }
+        [JsonProperty("existing_bom_state")] public string ExistingBomState { get; set; }
+        [JsonProperty("lines")] public List<BomRecoveryLine> Lines { get; set; } = new List<BomRecoveryLine>();
+        [JsonProperty("unresolved")] public List<string> Unresolved { get; set; } = new List<string>();
+        [JsonProperty("can_apply")] public bool CanApply { get; set; }
+        [JsonProperty("bom_id")] public int BomId { get; set; }
+        [JsonProperty("source")] public string Source { get; set; }
+    }
+
+    public sealed class BomRecoveryLine
+    {
+        [JsonProperty("part_number")] public string PartNumber { get; set; }
+        [JsonProperty("description")] public string Description { get; set; }
+        [JsonProperty("qty")] public double Quantity { get; set; }
+    }
+
 }

@@ -128,7 +128,26 @@ namespace Kosha.CadCore.Tests
 
             Assert.That(File.ReadAllText(doc.Path), Is.EqualTo("version two"));
             Assert.That(File.ReadAllText(kept), Is.EqualTo("my local experiment"), "nothing is lost");
+            Assert.That(LocalFiles.IsReadOnly(doc.Path), Is.True, "a file not checked out to this user stays read-only");
             Assert.That(host.Log, Is.EqualTo(new[] { "close MX-200-001 Flange.dwg", "open MX-200-001 Flange.dwg" }));
+        }
+
+        [Test]
+        public async Task GetLatest_WhenCheckedOutToMe_ReopensWritable()
+        {
+            var doc = host.Add(Ws("Products", "MX-200-003 Bracket.sldprt"), CadDocumentKind.Part, "version one");
+            await session.CheckInAsync(await session.DescribeAsync(doc), "", "", "", false, false);
+            await session.CheckOutAsync(await session.DescribeAsync(doc));
+            server.Docs[0].Content = System.Text.Encoding.UTF8.GetBytes("version two");
+
+            var st = await session.DescribeAsync(doc);
+            Assert.That(st.CheckedOutToMe, Is.True);
+            Assert.That(st.CanGetLatest, Is.True, "Get latest remains available while the user holds the checkout");
+
+            await session.GetLatestAsync(st);
+
+            Assert.That(File.ReadAllText(doc.Path), Is.EqualTo("version two"));
+            Assert.That(LocalFiles.IsReadOnly(doc.Path), Is.False, "the user's checkout must remain writable");
         }
 
         [Test]
@@ -238,6 +257,12 @@ namespace Kosha.CadCore.Tests
             Assert.That(File.ReadAllText(f), Is.EqualTo("new"));
             Assert.That(File.ReadAllText(kept), Is.EqualTo("old"));
             Assert.That(File.Exists(f + ".kosha-new"), Is.False);
+            LocalFiles.SetReadOnly(f, false);
+            if (Directory.Exists(Path.Combine(dir, "kept")))
+            {
+                foreach (var backup in Directory.GetFiles(Path.Combine(dir, "kept")))
+                    LocalFiles.SetReadOnly(backup, false);
+            }
             Directory.Delete(dir, true);
         }
 

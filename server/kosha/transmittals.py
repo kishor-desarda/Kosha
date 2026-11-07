@@ -19,6 +19,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 import zipfile
 from datetime import date
 
@@ -198,7 +199,29 @@ def on_release(doc_id: int) -> int:
 
 # --------------------------------------------------------------- Pack and Go --
 
-def pack_and_go(user: dict, bom_id: int, released_only: bool = False) -> tuple[io.BytesIO, str]:
+def _document_folder_path(folder_id: int | None) -> str:
+    """Return the exact Explorer folder path for a document, including the Kosha root."""
+    chain = lifecycle.folder_path(folder_id)
+    parts = []
+    for folder in chain:
+        name = str(folder["name"])
+        # Never rewrite Explorer names. Reject unsafe path components instead.
+        if name in ("", ".", "..") or "/" in name or "\\\\" in name or "\\x00" in name:
+            raise conflict("A folder name cannot be represented safely in the Pack and Go ZIP.", "invalid_folder_name")
+        parts.append(name)
+    return "/".join(parts)
+
+
+def _pack_filename(filename: str) -> str:
+    """Keep the document filename byte-for-byte as stored; reject path separators."""
+    name = str(filename or "")
+    if name in ("", ".", "..") or "/" in name or "\\\\" in name or "\\x00" in name:
+        raise conflict("A document filename cannot be represented safely in the Pack and Go ZIP.", "invalid_filename")
+    return name
+
+
+def pack_and_go(user: dict, bom_id: int, released_only: bool = False,
+                preserve_folders: bool = False) -> tuple[io.BytesIO, str]:
     """A ZIP with every file of every part in the BOM's tree (or only released ones) and a transmittal list."""
     from . import boms
     bom = boms.bom_or_404(bom_id)
@@ -223,16 +246,19 @@ def pack_and_go(user: dict, bom_id: int, released_only: bool = False) -> tuple[i
     used: set[str] = set()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for d in docs:
+            directory = _document_folder_path(d["folder_id"]) if preserve_folders else ""
+            filename = _pack_filename(d["filename"])
+            name = f"{directory}/{filename}" if directory else filename
             v = db.one("SELECT * FROM versions WHERE document_id = ? AND version = ?", (d["id"], d["latest_version"]))
             if not v or not store.exists(v["blob_sha"]):
-                listing_rows.append([d["filename"], d["revision"], "", d["state"], "missing on the server"])
+                listing_rows.append([name, d["revision"], "", d["state"], "missing on the server"])
                 continue
             access.check_download()          # each file counts towards the bulk-download alarm
-            name = d["filename"]
-            stem, dot, ext = name.rpartition(".")
+            stem, dot, ext = filename.rpartition(".")
             k = 2
             while name.lower() in used:
-                name = f"{stem} ({k}).{ext}" if dot else f"{d['filename']} ({k})"
+                candidate = f"{stem} ({k}).{ext}" if dot else f"{filename} ({k})"
+                name = f"{directory}/{candidate}" if directory else candidate
                 k += 1
             used.add(name.lower())
             z.writestr(name, store.read_bytes(v["blob_sha"]))
@@ -246,6 +272,8 @@ def pack_and_go(user: dict, bom_id: int, released_only: bool = False) -> tuple[i
         w.writerows(listing_rows)
         z.writestr("Transmittal list.csv", out.getvalue().encode("utf-8-sig"))
     db.audit(user["id"], "pack_and_go", "bom", bom_id,
-             f"{bom['part_number']} rev {bom['revision']}: {len(docs)} file(s)" + (", released only" if released_only else ""))
+             f"{bom['part_number']} rev {bom['revision']}: {len(docs)} file(s)"
+             + (", released only" if released_only else "")
+             + (", preserve folders" if preserve_folders else ""))
     buf.seek(0)
     return buf, f"{bom['part_number']} rev {bom['revision']} Pack and Go.zip"

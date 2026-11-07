@@ -671,24 +671,90 @@ async function doUndo(docs) {
 }
 
 async function doState(docs, to) {
-  const labels = { in_review: 'Submit for review', released: 'Release', in_work: 'Send back to In work', obsolete: 'Make obsolete' };
-  const comment = h('textarea', { class: 'input', id: 'st-c', placeholder: to === 'in_work' ? 'What needs fixing?' : 'Optional note' });
+  const labels = {
+    in_review: 'Submit for review',
+    released: 'Release',
+    in_work: 'Send back to In work',
+    obsolete: 'Make obsolete'
+  };
+
+  const comment = h('textarea', {
+    class: 'input',
+    id: 'st-c',
+    rows: 3,
+    placeholder: to === 'released'
+      ? 'Explain why you approve this release'
+      : to === 'in_work'
+        ? 'What needs fixing?'
+        : 'Optional note'
+  });
+
   dialog({
     title: labels[to],
-    body: [h('p', { style: { margin: 0 } }, docs.length === 1 ? `${docs[0].filename}, revision ${docs[0].revision}` : `${docs.length} files`),
-      to === 'released' ? h('div', { class: 'banner ok small' }, icon('release'), h('div', null, `Released revisions are locked and become available to production. Items with an ERP link are queued for ${S.erp}.`)) : null,
-      to === 'obsolete' ? h('div', { class: 'banner small' }, icon('warn'), h('div', null, 'Obsolete files stay in Kosha for history but are marked "do not use".')) : null,
-      h('div', { class: 'field' }, h('label', { for: 'st-c' }, 'Comment'), comment)],
-    actions: [{ label: 'Cancel' }, { label: labels[to], primary: true, onClick: async () => {
-      let n = 0;
-      for (const d of docs) { try { await post(`/api/documents/${d.id}/state`, { to, comment: comment.value }); n++; } catch (e) { fail(e); } }
-      if (n) toast(`${labels[to]}: ${n} file${n > 1 ? 's' : ''} done.`, 'ok');
-      await refresh();
-    } }],
-  });
-}
+    body: [
+      h('p', { style: { margin: 0 } },
+        docs.length === 1
+          ? `${docs[0].filename}, revision ${docs[0].revision}`
+          : `${docs.length} files`),
 
-async function doRevise(docs) {
+      to === 'released'
+        ? h('div', { class: 'banner ok small' },
+            icon('release'),
+            h('div', null,
+              `Released revisions are locked and become available to production. Items with an ERP link are queued for ${S.erp}.`))
+        : null,
+
+      to === 'obsolete'
+        ? h('div', { class: 'banner small' },
+            icon('warn'),
+            h('div', null,
+              'Obsolete files stay in Kosha for history but are marked "do not use".'))
+        : null,
+
+      h('div', { class: 'field' },
+        h('label', { for: 'st-c' },
+          to === 'released' ? 'Approval reason (required)' : 'Comment'),
+        comment)
+    ],
+
+    actions: [
+      { label: 'Cancel' },
+      {
+        label: labels[to],
+        primary: true,
+        onClick: async () => {
+          const text = comment.value.trim();
+
+          if (to === 'released' && text.length < 5) {
+            toast('Write an approval reason of at least 5 characters.', 'err');
+            return false;
+          }
+
+          let n = 0;
+
+          for (const d of docs) {
+            try {
+              await post(`/api/documents/${d.id}/state`, {
+                to,
+                comment: text,
+                reason: text
+              });
+              n++;
+            } catch (e) {
+              fail(e);
+            }
+          }
+
+          if (n) {
+            toast(`${labels[to]}: ${n} file${n > 1 ? 's' : ''} done.`, 'ok');
+          }
+
+          await refresh();
+        }
+      }
+    ]
+  });
+}async function doRevise(docs) {
   const d = docs[0];
   const nxt = acts(d).next_revision || 'the next revision';
   if (!await confirmDlg('Start a new revision', docs.length === 1

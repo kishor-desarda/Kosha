@@ -41,8 +41,14 @@ def close_transmittal(req: Req):
 
 @api("GET", "/api/boms/{id:int}/pack-and-go")
 def pack_and_go(req: Req):
-    """Every file of every part in the BOM's tree as one ZIP, with a transmittal list (``released=1``: released only)."""
-    buf, name = transmittals.pack_and_go(req.user, req.int_param("id"), req.q("released") in ("1", "true"))
+    """Every file of every part in the BOM's tree as one ZIP, with a transmittal list.
+    ``released=1`` includes released files only; ``folders=1`` preserves Kosha's folder hierarchy.
+    """
+    buf, name = transmittals.pack_and_go(
+        req.user, req.int_param("id"),
+        req.q("released") in ("1", "true"),
+        req.q("folders") in ("1", "true"),
+    )
     return Response(buf.getvalue(), media_type="application/zip",
                     headers={"Content-Disposition": _disposition("attachment", name), **SAFE_HEADERS})
 

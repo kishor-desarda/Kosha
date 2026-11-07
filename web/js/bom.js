@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Engineering BOMs: list, indented editor, validation, import, compare, ERP push.
-import { S, h, mount, clear, icon, get, post, put, toast, fail, dialog, confirmDlg, stateChip, ago, upload, can, debounce, drafts, draftBanner } from './core.js';
+import { S, h, mount, clear, icon, get, post, put, del, toast, fail, dialog, confirmDlg, stateChip, ago, upload, can, debounce, drafts, draftBanner } from './core.js';
 import { bomDeviations, lineDeviationChips, mountRecordPanels } from './deviations.js';
 import { favButton } from './workbench.js';
 import { openMbom } from './mbom.js';
@@ -40,11 +40,17 @@ export async function renderBoms(container, _m, _p, { setTitle }) {
 // The whole tree as one ZIP with a transmittal list, for a consultant or vendor.
 function packAndGo(b) {
   const released = h('input', { type: 'checkbox', checked: true });
+  const preserveFolders = h('input', { type: 'checkbox' });
   dialog({ title: `Pack and Go: ${b.part_number} rev ${b.revision}`, body: [
     h('p', { style: { marginTop: 0 } }, 'Every file of every part in this BOM, in one ZIP with a transmittal list of revisions and fingerprints. To send it outside the company with a record, use Send to vendor on the released files instead.'),
-    h('label', { class: 'check' }, released, 'Released files only')],
+    h('label', { class: 'check' }, released, 'Released files only'),
+    h('label', { class: 'check' }, preserveFolders, 'Preserve Kosha folder structure')],
   actions: [{ label: 'Cancel' }, { label: 'Download ZIP', primary: true, onClick: () => {
-    const a = h('a', { href: `/api/boms/${b.id}/pack-and-go?${released.checked ? 'released=1&' : ''}access_token=${encodeURIComponent(S.token)}`, download: '' });
+    const params = new URLSearchParams();
+    if (released.checked) params.set('released', '1');
+    if (preserveFolders.checked) params.set('folders', '1');
+    params.set('access_token', S.token);
+    const a = h('a', { href: `/api/boms/${b.id}/pack-and-go?${params.toString()}`, download: '' });
     document.body.appendChild(a); a.click(); a.remove();
   } }] });
 }
@@ -106,6 +112,7 @@ export async function renderBom(container, [id], _p, { setTitle }) {
       h('div', { class: 'row wrap', style: { alignSelf: 'flex-start' } },
         eng && data.assembly_document ? h('button', { class: 'btn', title: 'Rebuild from the SolidWorks assembly', onclick: regenerate }, icon('refresh', 16), 'Rebuild from model') : null,
         eng ? h('button', { class: 'btn', onclick: importDlg }, icon('upload', 16), 'Import SolidWorks BOM') : null,
+        b.state === 'draft' && can('engineer') ? h('button', { class: 'btn danger', title: 'Permanently delete this draft BOM', onclick: deleteBom }, 'Delete BOM') : null,
         h('button', { class: 'btn', onclick: () => compareDlg() }, icon('layers', 16), 'Compare'),
         h('a', { class: 'btn', href: `#/bom-view/${b.item_id}` }, 'Views and cost'),
         h('button', { class: 'btn', title: 'How the workshop builds it: parts by operation, and the process plan', onclick: () => openMbom(b.item_id, b.revision) }, icon('layers', 16), 'Manufacturing BOM'),
@@ -268,6 +275,26 @@ export async function renderBom(container, [id], _p, { setTitle }) {
     sel.addEventListener('change', run);
     dialog({ title: `Compare with another revision`, body: [h('div', { class: 'field' }, h('label', { for: 'cmp' }, 'Compare this BOM with'), sel), out], actions: [{ label: 'Close' }] });
     run();
+  };
+
+  const deleteBom = async () => {
+    const b = data.bom;
+    if (b.state !== 'draft' || !can('engineer')) return;
+    const ok = await confirmDlg(
+      'Delete draft BOM',
+      `Permanently delete ${b.part_number} revision ${b.revision} and its BOM lines? The item, CAD document, versions, and lifecycle history will remain.`,
+      'Delete BOM',
+      true
+    );
+    if (!ok) return;
+    try {
+      await del(`/api/boms/${b.id}`);
+      drafts.clear(draftKey);
+      toast(`Draft BOM ${b.part_number} deleted`, 'ok');
+      location.hash = '#/boms';
+    } catch (e) {
+      fail(e);
+    }
   };
 
   const release = async () => {

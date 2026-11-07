@@ -176,6 +176,42 @@ def get_bom(req: Req):
             "revisions": revs, "assembly_document": doc, "erp_jobs": jobs}
 
 
+@api("DELETE", "/api/boms/{id:int}", role="engineer")
+def delete_bom(req: Req):
+    """Delete an unused draft BOM without deleting its item or assembly document."""
+    bid = req.int_param("id")
+    bom = boms.bom_or_404(bid)
+    access.check_item(bom["item_id"])
+    apisafety.guard(req, "boms", bid, f"{bom['part_number']} rev {bom['revision']}")
+
+    if bom["state"] != "draft":
+        raise conflict("Only draft BOMs can be deleted. This BOM was not changed.", "bom_not_draft")
+
+    # ERP jobs use a polymorphic entity_id rather than a foreign key. Do not
+    # delete a BOM that already has ERP history or an outstanding push.
+    jobs = db.rows("SELECT id, status FROM erp_jobs WHERE kind = 'bom' AND entity_id = ?", (bid,))
+    if jobs:
+        raise conflict("This BOM has ERP job history and cannot be deleted safely.", "bom_has_erp_history",
+                       jobs=jobs)
+
+    line_count = db.scalar("SELECT COUNT(*) FROM bom_lines WHERE bom_id = ?", (bid,))
+    details = f"{bom['part_number']} rev {bom['revision']}; {line_count} BOM lines"
+    with db.tx():
+        # Re-read state under the write lock to avoid deleting a BOM released
+        # between the initial validation and this transaction.
+        current = db.one("SELECT state FROM boms WHERE id = ?", (bid,))
+        if not current:
+            raise not_found("BOM not found")
+        if current["state"] != "draft":
+            raise conflict("Only draft BOMs can be deleted. This BOM was not changed.", "bom_not_draft")
+        db.execute("DELETE FROM boms WHERE id = ?", (bid,))
+        # bom_lines.bom_id has ON DELETE CASCADE, so its lines are removed
+        # automatically. The item, document, versions and lifecycle history remain.
+        db.audit(req.uid, "bom_delete", "bom", bid, details)
+
+    return {"ok": True, "deleted_bom_id": bid, "deleted_lines": line_count}
+
+
 @api("PUT", "/api/boms/{id:int}/lines", role="engineer")
 def put_lines(req: Req):
     bid = req.int_param("id")
@@ -657,18 +693,33 @@ def addin_status(req: Req):
         fid = _find_folder(folder)
     except Exception:
         return {"exists": False}
-    d = db.one("SELECT * FROM documents WHERE folder_id = ? AND filename = ? COLLATE NOCASE AND deleted = 0",
-               (fid, filename)) if fid else None
+
+    d = db.one(
+        "SELECT * FROM documents WHERE folder_id = ? AND filename = ? COLLATE NOCASE AND deleted = 0",
+        (fid, filename)
+    ) if fid else None
+
     if not d:
         return {"exists": False}
+
     from .files import actions_for
+
     s = lifecycle.doc_summary(d, lifecycle.user_names())
     s["exists"] = True
-    s["actions"] = actions_for(d, req.user)
-    s["latest_sha"] = db.scalar("SELECT blob_sha FROM versions WHERE document_id = ? AND version = ?",
-                                (d["id"], d["latest_version"]))
-    return s
 
+    actions = actions_for(d, req.user)
+    s["actions"] = {
+        key: value
+        for key, value in actions.items()
+        if isinstance(value, dict) and "ok" in value
+    }
+
+    s["latest_sha"] = db.scalar(
+        "SELECT blob_sha FROM versions WHERE document_id = ? AND version = ?",
+        (d["id"], d["latest_version"])
+    )
+
+    return s
 
 def _find_folder(path: str) -> int | None:
     import re
@@ -742,6 +793,28 @@ def addin_checkin(req: Req):
         if not b or b["state"] != "released":
             out["bom"] = boms.generate_from_document(req.user, d["id"])
     return out
+
+
+@api("POST", "/api/addin/bom-recovery/preview", role="engineer")
+def addin_bom_recovery_preview(req: Req):
+    """Read-only validation of a legacy assembly's live SOLIDWORKS structure."""
+    try:
+        doc_id = int(req.b("document_id"))
+    except (TypeError, ValueError):
+        raise bad("document_id must be an integer")
+    structure = req.b("structure")
+    return boms.preview_from_structure(req.user, doc_id, structure)
+
+
+@api("POST", "/api/addin/bom-recovery/apply", role="engineer")
+def addin_bom_recovery_apply(req: Req):
+    """Create a missing BOM only; never revise a document or replace an existing BOM."""
+    try:
+        doc_id = int(req.b("document_id"))
+    except (TypeError, ValueError):
+        raise bad("document_id must be an integer")
+    structure = req.b("structure")
+    return boms.generate_from_structure(req.user, doc_id, structure)
 
 
 @api("GET", "/api/addin/similar")

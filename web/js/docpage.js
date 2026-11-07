@@ -19,7 +19,7 @@ function stepper(state) {
   steps.forEach(([k, label], i) => {
     if (i) out.appendChild(h('span', { class: 'line' }));
     const cls = i < idx || (state === 'released' && i === idx) || state === 'obsolete' || state === 'spares_only' ? 'done' : i === idx ? 'cur' : '';
-    out.appendChild(h('span', { class: `s ${cls}` }, h('span', { class: 'dot' }, cls === 'done' ? '✓' : i + 1), label));
+    out.appendChild(h('span', { class: `s ${cls}` }, h('span', { class: 'dot' }, cls === 'done' ? 'âœ“' : i + 1), label));
   });
   if (state === 'obsolete' || state === 'spares_only') { out.appendChild(h('span', { class: 'line' })); out.appendChild(h('span', { class: 's cur' }, h('span', { class: 'dot' }, '4'), state === 'obsolete' ? 'Obsolete' : 'Spares only')); }
   return out;
@@ -42,10 +42,10 @@ export async function renderDoc(container, [id], params, { setTitle }) {
       h('div', { class: 'pv-img light', style: { width: '210px', height: '150px', borderRadius: '8px', border: '1px solid var(--line)', flex: 'none' }, onclick: () => openViewer(d) },
         d.preview_kind ? h('img', { src: fileUrl(d.id, 'preview', d.version), alt: '', style: { maxHeight: '140px' } }) : icon('file', 40)),
       h('div', { style: { flex: 1, minWidth: '280px' } },
-        h('div', { class: 'small muted' }, d.path.map(p => p.name).join(' › ')),
+        h('div', { class: 'small muted' }, d.path.map(p => p.name).join(' â€º ')),
         h('h1', { style: { margin: '4px 0', overflowWrap: 'anywhere' } }, d.filename, ' ', favButton('doc', d.id)),
         h('div', { class: 'row wrap' }, typeChip(d.ext), d.part_number ? h('span', { class: 'mono' }, d.part_number) : null,
-          h('span', null, d.description), h('span', { class: 'muted' }, `· Rev ${d.revision} · v${d.version}`)),
+          h('span', null, d.description), h('span', { class: 'muted' }, `Â· Rev ${d.revision} Â· v${d.version}`)),
         h('div', { style: { marginTop: '10px' } }, stepper(d.state)),
         S.mode === 'guided' ? h('p', { class: 'muted small', style: { margin: '6px 0 0' } }, STATE_PLAIN[d.state]) : null,
         d.returned ? h('div', { class: 'banner err small', style: { marginTop: '10px' } }, icon('warn'), h('div', null, h('b', null, `Sent back by ${d.returned.by} ${ago(d.returned.at)}`), d.returned.comment ? `: ${d.returned.comment}` : '. Ask them what to change.')) : null,
@@ -112,7 +112,7 @@ function overview(c, d, reload) {
       ['Size', fmtSize(d.versions[0]?.size)],
       d.meta?.dwg_version ? ['DWG format', d.meta.dwg_version] : null,
       d.meta?.units ? ['Drawing units', d.meta.units] : null,
-      d.meta?.mesh ? ['Model size', d.meta.mesh.bbox.join(' × ') + ' mm'] : null,
+      d.meta?.mesh ? ['Model size', d.meta.mesh.bbox.join(' Ã— ') + ' mm'] : null,
       d.meta?.source ? ['Checked in from', d.meta.source === 'solidworks-addin' ? 'SolidWorks add-in' : d.meta.source] : null,
     ].filter(Boolean).flatMap(([k, v]) => [h('dt', null, k), h('dd', null, String(v))])),
     classifyBox('document', d.id, { onApplied: reload, locked: it ? lockedFor(it) : (editable ? {} : { description: d.actions.edit.why }) }),
@@ -126,8 +126,8 @@ function overview(c, d, reload) {
   const right = it ? h('div', { class: 'col', style: { flex: '1 1 320px', gap: '12px' } },
     h('div', { class: 'row' }, h('h2', null, 'Part'), h('span', { class: 'spacer' }), h('a', { class: 'btn sm', href: `#/item/${it.id}` }, 'Open part')),
     h('dl', { class: 'props' }, [
-      ['Part number', it.part_number], ['Description', it.description], ['Type', it.item_type], ['Material', it.material || '—'],
-      ['Make / buy', it.make_buy], ['Unit', it.uom], ['Weight', it.weight_kg ? `${it.weight_kg} kg` : '—'],
+      ['Part number', it.part_number], ['Description', it.description], ['Type', it.item_type], ['Material', it.material || 'â€”'],
+      ['Make / buy', it.make_buy], ['Unit', it.uom], ['Weight', it.weight_kg ? `${it.weight_kg} kg` : 'â€”'],
       ['Released rev', `${it.revision} (${it.state.replace('_', ' ')})`],
       [`In ${S.erp}`, it.erp_synced_at ? `Yes, ${ago(it.erp_synced_at)}` : 'Not yet'],
       it.erp_stock != null ? ['Stock', String(it.erp_stock)] : null,
@@ -151,8 +151,8 @@ function versionsTab(c, d) {
   c.appendChild(h('table', { class: 'tbl' },
     h('thead', null, h('tr', null, ['Version', 'Revision', 'Checked in', 'By', 'Comment', 'Size', ''].map(t => h('th', null, t)))),
     h('tbody', null, d.versions.map(v => h('tr', null,
-      h('td', null, h('b', null, `v${v.version}`)), h('td', null, v.revision, v.superseded_by ? [' ', h('span', { class: 'chip st-superseded', title: 'An older released revision; nobody should make it from this one' }, `Superseded — use Rev ${v.superseded_by}`)] : null), h('td', { class: 'nowrap' }, fmtDate(v.created_at)), h('td', null, v.by),
-      h('td', null, v.comment || h('span', { class: 'muted' }, '—')), h('td', { class: 'nowrap' }, fmtSize(v.size)),
+      h('td', null, h('b', null, `v${v.version}`)), h('td', null, v.revision, v.superseded_by ? [' ', h('span', { class: 'chip st-superseded', title: 'An older released revision; nobody should make it from this one' }, `Superseded â€” use Rev ${v.superseded_by}`)] : null), h('td', { class: 'nowrap' }, fmtDate(v.created_at)), h('td', null, v.by),
+      h('td', null, v.comment || h('span', { class: 'muted' }, 'â€”')), h('td', { class: 'nowrap' }, fmtSize(v.size)),
       h('td', { class: 'nowrap' }, h('div', { class: 'row' },
         v.viewer_kind ? h('button', { class: 'btn sm', onclick: () => openViewer(d, { version: v.version }) }, 'View') : null,
         h('button', { class: 'btn sm', onclick: () => downloadDoc(d.id, v.version) }, 'Download'))))))));
@@ -168,14 +168,14 @@ async function outputsTab(c, d) {
       } }, icon('refresh', 14), `Make again for Rev ${d.revision}`) : null;
     mount(c,
       h('div', { class: 'row wrap', style: { marginBottom: '10px' } },
-        h('p', { class: 'muted small', style: { margin: 0, flex: 1 } }, 'Made at every release: the PDF stamped "Released — Rev — date — approver", and a release sheet with the files and their fingerprints. Downloads carry "Uncontrolled when printed" and the date; older revisions carry a red Superseded band.'),
+        h('p', { class: 'muted small', style: { margin: 0, flex: 1 } }, 'Made at every release: the PDF stamped "Released â€” Rev â€” date â€” approver", and a release sheet with the files and their fingerprints. Downloads carry "Uncontrolled when printed" and the date; older revisions carry a red Superseded band.'),
         remake),
       list.length ? h('table', { class: 'tbl' },
         h('thead', null, h('tr', null, ['Output', 'Revision', 'Version', 'Made', 'Size', ''].map(t => h('th', null, t)))),
         h('tbody', null, list.map(o => h('tr', null,
           h('td', null, h('b', null, o.label), h('div', { class: 'small muted' }, o.filename)),
-          h('td', null, o.revision, o.superseded_by ? [' ', h('span', { class: 'chip st-superseded' }, `Superseded — use Rev ${o.superseded_by}`)] : null),
-          h('td', null, `v${o.version}`), h('td', { class: 'nowrap' }, `${fmtDate(o.created_at)}${o.created_by_name ? ' · ' + o.created_by_name : ''}`),
+          h('td', null, o.revision, o.superseded_by ? [' ', h('span', { class: 'chip st-superseded' }, `Superseded â€” use Rev ${o.superseded_by}`)] : null),
+          h('td', null, `v${o.version}`), h('td', { class: 'nowrap' }, `${fmtDate(o.created_at)}${o.created_by_name ? ' Â· ' + o.created_by_name : ''}`),
           h('td', null, o.status === 'ok' ? fmtSize(o.size) : h('span', { class: 'sev-warning small' }, o.note)),
           h('td', { class: 'nowrap' }, o.status === 'ok' ? h('div', { class: 'row' },
             h('a', { class: 'btn sm', href: `/api/outputs/${o.id}/file?inline=1&access_token=${encodeURIComponent(S.token)}`, target: '_blank', rel: 'noopener' }, 'Open'),
@@ -196,8 +196,8 @@ function historyTab(c, d) {
   }
   c.appendChild(h('div', { class: 'timeline' }, d.events.map(e => h('div', { class: 'tl' }, h('span', { class: `dot ${e.to_state}` }),
     h('div', null, h('div', null, h('b', null, `Revision ${e.revision}: ${({ in_work: 'In work', in_review: 'In review', released: 'Released', spares_only: 'Spares only', obsolete: 'Obsolete' })[e.to_state]}`),
-      e.change_number ? [' · ', h('a', { href: `#/change/${e.change_order_id}` }, e.change_number)] : null),
-    h('div', { class: 'small muted' }, `${e.by} · ${fmtDate(e.at)}`), e.comment ? h('div', { class: 'small' }, e.comment) : null)))));
+      e.change_number ? [' Â· ', h('a', { href: `#/change/${e.change_order_id}` }, e.change_number)] : null),
+    h('div', { class: 'small muted' }, `${e.by} Â· ${fmtDate(e.at)}`), e.comment ? h('div', { class: 'small' }, e.comment) : null)))));
 }
 
 function whereTab(c, d) {
@@ -226,8 +226,8 @@ function changesTab(c, d) {
 function erpTab(c, it, reload) {
   c.append(
     h('dl', { class: 'props' }, [
-      [`${S.erp} item code`, it.erp_item_code || 'Not created yet'], ['Last pushed', it.erp_synced_at ? fmtDate(it.erp_synced_at) : '—'],
-      ['Stock on hand', it.erp_stock ?? '—'], ['Valuation rate', it.erp_cost ?? '—'],
+      [`${S.erp} item code`, it.erp_item_code || 'Not created yet'], ['Last pushed', it.erp_synced_at ? fmtDate(it.erp_synced_at) : 'â€”'],
+      ['Stock on hand', it.erp_stock ?? 'â€”'], ['Valuation rate', it.erp_cost ?? 'â€”'],
     ].flatMap(([k, v]) => [h('dt', null, k), h('dd', null, String(v))])),
     can('approver') ? h('div', { class: 'row', style: { marginTop: '12px' } },
       h('button', { class: 'btn primary', onclick: () => erpPush('item', it.id, reload) }, icon('erp', 16), `Send item to ${S.erp}`),
@@ -248,16 +248,39 @@ export function docTable(docs) {
 }
 
 function releaseWithReason(d, A, doAct) {
-  const reason = h('textarea', { class: 'input', id: 'rl-reason', rows: 3 });
+  const reason = h('textarea', {
+    class: 'input',
+    id: 'rl-reason',
+    rows: 3
+  });
+
   dialog({
     title: `Release ${d.filename}`,
     body: h('div', { class: 'col', style: { gap: '10px' } },
-      h('p', { style: { margin: 0, lineHeight: 1.5 } }, A.release_why || 'Write why this is released.'),
-      h('div', { class: 'field' }, h('label', { for: 'rl-reason' }, 'Reason (kept in the audit log)'), reason)),
-    actions: [{ label: 'Cancel' }, { label: 'Release', primary: true, onClick: async () => {
-      if (reason.value.trim().length < 5) { toast('Write a short reason first.', 'err'); return false; }
-      await doAct('state', { to: 'released', reason: reason.value.trim() }, 'Released');
-    } }],
+      h('p', { style: { margin: 0, lineHeight: 1.5 } },
+        A.release_why || 'Write why this is released.'),
+      h('div', { class: 'field' },
+        h('label', { for: 'rl-reason' }, 'Reason (kept in the audit log)'),
+        reason)),
+    actions: [
+      { label: 'Cancel' },
+      {
+        label: 'Release',
+        primary: true,
+        onClick: async () => {
+          const value = reason.value.trim();
+
+          if (value.length < 5) {
+            toast('Write a short reason first.', 'err');
+            return false;
+          }
+          await doAct('state', {
+            to: 'released',
+            reason: value
+          }, 'Released');
+        }
+      }
+    ]
   });
 }
 
@@ -274,9 +297,9 @@ export async function renderItem(container, [id], _p, { setTitle }) {
     mount(container, h('div', { class: 'page-pad' },
       h('div', { class: 'page-head' }, h('div', { style: { flex: 1 } }, h('div', { class: 'small muted' }, 'Part'),
         h('h1', { class: 'mono' }, it.part_number, ' ', favButton('item', it.id)), h('div', { class: 'sub' }, it.description),
-        h('div', { class: 'row', style: { marginTop: '8px' } }, stateChip(it.state), h('span', { class: 'muted' }, `Revision ${it.revision} · ${it.item_type} · ${it.make_buy}`), ...itemBadges(r))),
+        h('div', { class: 'row', style: { marginTop: '8px' } }, stateChip(it.state), h('span', { class: 'muted' }, `Revision ${it.revision} Â· ${it.item_type} Â· ${it.make_buy}`), ...itemBadges(r))),
       S.user.kind === 'vendor' ? null : h('button', { class: 'btn', id: 'item-qr', title: 'A QR code for the job card or nameplate; scanning it opens the released drawing in the shop view', onclick: () => import('./shop.js').then(m => m.qrLabelDialog(it)).catch(fail) }, icon('qr', 16), 'Print QR label'),
-      can('engineer') ? h('button', { class: 'btn', title: 'Start a new design from this one, with new part numbers', onclick: () => import('./copydesign.js').then(m => m.copyDesignDialog({ item_id: it.id })).catch(fail) }, icon('copy', 16), 'Copy design…') : null,
+      can('engineer') ? h('button', { class: 'btn', title: 'Start a new design from this one, with new part numbers', onclick: () => import('./copydesign.js').then(m => m.copyDesignDialog({ item_id: it.id })).catch(fail) }, icon('copy', 16), 'Copy designâ€¦') : null,
       can('approver') ? h('div', { class: 'row' },
         h('button', { class: 'btn primary', onclick: () => erpPush('item', it.id, load) }, icon('erp', 16), `Send to ${S.erp}`),
         h('button', { class: 'btn', onclick: () => erpPush('refresh', it.id, load) }, icon('refresh', 16), 'Stock & cost')) : null),
@@ -308,12 +331,12 @@ export async function renderItem(container, [id], _p, { setTitle }) {
             : h('div', { class: 'empty' }, 'No BOM.')),
         h('section', { class: 'panel' }, h('div', { class: 'panel-h' }, h('h2', null, `Where used (${r.where_used.length})`)),
           r.where_used.length ? h('table', { class: 'tbl' }, h('tbody', null, r.where_used.map(w => h('tr', { class: 'clickable', onclick: () => { location.hash = `#/bom/${w.bom_id}`; } },
-            h('td', { class: 'mono' }, w.part_number), h('td', null, w.description), h('td', { class: 'num' }, `× ${w.qty}`)))))
+            h('td', { class: 'mono' }, w.part_number), h('td', null, w.description), h('td', { class: 'num' }, `Ã— ${w.qty}`)))))
             : h('div', { class: 'empty' }, 'Not used in any BOM.')),
         h('section', { class: 'panel' }, h('div', { class: 'panel-h' }, h('h2', null, `${S.erp}`)), h('div', { class: 'panel-b' },
-          h('dl', { class: 'props' }, [['Item code', it.erp_item_code || `Not in ${S.erp} yet`], ['Last pushed', it.erp_synced_at ? fmtDate(it.erp_synced_at) : '—'],
-            ['Stock on hand', it.erp_stock ?? '—'], ['Valuation rate', it.erp_cost ?? '—']].flatMap(([k, v]) => [h('dt', null, k), h('dd', null, String(v))])),
-          r.erp_jobs.length ? h('div', { style: { marginTop: '10px' } }, r.erp_jobs.slice(0, 5).map(j => h('div', { class: 'small row' }, h('span', { class: `chip st-${j.status}` }, j.status), `${j.kind} · ${ago(j.updated_at)}`, j.error ? h('span', { class: 'sev-error' }, j.error) : null))) : null)))));
+          h('dl', { class: 'props' }, [['Item code', it.erp_item_code || `Not in ${S.erp} yet`], ['Last pushed', it.erp_synced_at ? fmtDate(it.erp_synced_at) : 'â€”'],
+            ['Stock on hand', it.erp_stock ?? 'â€”'], ['Valuation rate', it.erp_cost ?? 'â€”']].flatMap(([k, v]) => [h('dt', null, k), h('dd', null, String(v))])),
+          r.erp_jobs.length ? h('div', { style: { marginTop: '10px' } }, r.erp_jobs.slice(0, 5).map(j => h('div', { class: 'small row' }, h('span', { class: `chip st-${j.status}` }, j.status), `${j.kind} Â· ${ago(j.updated_at)}`, j.error ? h('span', { class: 'sev-error' }, j.error) : null))) : null)))));
     if (S.user.kind !== 'vendor') {      // a vendor account sees the part and its files only
       mountRecordPanels(container.firstChild, 'item', it.id);
       import('./inputs.js').then(m => m.addItemInputs(container, it)).catch(fail);   // Inputs section (inputs library)

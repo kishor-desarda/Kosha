@@ -148,6 +148,12 @@ namespace Kosha.Client
             }
         }
 
+        public Task<BomRecoveryResult> PreviewBomRecoveryAsync(int documentId, List<StructureLine> structure, CancellationToken ct = default) =>
+            PostAsync<BomRecoveryResult>("/api/addin/bom-recovery/preview", new { document_id = documentId, structure }, ct);
+
+        public Task<BomRecoveryResult> ApplyBomRecoveryAsync(int documentId, List<StructureLine> structure, CancellationToken ct = default) =>
+            PostAsync<BomRecoveryResult>("/api/addin/bom-recovery/apply", new { document_id = documentId, structure }, ct);
+
         public async Task<DocStatus> CheckInAsync(CheckinRequest r, CancellationToken ct = default)
         {
             var form = new MultipartFormDataContent();

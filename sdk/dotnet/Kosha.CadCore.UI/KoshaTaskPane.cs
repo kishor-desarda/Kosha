@@ -48,6 +48,7 @@ namespace Kosha.CadCore.UI
         readonly Button checkinBtn = new Button { Text = "Check in", Height = 34 };
         readonly Button undoBtn = new Button { Text = "Undo check-out", Height = 30 };
         readonly Button latestBtn = new Button { Text = "Get latest version", Height = 30 };
+        readonly Button recoverBomBtn = new Button { Text = "Recover missing BOM", Height = 30 };
         readonly Button nextPnBtn = new Button { Text = "Next number", Height = 26 };
         readonly Button openWebBtn = new Button { Text = "Open in Kosha", Height = 30 };
 
@@ -125,6 +126,7 @@ namespace Kosha.CadCore.UI
             checkinBtn.Click += async (s, e) => await Run(CheckInAsync);
             undoBtn.Click += async (s, e) => await Run(async () => { await session.UndoCheckOutAsync(state); await RefreshAsync(); });
             latestBtn.Click += async (s, e) => await Run(async () => { await session.GetLatestAsync(state); await RefreshAsync(); });
+            recoverBomBtn.Click += async (s, e) => await Run(RecoverBomAsync);
             nextPnBtn.Click += async (s, e) => await Run(NextNumberAsync);
             openWebBtn.Click += (s, e) => SafeOpen(session.WebUrl(state));
             var signOut = new LinkLabel { Text = "Sign out", Height = 20 };
@@ -132,7 +134,7 @@ namespace Kosha.CadCore.UI
             Stack(docPanel, 10, userLabel, fileLabel, stateLabel, folderLabel,
                 Caption("Part number"), pnBox, nextPnBtn, Caption("Description"), descBox, Caption("Material"), materialLabel,
                 warnLabel, checkoutBtn, Caption("Comment for this version"), commentBox, keepBox, withComponentsBox, checkinBtn,
-                undoBtn, latestBtn, openWebBtn, signOut);
+                undoBtn, latestBtn, recoverBomBtn, openWebBtn, signOut);
         }
 
         void ShowLogin(bool login)
@@ -217,6 +219,8 @@ namespace Kosha.CadCore.UI
             checkinBtn.Enabled = state.CanCheckIn;
             undoBtn.Enabled = state.CanUndo;
             latestBtn.Enabled = state.CanGetLatest;
+            recoverBomBtn.Visible = state.OffersComponents;
+            recoverBomBtn.Enabled = state.CanRecoverBom;
             openWebBtn.Enabled = state.CanOpenInBrowser;
             pnBox.ReadOnly = descBox.ReadOnly = !state.CanCheckIn;
             nextPnBtn.Enabled = state.CanCheckIn;
@@ -227,6 +231,32 @@ namespace Kosha.CadCore.UI
             var outcome = await session.CheckInAsync(state, pnBox.Text, descBox.Text, commentBox.Text, keepBox.Checked, withComponentsBox.Checked);
             commentBox.Text = "";
             MessageBox.Show(this, outcome.Summary(), "Kosha", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            await RefreshAsync();
+        }
+
+        async Task RecoverBomAsync()
+        {
+            var result = await session.RecoverBomAsync(state);
+            if (result.BomId > 0)
+            {
+                MessageBox.Show(this, "BOM created successfully. BOM ID: " + result.BomId +
+                    Environment.NewLine + "The CAD document and its version history were not changed.",
+                    "Kosha BOM recovery", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else if (result.ExistingBomId.HasValue)
+            {
+                MessageBox.Show(this, "A BOM already exists for this assembly revision (BOM ID " +
+                    result.ExistingBomId.Value + ", state: " + result.ExistingBomState + "). It was not changed.",
+                    "Kosha BOM recovery", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else
+            {
+                string reason = result.Unresolved != null && result.Unresolved.Count > 0
+                    ? "Unresolved components:" + Environment.NewLine + string.Join(Environment.NewLine, result.Unresolved)
+                    : "No valid BOM lines were found.";
+                MessageBox.Show(this, reason + Environment.NewLine + Environment.NewLine +
+                    "No BOM was created.", "Kosha BOM recovery", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
             await RefreshAsync();
         }
 

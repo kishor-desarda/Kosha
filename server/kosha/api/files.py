@@ -335,8 +335,17 @@ def undo(req: Req):
 
 @api("POST", "/api/documents/{id:int}/state", role="engineer")
 def state(req: Req):
-    d = lifecycle.set_state(req.user, req.int_param("id"), req.b("to") or "", req.b("comment") or "",
-                            reason=req.b("reason") or "", replacement=req.b("replacement") or "")
+    reason = req.b("reason") or ""
+
+
+    d = lifecycle.set_state(
+        req.user,
+        req.int_param("id"),
+        req.b("to") or "",
+        req.b("comment") or "",
+        reason=reason,
+        replacement=req.b("replacement") or ""
+    )
     return lifecycle.doc_summary(d, lifecycle.user_names())
 
 
@@ -425,7 +434,7 @@ def download(req: Req):
     newer = outputs.superseded_by(v["doc"], v["revision"]) if v["doc"]["ext"] == "pdf" else None
     if v["doc"]["ext"] == "pdf" and (newer or (v["doc"]["state"] in watermark.STATES and watermark.enabled())):
         data = path.read_bytes()
-        banded = watermark.superseded_band(data, f"Superseded — use Rev {newer}") if newer else None
+        banded = watermark.superseded_band(data, f"Superseded â€” use Rev {newer}") if newer else None
         stamped = watermark.stamp_pdf(banded or data, watermark.line_for(req.user["full_name"])) \
             if watermark.enabled() else None
         db.audit(req.uid, "download", "document", v["document_id"],
