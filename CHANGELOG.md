@@ -7,6 +7,7 @@ The release workflow publishes the section for each tag as that release's notes.
 
 ### Backlog
 
+- [ ] **SolidWorks plugin: revise file:** add a **Revise** action so users can start a new revision of a released document directly from the SolidWorks add-in.
 - [ ] **Explorer: All in-work files view:** add a view listing every document currently in `in_work`, across all folders, with useful metadata and navigation to each document and its containing folder.
 - [ ] **Items: Parts and assemblies not used in any BOM:** add a view listing parts and assemblies that are not referenced as components by any BOM, based on actual BOM relationships.
 - [ ] **Recycle Bin: Select All:** add a button to select every item when purging the recycle bin.
