@@ -1,11 +1,13 @@
 # Changelog
 
-All notable changes to Kosha are listed here, newest first. Versions follow [semantic versioning](https://semver.org/): a release candidate (`rc`) is feature-complete and waits for pilot feedback before the final release.
+All notable changes to Kosha are listed here, newest first. Versions follow [semantic versioning](https://semver.org/): a release candidate (`rc`) is feature-complete and waits for pilot feedback before the final 1.0 release.
 The release workflow publishes the section for each tag as that release's notes.
 
 ## [Unreleased]
 
 ### Backlog
+
+- [ ] **Document names: prevent duplicate filenames within an Explorer folder:** prevent creation of two distinct documents with the same filename in the same Explorer folder. Revisions and versions of the same document remain valid and must not be treated as duplicates. Enforce the rule consistently across uploads, check-in, imports, rename and move operations, including concurrent creation attempts; report the existing conflicting document clearly.
 
 - [ ] **Lifecycle: return released items to in-work without revising:** allow authorized users to roll back a released item to `in_work` while retaining the same revision and document versions, rather than creating a new revision. Define the required permissions, confirmation, audit trail, and safeguards for downstream references, ERP synchronization, and any release-dependent records.
 
@@ -18,9 +20,12 @@ The release workflow publishes the section for each tag as that release's notes.
 - [ ] **Items: Parts and assemblies not used in any BOM:** add a view listing parts and assemblies that are not referenced as components by any BOM, based on actual BOM relationships.
 - [ ] **Recycle Bin: Select All:** add a button to select every item when purging the recycle bin.
 - [ ] **Items: Select All:** add a button to select every purged item when permanently deleting items.
-- [ ] **Download/Open in SolidWorks:** download a part into its correct folder and open it in SolidWorks. For assemblies, download the complete recursive dependency set, including parts nested in subassemblies and other referenced documents, reconstruct the required directory structure, and preserve relative file references so the assembly, subassemblies, parts, and drawings open without broken links. Handle filename collisions and missing dependencies explicitly.
+- [ ] **Download/Open in SolidWorks:** download a selected part or assembly into the local workspace at the same relative path as its Kosha Explorer folder, then open it in SolidWorks. For assemblies, recursively download the actual linked CAD dependency tree, including nested subassemblies and parts, rather than relying only on the engineering BOM. Preserve the dependency relationships and directory structure needed to open the assembly without broken references. Provide a separate option to include related PDF and drawing documents for the downloaded items. Handle missing dependencies, access restrictions, filename collisions and existing local files explicitly.
+
+- [ ] **SolidWorks: preserve assembly-version-specific component reference paths:** when checking in an assembly, record where each referenced part or subassembly is expected relative to that assembly version, including cases where a component was moved before check-in. Use this version-specific reference-path data when reconstructing a downloaded assembly. Do not treat a component's location as a global property: the same document may be referenced by multiple assemblies at different relative paths, and the expected paths may change between assembly versions. Define how unresolved, ambiguous or conflicting references are reported and resolved. This is a higher-complexity follow-on to Download/Open in SolidWorks.
+
 - [ ] **SolidWorks plugin: check out file:** add a check-out action to the SolidWorks plugin so a user can check out a document directly from the CAD workflow.
-- [ ] **Open in SolidWorks:** download a part into its correct folder and open it in SolidWorks. For assemblies, download the complete recursive BOM, including parts nested in subassemblies.
+- [ ] **Pack and Go: preserve Explorer folder structure:** add an option to preserve each exported document's relative Kosha Explorer folder path inside the ZIP, rather than flattening all files into the archive root. Keep duplicate filenames in separate folders distinct and handle any remaining path or filename conflicts explicitly.
 - [ ] **Pack and Go backup:** export selected items with their complete revision histories, associated files and the relevant database records into a self-contained backup.
 - [ ] **Pack and Go restore:** inspect conflicts before restoring and allow the user to rename or overwrite conflicting records.
 - [ ] **Deletion-log tamper protection:** add exclusive file locking, shutdown backups, startup comparison and tamper detection. This is deliberately deferred from the current round.
@@ -36,20 +41,13 @@ acceptance suite that walks through the specification's acceptance scenarios end
 - **Permanent deletion:** permanently remove eligible unreleased items, their exclusively owned documents and versions, and unshared BOM descendants; retain shared dependencies and blobs, protect released or ERP-linked records, and record outcomes in an independent deletion log with startup recovery.
 
 - **Quality:** nonconformance reports (NCR-YY-NNNN) with photos and a disposition (use as is, rework, repair,
-  scrap, return to supplier; use as is and repair raise a draft deviation); corrective and preventive actions
-  (CAPA-YY-NNNN) with containment, root cause, actions with owners and due dates, a change request when the design
-  must change, and a four-eyes check that it worked; design and process FMEA with RPN, a company RPN limit,
-  severity 9 and 10 always flagged, scores after the action, and Excel export. A new **Quality** screen and an
-  extra *quality* role for inspectors.
-- **Options and variants:** configurable products with options and choices, rules on BOM lines at any level
-  in a small readable language, constraints between options, the BOM of any combination, a check of every
-  combination (lines never used, choices that change nothing, empty assemblies), and variants saved for orders with
-  their BOM kept as it was; machines can be recorded from a variant.
+  scrap, return to supplier; use as is and repair raise a draft deviation); corrective and preventive actions with root cause and verification; design and process FMEA with RPN, a company RPN limit, severity 9 and 10 always flagged, scores after the action, and Excel export. A new **Quality** screen and an extra *quality* role for inspectors.
+- **Options and variants:** configurable products with options and choices, rules on BOM lines at any level in a small readable language, constraints between options, the BOM of any combination, a check of every combination (lines never used, choices that change nothing, empty assemblies), saved variants with their resolved BOM for an order; machines can be recorded from a variant.
 - **Manufacturing BOMs and process plans:** how the workshop builds each assembly, made from the engineering BOM:
   operations with work centres, set-up and run times and instructions; each part at the operation that uses it;
-  sub-assemblies built with their parent; parts added for manufacturing. Checks against the engineering BOM down
-  to every part, release after the engineering BOM, carry-over to the next revision, an Excel export for the
-  workshop, the `mbom.released` event, and an ERP setting to send manufacturing BOMs with their operations
+  sub-assemblies built with their parent; parts added for manufacturing. Checks against the engineering BOM
+  down to every part, release after the engineering BOM, carry-over to the next revision, an Excel export for
+  the workshop, the `mbom.released` event, and an ERP setting to send manufacturing BOMs with their operations
   (operations in ERPNext when switched on).
 
 - **Part numbers:** number formats from the specification, bulk reservation, voiding with a reason, and near
@@ -91,9 +89,7 @@ acceptance suite that walks through the specification's acceptance scenarios end
 ### Fixed
 
 - **Permanent deletion:** remove item-specific legacy import records and source references, including imported part rows with no document link; remove historical audit entries for draft BOMs deleted before their parent item, without touching later audit history if a BOM ID is reused.
-- **Container image on hosting platforms:** the image no longer declares a `VOLUME` (some platforms, such as
-  Railway, refuse to build it), listens on the platform's `PORT` when `KOSHA_PORT` is not set, and hands a
-  root-owned data volume to the `kosha` user before starting without root. `railway.json` sets the health check.
+- **Container image on hosting platforms:** the image no longer declares a `VOLUME` (some platforms, such as Railway, refuse to build it), listens on the platform's `PORT` when `KOSHA_PORT` is not set, and hands a root-owned data volume to the `kosha` user before starting without root. `railway.json` sets the health check.
 
 ### Changed
 
