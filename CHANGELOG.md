@@ -7,6 +7,8 @@ The release workflow publishes the section for each tag as that release's notes.
 
 ### Backlog
 
+- [ ] **Lifecycle: return released items to in-work without revising:** allow authorized users to roll back a released item to `in_work` while retaining the same revision and document versions, rather than creating a new revision. Define the required permissions, confirmation, audit trail, and safeguards for downstream references, ERP synchronization, and any release-dependent records.
+
 - [ ] **SolidWorks: rebuild missing 3D previews and viewer meshes:** add an admin-triggered, resumable batch operation (similar to Refresh Missing BOM) that finds existing `.SLDPRT` and `.SLDASM` versions missing preview/viewer assets, uses a dedicated Windows worker with SolidWorks installed to open files programmatically and export STL meshes and optional PNG previews, then attaches the generated assets to the existing version records without check-in, new revisions, version increments, or changes to lifecycle state or original CAD files. Include per-file progress, failures, and a retryable report.
 
 - [ ] **SolidWorks: generate missing drawing PDFs:** add an admin-triggered, resumable batch operation that finds existing `.SLDDRW` versions without PDF outputs, uses the dedicated Windows SolidWorks worker to open each drawing with its referenced models available, exports all drawing sheets into a PDF, and attaches the PDF to the existing version without check-in, new revisions, version increments, lifecycle changes, or modifications to the source drawing or referenced CAD files. Include per-file progress, missing-reference diagnostics, failures, and retryable reporting.
